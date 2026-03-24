@@ -1,0 +1,20 @@
+{
+  "tileset_name": "example_tileset",
+  "output_root": "output",
+  "export_collections": [
+    "Export_Floor",
+    "Export_Walls",
+    "Export_Stairs",
+    "Export_Props"
+  ],
+  "camera_name": "IsoCamera",
+  "default_rotation_mode": "none",
+  "render_resolution": {
+    "width": 256,
+    "height": 256
+  },
+  "atlas": {
+    "columns": 8,
+    "padding": 0
+  }
+}
