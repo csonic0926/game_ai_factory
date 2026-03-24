@@ -2,6 +2,8 @@
 
 Generic Blender-based isometric tile and prop rendering pipeline.
 
+License: MIT
+
 This tool is meant to:
 
 1. batch render isometric tiles and props from Blender
