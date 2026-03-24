@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.blend1
+.env
 
 output/
 output_square/

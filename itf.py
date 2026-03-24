@@ -12,9 +12,11 @@ from pipeline.build_atlas import build_atlas
 from pipeline.ai_texture import (
     AITextureError,
     create_demo_textures,
+    generate_texture_candidates,
     init_texture_cache,
     inspect_texture_cache,
     parse_slot_list,
+    select_texture_candidates,
     sync_texture_cache,
     validate_texture_cache,
 )
@@ -30,6 +32,7 @@ REPO_ROOT = Path(__file__).resolve().parent
 RENDER_SCRIPT = REPO_ROOT / "blender" / "scripts" / "render_tiles.py"
 SCENE_VALIDATE_SCRIPT = REPO_ROOT / "blender" / "scripts" / "validate_scene.py"
 CREATE_SAMPLE_SCRIPT = REPO_ROOT / "blender" / "scripts" / "create_sample_factory.py"
+BIND_AI_TEXTURES_SCRIPT = REPO_ROOT / "blender" / "scripts" / "bind_ai_textures.py"
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -182,6 +185,22 @@ def parse_arguments() -> argparse.Namespace:
     ai_sync_parser.add_argument("--cache-root", default="texture_cache", help="Texture cache root")
     ai_sync_parser.add_argument("--variant", default="ai_v1", help="Texture variant name")
 
+    ai_generate_parser = subparsers.add_parser("generate-ai-textures", help="Generate AI texture candidates")
+    ai_generate_parser.add_argument("--manifest", required=True, help="Path to manifest JSON")
+    ai_generate_parser.add_argument("--cache-root", default="texture_cache", help="Texture cache root")
+    ai_generate_parser.add_argument("--variant", default="ai_v1", help="Texture variant name")
+    ai_generate_parser.add_argument("--provider", default="mock", help="mock | nano_banana | nano_banana_pro")
+    ai_generate_parser.add_argument("--slots", default="base_color", help="Comma-separated slots")
+    ai_generate_parser.add_argument("--candidate-count", type=int, default=1, help="Candidates per slot")
+    ai_generate_parser.add_argument("--size", type=int, default=256, help="Mock generation size")
+
+    ai_select_parser = subparsers.add_parser("select-ai-textures", help="Select top-ranked AI texture candidates")
+    ai_select_parser.add_argument("--manifest", required=True, help="Path to manifest JSON")
+    ai_select_parser.add_argument("--cache-root", default="texture_cache", help="Texture cache root")
+    ai_select_parser.add_argument("--variant", default="ai_v1", help="Texture variant name")
+    ai_select_parser.add_argument("--slots", default="base_color", help="Comma-separated slots")
+    ai_select_parser.add_argument("--strategy", default="latest", help="Selection strategy")
+
     ai_validate_parser = subparsers.add_parser("validate-ai-textures", help="Validate AI texture cache contents")
     ai_validate_parser.add_argument("--manifest", required=True, help="Path to manifest JSON")
     ai_validate_parser.add_argument("--cache-root", default="texture_cache", help="Texture cache root")
@@ -197,6 +216,13 @@ def parse_arguments() -> argparse.Namespace:
     ai_demo_parser.add_argument("--cache-root", default="texture_cache", help="Texture cache root")
     ai_demo_parser.add_argument("--variant", default="ai_v1", help="Texture variant name")
     ai_demo_parser.add_argument("--size", type=int, default=256, help="Demo texture size")
+
+    ai_bind_parser = subparsers.add_parser("bind-ai-textures", help="Bind selected AI textures back into Blender materials")
+    ai_bind_parser.add_argument("--scene", required=True, help="Path to Blender scene (.blend)")
+    ai_bind_parser.add_argument("--config", required=True, help="Path to config JSON")
+    ai_bind_parser.add_argument("--cache-root", default="texture_cache", help="Texture cache root")
+    ai_bind_parser.add_argument("--variant", default="ai_v1", help="Texture variant name")
+    ai_bind_parser.add_argument("--blender-bin", default="blender", help="Blender executable to use")
 
     return argument_parser.parse_args()
 
@@ -568,6 +594,40 @@ def command_sync_ai_textures(arguments: argparse.Namespace) -> int:
         return 1
 
 
+def command_generate_ai_textures(arguments: argparse.Namespace) -> int:
+    try:
+        result = generate_texture_candidates(
+            Path(arguments.manifest).expanduser().resolve(),
+            Path(arguments.cache_root).expanduser().resolve(),
+            variant=arguments.variant,
+            provider=arguments.provider,
+            slots=parse_slot_list(arguments.slots),
+            candidate_count=arguments.candidate_count,
+            size=arguments.size,
+        )
+        print(json.dumps({"ok": True, "mode": "generate-ai-textures", "result": result}, indent=2))
+        return 0
+    except AITextureError as error:
+        print(json.dumps({"ok": False, "error": str(error)}, indent=2))
+        return 1
+
+
+def command_select_ai_textures(arguments: argparse.Namespace) -> int:
+    try:
+        result = select_texture_candidates(
+            Path(arguments.manifest).expanduser().resolve(),
+            Path(arguments.cache_root).expanduser().resolve(),
+            variant=arguments.variant,
+            slots=parse_slot_list(arguments.slots),
+            strategy=arguments.strategy,
+        )
+        print(json.dumps({"ok": True, "mode": "select-ai-textures", "result": result}, indent=2))
+        return 0
+    except AITextureError as error:
+        print(json.dumps({"ok": False, "error": str(error)}, indent=2))
+        return 1
+
+
 def command_validate_ai_textures(arguments: argparse.Namespace) -> int:
     try:
         result = validate_texture_cache(
@@ -611,6 +671,20 @@ def command_create_demo_ai_textures(arguments: argparse.Namespace) -> int:
         return 1
 
 
+def command_bind_ai_textures(arguments: argparse.Namespace) -> int:
+    command = [
+        arguments.blender_bin,
+        str(Path(arguments.scene).expanduser().resolve()),
+        "-P",
+        str(BIND_AI_TEXTURES_SCRIPT),
+        "--",
+        f"--config={Path(arguments.config).expanduser().resolve()}",
+        f"--cache-root={Path(arguments.cache_root).expanduser().resolve()}",
+        f"--variant={arguments.variant}",
+    ]
+    return run_subprocess(command)
+
+
 def main() -> None:
     arguments = parse_arguments()
 
@@ -636,12 +710,18 @@ def main() -> None:
         raise SystemExit(command_init_ai_textures(arguments))
     if arguments.command == "sync-ai-textures":
         raise SystemExit(command_sync_ai_textures(arguments))
+    if arguments.command == "generate-ai-textures":
+        raise SystemExit(command_generate_ai_textures(arguments))
+    if arguments.command == "select-ai-textures":
+        raise SystemExit(command_select_ai_textures(arguments))
     if arguments.command == "validate-ai-textures":
         raise SystemExit(command_validate_ai_textures(arguments))
     if arguments.command == "inspect-ai-textures":
         raise SystemExit(command_inspect_ai_textures(arguments))
     if arguments.command == "create-demo-ai-textures":
         raise SystemExit(command_create_demo_ai_textures(arguments))
+    if arguments.command == "bind-ai-textures":
+        raise SystemExit(command_bind_ai_textures(arguments))
 
     raise SystemExit(f"Unknown command: {arguments.command}")
 
