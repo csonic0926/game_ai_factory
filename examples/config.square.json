@@ -1,7 +1,7 @@
 {
-  "tileset_name": "example_tileset_iso",
-  "output_root": "output",
-  "projection_mode": "isometric",
+  "tileset_name": "example_tileset_square",
+  "output_root": "output_square",
+  "projection_mode": "square",
   "output_mode": "both",
   "export_collections": [
     "Export_Floor",
@@ -9,12 +9,12 @@
     "Export_Stairs",
     "Export_Props"
   ],
-  "camera_name": "IsoCamera",
-  "render_profile": "iso_base",
+  "camera_name": "SquareCamera",
+  "render_profile": "square_base",
   "render_profiles": {
-    "iso_base": {
-      "camera_name": "IsoCamera",
-      "projection_mode": "isometric",
+    "square_base": {
+      "camera_name": "SquareCamera",
+      "projection_mode": "square",
       "render_resolution": {
         "width": 256,
         "height": 256

@@ -78,6 +78,17 @@ def create_camera(factory_rig: bpy.types.Collection) -> bpy.types.Object:
     return camera_object
 
 
+def create_square_camera(factory_rig: bpy.types.Collection) -> bpy.types.Object:
+    camera_data = bpy.data.cameras.new("SquareCamera")
+    camera_data.type = "ORTHO"
+    camera_data.ortho_scale = 2.5
+    camera_object = bpy.data.objects.new("SquareCamera", camera_data)
+    camera_object.location = (0.0, 0.0, 8.0)
+    camera_object.rotation_euler = (0.0, 0.0, 0.0)
+    link_object(camera_object, factory_rig)
+    return camera_object
+
+
 def create_light(
     collection: bpy.types.Collection,
     name: str,
@@ -248,6 +259,7 @@ def build_sample_scene() -> dict:
     ensure_collection("Disabled_Archive")
 
     create_camera(factory_rig)
+    create_square_camera(factory_rig)
     create_light(factory_rig, "KeyLight", (6.0, -6.0, 8.0), 2.0)
     create_light(factory_rig, "FillLight", (-4.0, 4.0, 6.0), 1.0)
     create_light(factory_rig, "RimLight", (-6.0, -6.0, 7.0), 0.5)
@@ -283,6 +295,10 @@ def build_sample_scene() -> dict:
             "101_wall_straight",
             "201_stair_up",
             "301_prop_switch",
+        ],
+        "cameras": [
+            "IsoCamera",
+            "SquareCamera",
         ],
     }
 

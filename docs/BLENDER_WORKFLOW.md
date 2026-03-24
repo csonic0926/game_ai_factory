@@ -3,6 +3,7 @@
 ## Purpose
 
 This document defines how a Blender scene should be organized so it can work as a stable isometric asset factory.
+It now needs to cover both isometric and square tile output paths.
 
 The goal is not to build a beautiful presentation scene.
 The goal is to build a repeatable production scene for batch rendering tiles and props.
@@ -67,6 +68,11 @@ Contains old or experimental objects that should not be rendered.
 Use a single fixed camera:
 
 - name: `IsoCamera`
+- type: `Orthographic`
+
+For square mode, keep a second fixed orthographic camera such as:
+
+- name: `SquareCamera`
 - type: `Orthographic`
 
 The camera transform must remain fixed for the whole tileset.

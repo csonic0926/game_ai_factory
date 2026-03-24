@@ -62,10 +62,14 @@ def normalize_manifest(manifest_data: dict) -> dict:
         normalized_entry = dict(entry)
         normalized_entry["file"] = Path(normalized_entry["file"]).name
         normalized_entries.append(normalized_entry)
-    return {
+    normalized_manifest = {
         "tileset_name": manifest_data["tileset_name"],
         "entries": normalized_entries,
     }
+    for optional_key in ("projection_mode", "render_profile", "output_mode"):
+        if optional_key in manifest_data:
+            normalized_manifest[optional_key] = manifest_data[optional_key]
+    return normalized_manifest
 
 
 def normalize_tileset(tileset_data: dict) -> dict:

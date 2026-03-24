@@ -7,6 +7,8 @@ import re
 from pathlib import Path
 
 VALID_ROTATION_MODES = {"none", "rotate_90", "rotate_360"}
+VALID_PROJECTION_MODES = {"isometric", "square"}
+VALID_OUTPUT_MODES = {"png", "atlas", "both"}
 OBJECT_NAME_PATTERN = re.compile(r"^\d{3}_[a-z0-9]+_[a-z0-9_]+$")
 CONFIG_REQUIRED_KEYS = {
     "tileset_name",
@@ -15,6 +17,10 @@ CONFIG_REQUIRED_KEYS = {
     "camera_name",
 }
 CONFIG_OPTIONAL_KEYS = {
+    "projection_mode",
+    "output_mode",
+    "render_profile",
+    "render_profiles",
     "default_rotation_mode",
     "render_resolution",
     "atlas",
@@ -25,6 +31,9 @@ MANIFEST_ENTRY_REQUIRED_KEYS = {
     "name",
     "source_object",
     "category",
+    "projection_mode",
+    "tile_shape",
+    "render_profile",
     "anchor_type",
     "footprint_width",
     "footprint_height",
@@ -79,6 +88,20 @@ def validate_config_data(config_data: dict) -> tuple[dict, list[str]]:
     if not isinstance(config_data["camera_name"], str) or not config_data["camera_name"].strip():
         raise ValidationError("Config 'camera_name' must be a non-empty string.")
 
+    projection_mode = str(config_data.get("projection_mode", "isometric")).strip().lower()
+    if projection_mode not in VALID_PROJECTION_MODES:
+        raise ValidationError(
+            f"Unsupported projection_mode '{projection_mode}'. "
+            f"Expected one of: {', '.join(sorted(VALID_PROJECTION_MODES))}"
+        )
+
+    output_mode = str(config_data.get("output_mode", "png")).strip().lower()
+    if output_mode not in VALID_OUTPUT_MODES:
+        raise ValidationError(
+            f"Unsupported output_mode '{output_mode}'. "
+            f"Expected one of: {', '.join(sorted(VALID_OUTPUT_MODES))}"
+        )
+
     default_rotation_mode = str(config_data.get("default_rotation_mode", "none"))
     if default_rotation_mode not in VALID_ROTATION_MODES:
         raise ValidationError(
@@ -104,16 +127,79 @@ def validate_config_data(config_data: dict) -> tuple[dict, list[str]]:
     if atlas_padding < 0:
         raise ValidationError("Atlas padding must be zero or greater.")
 
+    render_profiles = config_data.get("render_profiles", {})
+    if not isinstance(render_profiles, dict):
+        raise ValidationError("Config 'render_profiles' must be an object.")
+
+    selected_render_profile = str(config_data.get("render_profile", "default")).strip()
+    if not selected_render_profile:
+        raise ValidationError("Config 'render_profile' must be a non-empty string when provided.")
+
+    normalized_render_profiles: dict[str, dict] = {}
+    for profile_name, profile_data in render_profiles.items():
+        normalized_name = str(profile_name).strip()
+        if not normalized_name:
+            raise ValidationError("Config 'render_profiles' cannot contain an empty profile name.")
+        if not isinstance(profile_data, dict):
+            raise ValidationError(f'Render profile "{normalized_name}" must be an object.')
+
+        profile_camera_name = str(profile_data.get("camera_name", config_data["camera_name"])).strip()
+        if not profile_camera_name:
+            raise ValidationError(f'Render profile "{normalized_name}" has an empty camera_name.')
+
+        profile_projection_mode = str(profile_data.get("projection_mode", projection_mode)).strip().lower()
+        if profile_projection_mode not in VALID_PROJECTION_MODES:
+            raise ValidationError(
+                f'Render profile "{normalized_name}" has unsupported projection_mode "{profile_projection_mode}".'
+            )
+
+        profile_render_resolution = profile_data.get("render_resolution", render_resolution)
+        if not isinstance(profile_render_resolution, dict):
+            raise ValidationError(f'Render profile "{normalized_name}" render_resolution must be an object.')
+        profile_render_width = int(profile_render_resolution.get("width", render_width))
+        profile_render_height = int(profile_render_resolution.get("height", render_height))
+        if profile_render_width <= 0 or profile_render_height <= 0:
+            raise ValidationError(
+                f'Render profile "{normalized_name}" width/height must be positive integers.'
+            )
+
+        normalized_render_profiles[normalized_name] = {
+            "camera_name": profile_camera_name,
+            "projection_mode": profile_projection_mode,
+            "render_resolution": {
+                "width": profile_render_width,
+                "height": profile_render_height,
+            },
+        }
+
+    if selected_render_profile != "default" and selected_render_profile not in normalized_render_profiles:
+        raise ValidationError(
+            f'Config render_profile "{selected_render_profile}" was not found in render_profiles.'
+        )
+
+    active_render_profile = normalized_render_profiles.get(
+        selected_render_profile,
+        {
+            "camera_name": config_data["camera_name"].strip(),
+            "projection_mode": projection_mode,
+            "render_resolution": {
+                "width": render_width,
+                "height": render_height,
+            },
+        },
+    )
+
     normalized_config = {
         "tileset_name": config_data["tileset_name"].strip(),
         "output_root": config_data["output_root"].strip(),
         "export_collections": [item.strip() for item in export_collections],
-        "camera_name": config_data["camera_name"].strip(),
+        "camera_name": active_render_profile["camera_name"],
+        "projection_mode": active_render_profile["projection_mode"],
+        "output_mode": output_mode,
+        "render_profile": selected_render_profile,
+        "render_profiles": normalized_render_profiles,
         "default_rotation_mode": default_rotation_mode,
-        "render_resolution": {
-            "width": render_width,
-            "height": render_height,
-        },
+        "render_resolution": active_render_profile["render_resolution"],
         "atlas": {
             "columns": atlas_columns,
             "padding": atlas_padding,
@@ -200,6 +286,20 @@ def validate_manifest_data(manifest_data: dict, *, require_files: bool = True) -
         if not anchor_type:
             raise ValidationError(f'Manifest entry "{entry_id}" has an empty anchor_type.')
 
+        projection_mode = str(entry["projection_mode"]).strip().lower()
+        if projection_mode not in VALID_PROJECTION_MODES:
+            raise ValidationError(
+                f'Manifest entry "{entry_id}" has unsupported projection_mode "{projection_mode}".'
+            )
+
+        tile_shape = str(entry["tile_shape"]).strip().lower()
+        if tile_shape not in VALID_PROJECTION_MODES:
+            raise ValidationError(f'Manifest entry "{entry_id}" has unsupported tile_shape "{tile_shape}".')
+
+        render_profile = str(entry["render_profile"]).strip()
+        if not render_profile:
+            raise ValidationError(f'Manifest entry "{entry_id}" has an empty render_profile.')
+
         footprint_width = int(entry["footprint_width"])
         footprint_height = int(entry["footprint_height"])
         if footprint_width <= 0 or footprint_height <= 0:
@@ -238,6 +338,9 @@ def validate_manifest_data(manifest_data: dict, *, require_files: bool = True) -
                 "name": object_name,
                 "source_object": str(entry["source_object"]),
                 "category": str(entry["category"]),
+                "projection_mode": projection_mode,
+                "tile_shape": tile_shape,
+                "render_profile": render_profile,
                 "anchor_type": anchor_type,
                 "footprint_width": footprint_width,
                 "footprint_height": footprint_height,
@@ -254,10 +357,15 @@ def validate_manifest_data(manifest_data: dict, *, require_files: bool = True) -
             }
         )
 
-    return {
+    normalized_manifest = {
         "tileset_name": tileset_name.strip(),
         "entries": normalized_entries,
-    }, warnings
+    }
+    for optional_key in ("projection_mode", "render_profile", "output_mode"):
+        if optional_key in manifest_data:
+            normalized_manifest[optional_key] = manifest_data[optional_key]
+
+    return normalized_manifest, warnings
 
 
 def load_and_validate_manifest(manifest_path: Path, *, require_files: bool = True) -> tuple[dict, list[str]]:

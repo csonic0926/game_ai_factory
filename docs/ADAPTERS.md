@@ -1,22 +1,23 @@
-# Engine Adapter Boundary v1
+# Engine Adapter Boundary
 
 ## Purpose
 
-This file defines how engine-specific integration should attach to the core pipeline without changing the core contract.
+This file defines how engine-specific integration should attach to the repository without changing the core contract.
 
-The repository should keep rendering, manifest generation, atlas building, and metadata normalization engine-agnostic.
+The core pipeline should remain engine-agnostic.
 
-## Core Output Contract
-
-The core pipeline owns:
+## Core Pipeline Owns
 
 - Blender scene validation
 - render PNG generation
 - `manifest.json`
+- AI texture request/pack metadata
 - atlas PNG generation
 - `tileset.json`
 
-The core metadata fields are:
+## Core Metadata Contract
+
+The adapter-facing metadata currently includes:
 
 - `id`
 - `name`
@@ -42,6 +43,7 @@ An engine adapter may:
 
 - map core metadata into engine import formats
 - create engine-specific atlas or tileset resources
+- consume AI texture pack state if needed
 - transform anchor or footprint values into engine coordinates
 - write engine-side helper files
 
@@ -52,7 +54,7 @@ An engine adapter must not:
 - mutate the core manifest schema in-place
 - require game-specific logic inside the core pipeline
 
-## Recommended Repository Layout
+## Recommended Layout
 
 Future engine-specific code should live under:
 
@@ -63,27 +65,25 @@ Suggested structure:
 - `adapters/godot/`
 - `adapters/<engine_name>/`
 
-## Extension Mechanism
+## Adapter Inputs
 
-The adapter input should be:
+Primary inputs:
 
 - `manifest.json`
 - `tileset.json`
 - atlas PNG
 
-The adapter output should be written outside the core metadata files, for example:
+Optional future inputs:
 
-- engine import manifests
-- engine resource files
-- engine sample scenes
+- AI texture cache metadata
 
 ## Stability Rule
 
-Core metadata names should change slowly.
+Core metadata meanings should change slowly.
 
 If a future adapter needs more information, prefer:
 
-1. adding a new optional core metadata field
-2. versioning the adapter output
+1. adding a new core metadata field
+2. versioning adapter output
 
 Do not overload existing field meanings per engine.

@@ -89,11 +89,20 @@ def default_height_class(category: str) -> str:
     return "medium"
 
 
-def build_entry_metadata(export_object: bpy.types.Object, source_collection: str) -> dict:
+def default_tile_shape(projection_mode: str) -> str:
+    if projection_mode == "square":
+        return "square"
+    return "isometric"
+
+
+def build_entry_metadata(export_object: bpy.types.Object, source_collection: str, projection_mode: str) -> dict:
     category = infer_category_from_name(export_object.name)
     return {
         "source_object": export_object.name,
         "category": category,
+        "projection_mode": projection_mode,
+        "tile_shape": default_tile_shape(projection_mode),
+        "render_profile": str(export_object.get("render_profile", "default")),
         "anchor_type": str(export_object.get("anchor_type", default_anchor_type(category))),
         "footprint_width": int(export_object.get("footprint_width", 1)),
         "footprint_height": int(export_object.get("footprint_height", 1)),
@@ -153,6 +162,8 @@ def configure_render(scene: bpy.types.Scene, width: int, height: int) -> None:
 
 def render_object_variants(config: dict) -> dict:
     scene = bpy.context.scene
+    projection_mode = str(config.get("projection_mode", "isometric")).strip().lower()
+    render_profile = str(config.get("render_profile", "default")).strip() or "default"
     output_root = Path(config["output_root"]).expanduser().resolve()
     png_output_directory = output_root / "png"
     metadata_output_directory = output_root / "metadata"
@@ -184,7 +195,8 @@ def render_object_variants(config: dict) -> dict:
         rotation_mode = str(rotation_mode)
         validate_rotation_mode(rotation_mode, export_object.name)
         rotation_degrees_list = get_rotation_degrees(rotation_mode)
-        entry_metadata = build_entry_metadata(export_object, source_collection)
+        entry_metadata = build_entry_metadata(export_object, source_collection, projection_mode)
+        entry_metadata["render_profile"] = render_profile
 
         for rotation_degrees in rotation_degrees_list:
             export_object.rotation_euler[2] = math.radians(rotation_degrees)
@@ -214,6 +226,9 @@ def render_object_variants(config: dict) -> dict:
 
     manifest_data = {
         "tileset_name": config.get("tileset_name", "tileset"),
+        "projection_mode": projection_mode,
+        "render_profile": render_profile,
+        "output_mode": str(config.get("output_mode", "png")),
         "entries": manifest_entries,
     }
 

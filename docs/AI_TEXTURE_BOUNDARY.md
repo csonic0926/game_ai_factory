@@ -1,87 +1,109 @@
-# AI Texture Integration Boundary v1
+# AI Texture Integration Boundary
 
 ## Purpose
 
-This file defines where AI-assisted texture generation may connect to the repository without becoming part of the current core render contract.
+This file defines how AI-assisted texture generation fits into the repository product plan without collapsing the core render pipeline into provider-specific code.
 
-v1 does not implement AI texture generation.
+The repository already has a local cache workflow.
 
-It only defines the boundary so later work stays modular.
+Provider-backed generation is still a planned layer on top.
 
-## Current Non-Goals
+## Product Role
 
-The core pipeline does not currently do any of the following:
+AI texture generation is not a side experiment.
+
+It is planned as one of the main subsystems of the tool:
+
+1. geometry/render pipeline
+2. texture generation/cache pipeline
+3. engine adapter pipeline
+
+## Current Baseline
+
+The repository currently supports:
+
+- request file generation
+- texture cache layout
+- pack metadata sync
+- cache validation
+- cache inspection
+
+The repository does not yet support:
 
 - prompt generation
-- image model invocation
-- texture upscaling
-- texture inpainting
-- texture selection UX
-- automatic material graph authoring
+- provider API calls
+- candidate ranking/selection UX
+- automatic Blender material binding
 
-## Future Integration Point
+## Provider Direction
 
-AI texture work should happen before the render stage and feed Blender materials through stable inputs.
+Planned user-facing model:
+
+- users pull or fork the repository
+- users provide provider credentials through local `.env`
+- the repository calls supported providers directly
+
+Initial intended providers:
+
+- `nano_banana`
+- `nano_banana_pro`
+
+This direction fits local-first open-source usage and AI-agent orchestration better than asking users to manually run a separate image generation stack.
+
+## Integration Point
 
 High-level flow:
 
 1. define texture request
 2. generate candidate images
-3. cache the generated outputs
+3. cache generated outputs
 4. approve or select a variant
-5. bind the chosen texture variant to Blender material inputs
+5. bind the chosen variant to Blender material inputs
 6. render through the existing pipeline
 
-## Proposed Stable Concepts
+## Stable Concepts
 
-### Material slot naming
+### Material slots
 
-Reserve stable names such as:
+Reserve stable slot names such as:
 
 - `base_color`
 - `normal`
 - `orm`
 - `emissive`
 
-### Texture cache layout
+### Cache layout
 
-Recommended future location:
+Recommended root:
 
-- `texture_cache/<asset_or_material>/<variant>/`
+- `texture_cache/`
 
 ### Variant identity
 
-Reserve the core metadata field:
+Use core metadata fields:
 
 - `material_variant`
-
-This field is already part of the core manifest contract and may later be used to distinguish:
-
-- handcrafted
-- ai_v1
-- ai_v2
-- painted_over
-
-### Render preset identity
-
-Reserve the core metadata field:
-
 - `render_preset`
-
-This may later distinguish:
-
-- default
-- daytime
-- nighttime
-- stylized_flat
 
 ## Boundary Rule
 
-AI texture systems may prepare inputs for materials, but they should not directly redefine:
+Provider integrations may:
 
-- atlas ordering
-- object naming
-- rotation rules
-- manifest structure ownership
+- read local `.env`
+- create or update files inside the texture cache
+- update cache/pack state
 
-The existing render and atlas pipeline should stay usable even when AI texture tooling is absent.
+Provider integrations should not:
+
+- redefine atlas ordering
+- redefine object naming
+- redefine rotation rules
+- redefine manifest ownership
+
+The render and atlas pipeline must remain usable even when AI texture tooling is absent.
+
+## Executable Workflow
+
+See:
+
+- `docs/AI_TEXTURE_WORKFLOW.md`

@@ -1,130 +1,115 @@
-# isometric_tile_factory v1
+# isometric_tile_factory
 
 ## Goal
 
-Create a generic pipeline that renders Blender tiles and props into 2D isometric assets with stable output ordering.
+Create a Blender-backed tile asset factory that produces stable tile outputs with stable geometry shape.
 
-## Scope
+## Product Direction
 
-v1 includes:
+The repository is planned as:
+
+- a tile asset factory callable by vibe-coding AI
+- able to produce atlas outputs, individual PNG outputs, or both
+- eventually able to support both isometric and regular square tiles
+- eventually able to support built-in AI texture generation providers through local configuration
+- engine-agnostic at the core
+
+## Current Baseline Scope
+
+The current baseline includes:
 
 - fixed orthographic camera workflow
 - collection and object based batch render
+- projection-aware config via `projection_mode`
 - rotation variants
 - manifest export
 - atlas assembly
 - metadata export
+- sample smoke/regression flow
+- dual sample smoke orchestration for isometric + square fixtures
+- AI texture cache workflow
 
-v1 does not include:
+The current baseline does not yet include:
 
-- AI image generation
-- automatic Godot TileSet import
-- background removal
+- provider-backed AI image generation
+- automatic engine import generation
 - procedural map generation
 
 ## Core Principles
 
 1. Geometry correctness comes from 3D.
-2. Camera and lighting remain fixed.
+2. Camera and lighting remain fixed within a render profile.
 3. Output ordering must be deterministic.
-4. Metadata must be stable enough for engine adapters.
+4. Metadata must be stable enough for adapters and AI tooling.
+5. CLI and file outputs should be stable enough for AI agents to call directly.
 
 ## Supported Runtime Baseline
 
-- Blender: 5.1.x primary tested baseline for v1
+- Blender: 5.1.x primary tested baseline
 - Python: 3.11+
 - Python dependency install: `requirements.txt`
 
-Version compatibility outside the primary tested setup is not part of the v1 contract.
+## Config Schema Baseline
 
-## Config Schema v1
-
-This is the repository-level config contract to stabilize first.
+This is the current repository-level config contract.
 
 ### Required keys
 
-- `tileset_name`: string
-- `output_root`: string
-- `export_collections`: array of strings
-- `camera_name`: string
+- `tileset_name`
+- `output_root`
+- `export_collections`
+- `camera_name`
 
 ### Optional keys
 
-- `default_rotation_mode`: string, default `none`
-- `render_resolution.width`: integer, default `256`
-- `render_resolution.height`: integer, default `256`
-- `atlas.columns`: integer, default `8`
-- `atlas.padding`: integer, default `0`
+- `projection_mode`
+- `output_mode`
+- `render_profile`
+- `render_profiles`
+- `default_rotation_mode`
+- `render_resolution.width`
+- `render_resolution.height`
+- `atlas.columns`
+- `atlas.padding`
 
-### Removed from v1 contract
+Current supported `projection_mode` values:
 
-These fields are intentionally not part of the stable v1 schema:
+- `isometric`
+- `square`
 
-- `rotation_step_degrees`
-- `atlas.tile_width`
-- `atlas.tile_height`
+Current supported `output_mode` values:
 
-Reason:
+- `png`
+- `atlas`
+- `both`
 
-- rotation variants are controlled by object `rotation_mode`
-- atlas cell size is derived from rendered image size
-- v1 uses one fixed render canvas for all atlas cells
+Current render-profile direction in baseline:
 
-### Canonical example
+- config may select `render_profile`
+- config may define reusable `render_profiles`
+- the selected profile may resolve camera + projection + render resolution
 
-```json
-{
-  "tileset_name": "example_tileset",
-  "output_root": "output",
-  "export_collections": [
-    "Export_Floor",
-    "Export_Walls",
-    "Export_Stairs",
-    "Export_Props"
-  ],
-  "camera_name": "IsoCamera",
-  "default_rotation_mode": "none",
-  "render_resolution": {
-    "width": 256,
-    "height": 256
-  },
-  "atlas": {
-    "columns": 8,
-    "padding": 0
-  }
-}
-```
+Planned next expansion:
 
-### Validation rules
+- `output_mode`
+- render/profile settings that can cover both square and isometric production
 
-- missing required keys: hard error
-- unknown top-level keys: warning for now, hard error after validator lands
-- empty `export_collections`: hard error
-- non-positive render width or height: hard error
-- non-positive atlas columns: hard error
-- negative atlas padding: hard error
-- unsupported `default_rotation_mode`: hard error
-
-## Metadata Schema v1
+## Metadata Schema Baseline
 
 The pipeline produces:
 
 - `manifest.json` after render
 - `tileset.json` after atlas assembly
 
-### `manifest.json`
-
-Top-level fields:
-
-- `tileset_name`
-- `entries`
-
-Each manifest entry includes:
+### Manifest entry fields
 
 - `id`
 - `name`
 - `source_object`
 - `category`
+- `projection_mode`
+- `tile_shape`
+- `render_profile`
 - `anchor_type`
 - `footprint_width`
 - `footprint_height`
@@ -139,18 +124,7 @@ Each manifest entry includes:
 - `width`
 - `height`
 
-### `tileset.json`
-
-Top-level fields:
-
-- `tileset_name`
-- `atlas_path`
-- `tile_width`
-- `tile_height`
-- `columns`
-- `rows`
-- `padding`
-- `entries`
+### Atlas entry fields
 
 Each atlas entry includes all manifest fields plus:
 
@@ -160,23 +134,25 @@ Each atlas entry includes all manifest fields plus:
 - `atlas_x`
 - `atlas_y`
 
+### Planned next expansion
+
+- `render_profile`
+- `material_slots`
+- `texture_pack_status`
+
+## Output Products
+
+The repository should treat these as first-class outputs:
+
+- individual PNG renders
+- atlas PNG
+- metadata manifests
+- AI texture request/pack metadata
+- future engine-adapter outputs
+
+Atlas output is important, but it is not the only intended product.
+
 ## Asset Naming
-
-Recommended object naming:
-
-- `001_floor_plain`
-- `002_floor_cracked`
-- `101_wall_straight`
-- `102_wall_corner_inner`
-- `201_stair_up`
-- `301_prop_switch`
-
-Recommended suffixes for generated variants:
-
-- `_rot0`
-- `_rot90`
-- `_rot180`
-- `_rot270`
 
 Required rule:
 
@@ -195,15 +171,11 @@ Examples:
 
 ## Atlas Stability Policy
 
-This is a strict v1 policy.
-
-### Ordering source
-
 Atlas order is determined only by:
 
-1. the configured export collection scan result
+1. configured export collection scan result
 2. filtered eligible mesh objects
-3. final lexical sort by full object name
+3. lexical sort by full object name
 4. per-object rotation expansion in fixed order
 
 ### Stability rules
@@ -212,7 +184,6 @@ Atlas order is determined only by:
 - numeric prefixes are required
 - renaming an object changes atlas order and is a breaking content change
 - adding a new object can shift later atlas indices if its sort position is earlier
-- therefore, numeric order ranges should be left with gaps for future insertion
 
 ### Recommended numeric ranges
 
@@ -220,147 +191,58 @@ Atlas order is determined only by:
 - `101-199`: wall
 - `201-299`: stair
 - `301-399`: prop
-- `900-999`: temporary or test objects, not for committed sample outputs
 
-### Rotation expansion rule
+## Render Cell Policy
 
-Generated variants always append after the base object in this order:
-
-- `rot0`
-- `rot90`
-- `rot180`
-- `rot270`
-
-The allowed subset is controlled by `rotation_mode`:
-
-- `none` -> `rot0`
-- `rotate_90` -> `rot0`, `rot90`
-- `rotate_360` -> `rot0`, `rot90`, `rot180`, `rot270`
-
-### Atlas cell policy
-
-- one render = one atlas cell
-- all cells share one identical size
-- cell size equals `render_resolution`
-- no trim-to-content in v1
-- no per-entry crop in v1
+- one render = one output cell
+- all cells share one identical size within a render profile
+- current cell size equals `render_resolution`
+- no trim-to-content in the baseline flow
 - transparent background is the default render behavior
-- atlas padding is uniform between cells
+
+## Sample Fixture Contract
+
+The repository should keep minimal sample fixtures for regression.
+
+Current baseline fixture:
+
+- one isometric sample scene
+
+Planned next fixture:
+
+- square config + square camera path on the shared sample scene, with its own regression baseline
+
+## AI-Agent Callable Interface
+
+The primary operational surface is the CLI plus stable file layout.
+
+Design direction:
+
+- commands should avoid interactive prompts
+- outputs should remain machine-readable
+- intermediate artifacts should have predictable paths
+- higher-level orchestration commands are preferred when practical
 
 ## Git and Output Policy
-
-Generated runtime output is not part of the default committed working set.
 
 Ignored by default:
 
 - `output/`
+- `texture_cache/`
 - Python cache files
 - Blender backup files such as `.blend1`
 
-Committed as the regression baseline:
+Committed as regression baseline:
 
-- `examples/sample_factory.blend`
-- `examples/golden/sample_factory/images/*.png`
-- `examples/golden/sample_factory/metadata/*.json`
-- `examples/golden/sample_factory/baseline_summary.json`
+- sample fixture scenes
+- sample golden images
+- normalized baseline metadata
 
-Regression flow:
+## Related Design Documents
 
-1. generate sample scene
-2. render sample outputs
-3. build atlas
-4. update or verify the committed sample baseline
-
-Commands:
-
-```bash
-python3 itf.py create-sample-scene
-python3 itf.py render --scene examples/sample_factory.blend --config examples/config.json
-python3 itf.py build-atlas --manifest output/metadata/manifest.json --out output/atlas/tileset.png
-python3 itf.py sample-regression
-```
-
-One-command smoke check:
-
-```bash
-python3 itf.py smoke-sample
-```
-
-## Sample Factory Scene Contract
-
-The repository should keep one minimal sample factory scene as a validation fixture.
-
-Required contents:
-
-- `IsoCamera`
-- one fixed light rig
-- `Factory_Reference` collection
-- `Export_Floor` collection with one floor tile
-- `Export_Walls` collection with one wall tile
-- `Export_Stairs` collection with one stair tile
-- `Export_Props` collection with one prop
-
-Required sample asset names:
-
-- `001_floor_plain`
-- `101_wall_straight`
-- `201_stair_up`
-- `301_prop_switch`
-
-Purpose of the sample scene:
-
-- verify naming and ordering rules
-- verify anchor and grounding rules
-- verify render output shape
-- verify manifest and atlas metadata
-- serve as the smallest regression fixture for the repo
-
-## Blender Expectations
-
-The Blender scene should contain:
-
-- a fixed orthographic isometric camera
-- a fixed light rig
-- exportable objects grouped by collection
-- objects centered around a common anchor rule
-
-### Recommended metadata-bearing custom properties
-
-Objects may define:
-
-- `rotation_mode`
-- `anchor_type`
-- `footprint_width`
-- `footprint_height`
-- `height_class`
-- `tags`
-- `material_variant`
-- `render_preset`
-
-## Pipeline Stages
-
-1. Read config.
-2. Find export collections.
-3. Enumerate eligible objects.
-4. Render each object and each required rotation.
-5. Write `manifest.json`.
-6. Assemble atlas.
-7. Write atlas metadata.
-
-## Engine Adapter Boundary
-
-This tool should remain engine-agnostic.
-
-Any Godot-specific import logic should live in a later adapter layer.
-
-See:
-
+- `docs/REPO_PLAN.md`
+- `docs/BLENDER_WORKFLOW.md`
+- `docs/SAMPLE_SCENE.md`
 - `docs/ADAPTERS.md`
-
-## AI Texture Boundary
-
-AI texture work is outside the current v1 render contract.
-
-See:
-
 - `docs/AI_TEXTURE_BOUNDARY.md`
+- `docs/AI_TEXTURE_WORKFLOW.md`

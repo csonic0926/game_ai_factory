@@ -28,6 +28,7 @@ REQUIRED_COLLECTIONS = {
 }
 REQUIRED_RIG_OBJECTS = {
     "IsoCamera": "CAMERA",
+    "SquareCamera": "CAMERA",
     "KeyLight": "LIGHT",
     "FillLight": "LIGHT",
 }

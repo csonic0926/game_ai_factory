@@ -68,6 +68,9 @@ def build_atlas(manifest_data: dict, output_path: Path, columns: int, padding: i
 
     tileset_metadata = {
         "tileset_name": manifest_data.get("tileset_name", "tileset"),
+        "projection_mode": manifest_data.get("projection_mode"),
+        "render_profile": manifest_data.get("render_profile"),
+        "output_mode": manifest_data.get("output_mode"),
         "atlas_path": str(output_path),
         "tile_width": tile_width,
         "tile_height": tile_height,

@@ -4,3 +4,5 @@ __pycache__/
 *.blend1
 
 output/
+output_square/
+texture_cache/

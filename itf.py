@@ -9,6 +9,15 @@ import sys
 from pathlib import Path
 
 from pipeline.build_atlas import build_atlas
+from pipeline.ai_texture import (
+    AITextureError,
+    create_demo_textures,
+    init_texture_cache,
+    inspect_texture_cache,
+    parse_slot_list,
+    sync_texture_cache,
+    validate_texture_cache,
+)
 from pipeline.inspect_manifest import build_summary
 from pipeline.sample_regression import snapshot_baseline, verify_baseline
 from pipeline.validation import (
@@ -88,6 +97,11 @@ def parse_arguments() -> argparse.Namespace:
         help="Path to manifest JSON output",
     )
     smoke_parser.add_argument(
+        "--output-root",
+        default="output",
+        help="Generated output root for regression verification",
+    )
+    smoke_parser.add_argument(
         "--atlas-out",
         default="output/atlas/tileset.png",
         help="Path to atlas PNG output",
@@ -103,6 +117,86 @@ def parse_arguments() -> argparse.Namespace:
         action="store_true",
         help="Update the committed baseline at the end of the smoke run",
     )
+
+    smoke_square_parser = subparsers.add_parser(
+        "smoke-sample-square",
+        help="Run the full square sample fixture pipeline: create, validate, render, regression",
+    )
+    smoke_square_parser.add_argument("--config", default="examples/config.square.json", help="Path to config JSON")
+    smoke_square_parser.add_argument(
+        "--scene",
+        default="examples/sample_factory.blend",
+        help="Path to sample Blender scene (.blend)",
+    )
+    smoke_square_parser.add_argument(
+        "--manifest",
+        default="output_square/metadata/manifest.json",
+        help="Path to manifest JSON output",
+    )
+    smoke_square_parser.add_argument(
+        "--output-root",
+        default="output_square",
+        help="Generated output root for regression verification",
+    )
+    smoke_square_parser.add_argument(
+        "--atlas-out",
+        default="output_square/atlas/tileset.png",
+        help="Path to atlas PNG output",
+    )
+    smoke_square_parser.add_argument("--blender-bin", default="blender", help="Blender executable to use")
+    smoke_square_parser.add_argument(
+        "--baseline-root",
+        default="examples/golden/sample_factory_square",
+        help="Baseline directory",
+    )
+    smoke_square_parser.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="Update the committed baseline at the end of the smoke run",
+    )
+
+    smoke_all_parser = subparsers.add_parser(
+        "smoke-sample-all",
+        help="Run both isometric and square sample smoke/regression flows",
+    )
+    smoke_all_parser.add_argument("--blender-bin", default="blender", help="Blender executable to use")
+    smoke_all_parser.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="Update the committed baselines at the end of the smoke runs",
+    )
+
+    ai_init_parser = subparsers.add_parser("init-ai-textures", help="Initialize AI texture request/cache layout")
+    ai_init_parser.add_argument("--manifest", required=True, help="Path to manifest JSON")
+    ai_init_parser.add_argument("--cache-root", default="texture_cache", help="Texture cache root")
+    ai_init_parser.add_argument("--variant", default="ai_v1", help="Texture variant name")
+    ai_init_parser.add_argument("--required-slots", default="base_color", help="Comma-separated required slots")
+    ai_init_parser.add_argument(
+        "--optional-slots",
+        default="normal,orm,emissive",
+        help="Comma-separated optional slots",
+    )
+
+    ai_sync_parser = subparsers.add_parser("sync-ai-textures", help="Sync pack.json files from texture cache")
+    ai_sync_parser.add_argument("--manifest", required=True, help="Path to manifest JSON")
+    ai_sync_parser.add_argument("--cache-root", default="texture_cache", help="Texture cache root")
+    ai_sync_parser.add_argument("--variant", default="ai_v1", help="Texture variant name")
+
+    ai_validate_parser = subparsers.add_parser("validate-ai-textures", help="Validate AI texture cache contents")
+    ai_validate_parser.add_argument("--manifest", required=True, help="Path to manifest JSON")
+    ai_validate_parser.add_argument("--cache-root", default="texture_cache", help="Texture cache root")
+    ai_validate_parser.add_argument("--variant", default="ai_v1", help="Texture variant name")
+
+    ai_inspect_parser = subparsers.add_parser("inspect-ai-textures", help="Inspect AI texture cache summary")
+    ai_inspect_parser.add_argument("--manifest", required=True, help="Path to manifest JSON")
+    ai_inspect_parser.add_argument("--cache-root", default="texture_cache", help="Texture cache root")
+    ai_inspect_parser.add_argument("--variant", default="ai_v1", help="Texture variant name")
+
+    ai_demo_parser = subparsers.add_parser("create-demo-ai-textures", help="Create demo textures in the AI cache")
+    ai_demo_parser.add_argument("--manifest", required=True, help="Path to manifest JSON")
+    ai_demo_parser.add_argument("--cache-root", default="texture_cache", help="Texture cache root")
+    ai_demo_parser.add_argument("--variant", default="ai_v1", help="Texture variant name")
+    ai_demo_parser.add_argument("--size", type=int, default=256, help="Demo texture size")
 
     return argument_parser.parse_args()
 
@@ -174,6 +268,15 @@ def command_validate(arguments: argparse.Namespace) -> int:
 
 
 def command_render(arguments: argparse.Namespace) -> int:
+    config_path = Path(arguments.config).expanduser().resolve()
+    try:
+        config_data, warnings = load_and_validate_config(config_path)
+        for warning in warnings:
+            print(f"WARNING: {warning}", file=sys.stderr)
+    except ValidationError as validation_error:
+        print(json.dumps({"ok": False, "error": str(validation_error)}, indent=2))
+        return 1
+
     command = [
         arguments.blender_bin,
         "-b",
@@ -181,9 +284,47 @@ def command_render(arguments: argparse.Namespace) -> int:
         "-P",
         str(RENDER_SCRIPT),
         "--",
-        f"--config={Path(arguments.config).expanduser().resolve()}",
+        f"--config={config_path}",
     ]
-    return run_subprocess(command)
+    render_exit_code = run_subprocess(command)
+    if render_exit_code != 0:
+        return render_exit_code
+
+    output_mode = str(config_data.get("output_mode", "png")).strip().lower()
+    if output_mode not in {"atlas", "both"}:
+        return 0
+
+    try:
+        output_root = Path(config_data["output_root"]).expanduser().resolve()
+        manifest_path = output_root / "metadata" / "manifest.json"
+        atlas_output_path = output_root / "atlas" / "tileset.png"
+        manifest_data, manifest_warnings = load_and_validate_manifest(manifest_path, require_files=True)
+        for warning in manifest_warnings:
+            print(f"WARNING: {warning}", file=sys.stderr)
+
+        atlas_config = config_data.get("atlas", {})
+        metadata_path = build_atlas(
+            manifest_data,
+            atlas_output_path,
+            int(atlas_config.get("columns", 8)),
+            int(atlas_config.get("padding", 0)),
+        )
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "mode": "render-post-atlas",
+                    "output_mode": output_mode,
+                    "atlas_path": str(atlas_output_path),
+                    "metadata_path": str(metadata_path),
+                },
+                indent=2,
+            )
+        )
+        return 0
+    except ValidationError as validation_error:
+        print(json.dumps({"ok": False, "error": str(validation_error)}, indent=2))
+        return 1
 
 
 def command_build_atlas(arguments: argparse.Namespace) -> int:
@@ -332,6 +473,8 @@ def command_smoke_sample(arguments: argparse.Namespace) -> int:
             "python3",
             str(REPO_ROOT / "itf.py"),
             "sample-regression",
+            "--output-root",
+            str(Path(arguments.output_root).expanduser().resolve()),
             "--baseline-root",
             str(baseline_root),
             *(["--update"] if arguments.update_baseline else []),
@@ -357,6 +500,117 @@ def command_smoke_sample(arguments: argparse.Namespace) -> int:
     return 0
 
 
+def command_smoke_sample_all(arguments: argparse.Namespace) -> int:
+    run_step(
+        "smoke_sample_isometric",
+        [
+            "python3",
+            str(REPO_ROOT / "itf.py"),
+            "smoke-sample",
+            "--blender-bin",
+            arguments.blender_bin,
+            *(["--update-baseline"] if arguments.update_baseline else []),
+        ],
+    )
+    run_step(
+        "smoke_sample_square",
+        [
+            "python3",
+            str(REPO_ROOT / "itf.py"),
+            "smoke-sample-square",
+            "--blender-bin",
+            arguments.blender_bin,
+            *(["--update-baseline"] if arguments.update_baseline else []),
+        ],
+    )
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "smoke_sample_all": {
+                    "modes": ["isometric", "square"],
+                    "baseline_mode": "update" if arguments.update_baseline else "verify",
+                },
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def command_init_ai_textures(arguments: argparse.Namespace) -> int:
+    try:
+        result = init_texture_cache(
+            Path(arguments.manifest).expanduser().resolve(),
+            Path(arguments.cache_root).expanduser().resolve(),
+            variant=arguments.variant,
+            required_slots=parse_slot_list(arguments.required_slots),
+            optional_slots=parse_slot_list(arguments.optional_slots),
+        )
+        print(json.dumps({"ok": True, "mode": "init-ai-textures", "result": result}, indent=2))
+        return 0
+    except AITextureError as error:
+        print(json.dumps({"ok": False, "error": str(error)}, indent=2))
+        return 1
+
+
+def command_sync_ai_textures(arguments: argparse.Namespace) -> int:
+    try:
+        result = sync_texture_cache(
+            Path(arguments.manifest).expanduser().resolve(),
+            Path(arguments.cache_root).expanduser().resolve(),
+            variant=arguments.variant,
+        )
+        print(json.dumps({"ok": True, "mode": "sync-ai-textures", "result": result}, indent=2))
+        return 0
+    except AITextureError as error:
+        print(json.dumps({"ok": False, "error": str(error)}, indent=2))
+        return 1
+
+
+def command_validate_ai_textures(arguments: argparse.Namespace) -> int:
+    try:
+        result = validate_texture_cache(
+            Path(arguments.manifest).expanduser().resolve(),
+            Path(arguments.cache_root).expanduser().resolve(),
+            variant=arguments.variant,
+        )
+        print(json.dumps(result, indent=2))
+        return 0 if result["ok"] else 1
+    except AITextureError as error:
+        print(json.dumps({"ok": False, "error": str(error)}, indent=2))
+        return 1
+
+
+def command_inspect_ai_textures(arguments: argparse.Namespace) -> int:
+    try:
+        result = inspect_texture_cache(
+            Path(arguments.manifest).expanduser().resolve(),
+            Path(arguments.cache_root).expanduser().resolve(),
+            variant=arguments.variant,
+        )
+        print(json.dumps({"ok": True, "mode": "inspect-ai-textures", "result": result}, indent=2))
+        return 0
+    except AITextureError as error:
+        print(json.dumps({"ok": False, "error": str(error)}, indent=2))
+        return 1
+
+
+def command_create_demo_ai_textures(arguments: argparse.Namespace) -> int:
+    try:
+        result = create_demo_textures(
+            Path(arguments.manifest).expanduser().resolve(),
+            Path(arguments.cache_root).expanduser().resolve(),
+            variant=arguments.variant,
+            size=arguments.size,
+        )
+        print(json.dumps({"ok": True, "mode": "create-demo-ai-textures", "result": result}, indent=2))
+        return 0
+    except AITextureError as error:
+        print(json.dumps({"ok": False, "error": str(error)}, indent=2))
+        return 1
+
+
 def main() -> None:
     arguments = parse_arguments()
 
@@ -374,6 +628,20 @@ def main() -> None:
         raise SystemExit(command_sample_regression(arguments))
     if arguments.command == "smoke-sample":
         raise SystemExit(command_smoke_sample(arguments))
+    if arguments.command == "smoke-sample-square":
+        raise SystemExit(command_smoke_sample(arguments))
+    if arguments.command == "smoke-sample-all":
+        raise SystemExit(command_smoke_sample_all(arguments))
+    if arguments.command == "init-ai-textures":
+        raise SystemExit(command_init_ai_textures(arguments))
+    if arguments.command == "sync-ai-textures":
+        raise SystemExit(command_sync_ai_textures(arguments))
+    if arguments.command == "validate-ai-textures":
+        raise SystemExit(command_validate_ai_textures(arguments))
+    if arguments.command == "inspect-ai-textures":
+        raise SystemExit(command_inspect_ai_textures(arguments))
+    if arguments.command == "create-demo-ai-textures":
+        raise SystemExit(command_create_demo_ai_textures(arguments))
 
     raise SystemExit(f"Unknown command: {arguments.command}")
 

@@ -29,6 +29,7 @@ The file should be small, fast to render, and safe to commit.
 ### `Factory_Rig`
 
 - `IsoCamera`
+- `SquareCamera`
 - `KeyLight`
 - `FillLight`
 - optional `RimLight`
@@ -95,6 +96,12 @@ Recommended validation command:
 
 ```bash
 blender -b examples/sample_factory.blend -P blender/scripts/validate_scene.py -- --config examples/config.json --sample-scene=true
+```
+
+Square-path validation command:
+
+```bash
+blender -b examples/sample_factory.blend -P blender/scripts/validate_scene.py -- --config examples/config.square.json --sample-scene=true
 ```
 
 Recommended generation command:

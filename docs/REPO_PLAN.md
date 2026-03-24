@@ -2,129 +2,84 @@
 
 ## Purpose
 
-This document captures the planning work that should follow when moving `isometric_tile_factory` into its own Codex project and repository.
+This document captures the current planning direction for `isometric_tile_factory` as an independent open-source repository.
 
-The main goal is to prevent tool design decisions from being mixed back into a game project.
+The main goal is to keep the tool:
 
-This file is intentionally focused on:
+- independent from any game project
+- callable by vibe-coding AI through stable CLI/file contracts
+- focused on tile asset production rather than gameplay logic
 
-- repository setup
-- missing planning items
-- implementation phases
-- validation needs
-- future adapter boundaries
+## Product Direction
 
-## Immediate Direction
+The repository is planned as:
 
-This tool should move forward as its own standalone repository.
-
-It should not continue evolving inside a game repository.
+- a Blender-backed tile asset factory
+- able to produce either integrated atlas outputs or individual PNG outputs
+- eventually able to support both isometric and regular square tiles
+- eventually able to support built-in AI texture generation providers
+- engine-agnostic at the core, with adapters kept separate
 
 ## Repository Boundary
 
-### The new repository should contain
+### The repository should contain
 
 - generic Blender automation
-- generic atlas and metadata tooling
+- projection-aware render workflows
+- atlas and individual-output tooling
+- metadata and validation tooling
+- AI texture request/cache workflows
 - generic documentation
 - example scenes and example configs
 - optional engine adapters that remain clearly separated
 
-### The new repository should not contain
+### The repository should not contain
 
 - project-specific game code
 - project-specific gameplay metadata
 - project-specific art assets unless clearly marked as examples
 - direct assumptions about one engine scene structure
 
-## Recommended Repository Name
-
-Suggested names:
-
-- `isometric_tile_factory`
-- `isometric-render-factory`
-- `blender-isometric-tile-factory`
+## Working Name
 
 Current working name:
 
 - `isometric_tile_factory`
 
-## Required Planning Still Missing
+Note:
 
-These items should be resolved early in the new repository.
+- the product direction is broader than isometric-only
+- in planning terms, `isometric` should now be treated as one future projection mode, not the whole product identity
 
-### 1. Blender Version Support Policy
+## Planning Areas
 
-Status:
-
-- converged in `docs/SPEC.md`
-- primary tested baseline is Blender 5.1.x
-
-Define:
-
-- minimum supported Blender version
-- primary tested Blender version
-- whether API compatibility with older versions matters
-
-Recommended first pass:
-
-- support one primary Blender version only
-- add compatibility later if needed
-
-### 2. Python Tooling Policy
+### 1. Runtime Policy
 
 Status:
 
-- converged in `docs/SPEC.md`
-- dependency file landed as `requirements.txt`
+- baseline documented in `docs/SPEC.md`
+- primary tested Blender baseline is 5.1.x
+- Python dependency install uses `requirements.txt`
 
-Define:
-
-- minimum Python version
-- dependency installation method
-- whether a virtual environment is recommended
-
-Recommended first pass:
-
-- Python 3.11+
-- dependencies in `requirements.txt`
-
-### 3. Config Schema v1
+### 2. Config Schema
 
 Status:
 
-- converged in `docs/SPEC.md`
+- baseline converged in `docs/SPEC.md`
 
-The config needs a real schema, not just example fields.
+Next planning adjustment:
 
-Define:
+- add `projection_mode`
+- add `output_mode`
+- add render/profile concepts that can cover both square and isometric production
 
-- required keys
-- optional keys
-- default values
-- validation errors
-
-Missing fields to consider:
-
-- light preset name
-- transparent background toggle
-- manifest output path
-- per-category output folders
-- naming conflict policy
-- atlas packing options
-
-### 4. Metadata Schema v1
+### 3. Metadata Schema
 
 Status:
 
-- expanded in executable form in `pipeline/validation.py` and `blender/scripts/render_tiles.py`
-- documented in `docs/SPEC.md`
+- baseline fields are executable in the current pipeline
 
-The metadata contract should be stabilized early.
-
-Current fields are not enough for future engine adapters.
-
-Missing candidate fields:
+Current metadata already includes:
 
 - `anchor_type`
 - `footprint_width`
@@ -135,364 +90,147 @@ Missing candidate fields:
 - `material_variant`
 - `render_preset`
 
-### 5. Atlas Stability Policy
+Next candidate fields:
+
+- `projection_mode`
+- `tile_shape`
+- `render_profile`
+- `material_slots`
+- `texture_pack_status`
+
+### 4. Output Model
 
 Status:
 
-- converged in `docs/SPEC.md`
+- atlas and individual PNG outputs are both part of the intended product direction
 
-This is critical.
+Planning rule:
 
-Define:
+- atlas is one output product, not the only output product
 
-- what determines output order
-- whether ordering is strictly name-based
-- whether new assets are allowed to shift old atlas indices
-- whether reserved numeric ranges are recommended
-
-Strong recommendation:
-
-- atlas order is driven by deterministic object naming
-- numeric prefixes are required
-
-### 6. Sample Factory Scene Plan
+### 5. Sample Fixtures
 
 Status:
 
-- converged in `docs/SAMPLE_SCENE.md`
+- minimal isometric sample fixture exists
 
-The repository needs a minimal sample Blender scene for validation.
+Next planning adjustment:
 
-Minimum sample assets:
+- add a square-tile sample fixture in addition to the current sample
 
-- one floor tile
-- one wall tile
-- one stair tile
-- one prop
-- camera rig
-- light rig
-- reference guides
-
-### 7. Validation Rules
+### 6. Validation
 
 Status:
 
-- converged in executable form via `pipeline/validation.py`
-- Blender scene checks landed in `blender/scripts/validate_scene.py`
+- config validation exists
+- manifest validation exists
+- Blender scene validation exists
+- sample smoke/regression flow exists
 
-The repository needs validation tooling for authoring errors.
+Planning direction:
 
-Candidate checks:
+- validation should stay machine-readable and agent-friendly
 
-- duplicate object names
-- unsupported object types in export collections
-- missing camera
-- missing collections
-- invalid `rotation_mode`
-- non-deterministic ordering
-- missing render output folders
-- missing material slots if required by policy
-
-### 8. Render Output Policy
+### 7. AI Texture Product Loop
 
 Status:
 
-- converged in `docs/SPEC.md`
+- local request/cache/sync/validate workflow exists
+- provider-backed generation is not yet implemented
 
-Define:
+Planning direction:
 
-- fixed canvas size vs trim-to-content
-- transparent padding policy
-- whether crop is allowed
-- whether all atlas cells must share one exact size
+- users should provide API keys through local `.env`
+- the repository should eventually call supported providers directly
+- first intended providers are:
+  - `nano_banana`
+  - `nano_banana_pro`
 
-### 9. Material and AI Hook Boundary
-
-Status:
-
-- boundary documented in `docs/AI_TEXTURE_BOUNDARY.md`
-
-Even if AI integration is not part of v1, the repository should reserve a place for it.
-
-Need to define:
-
-- material slot naming conventions
-- texture input folder conventions
-- generated texture cache policy
-- variant naming conventions
-
-### 10. Engine Adapter Boundary
+### 8. Adapter Boundary
 
 Status:
 
-- boundary documented in `docs/ADAPTERS.md`
-- future adapter folder reserved as `adapters/`
+- adapter boundary documented
+- adapter folder reserved
 
-Keep core pipeline engine-agnostic.
+Planning direction:
 
-Need to define:
+- keep the core pipeline engine-agnostic
+- future adapters should consume core outputs, not redefine core semantics
 
-- core metadata contract
-- adapter extension points
-- where Godot-specific files should live
-
-Recommended structure:
-
-- core pipeline in root modules
-- engine adapters in `adapters/`
-
-### 11. CLI Shape
+### 9. CLI Shape
 
 Status:
 
-- converged in executable form via `itf.py`
+- `itf.py` is the main entrypoint
 
-The repository should define a proper CLI shape instead of only raw scripts.
+Planning direction:
 
-Target commands:
-
-- `render`
-- `build-atlas`
-- `validate`
-- `inspect-manifest`
-
-### 12. Git and Output Policy
-
-Status:
-
-- converged in `docs/SPEC.md`
-- `.gitignore` added
-- sample regression baseline landed under `examples/golden/sample_factory`
-
-Define what should be committed.
-
-Need decisions for:
-
-- should `output/` be gitignored
-- should sample renders be committed
-- should example atlas files be committed
-- should generated metadata snapshots be committed
-
-Strong recommendation:
-
-- generated output is ignored by default
-- keep only tiny sample outputs if needed for docs
+- CLI should be designed as an AI-agent callable interface
+- JSON/file outputs should remain stable and machine-friendly
+- end-to-end orchestration commands are desirable
 
 ## Recommended Phase Plan
 
-## Phase 0: Repository Bootstrap
+### Phase 0: Baseline Repository
 
 Goal:
 
-- create independent repository
-- copy current skeleton
-- define runtime versions
-- add basic README and contribution notes
+- independent repository
+- working sample pipeline
+- working smoke/regression flow
+
+Status:
+
+- largely completed
+
+### Phase 1: Multi-Projection Core
+
+Goal:
+
+- support both isometric and regular square tiles
+- support atlas output and individual PNG output as first-class products
 
 Tasks:
 
-- initialize repo
-- add `.gitignore`
-- add `requirements.txt`
-- add license choice
-- add `docs/REPO_PLAN.md`
-- add `docs/SPEC.md`
-- add `docs/BLENDER_WORKFLOW.md`
+- add `projection_mode`
+- add square sample fixture
+- add projection-aware render profiles
+- expand regression coverage
 
-## Phase 1: Stable Core Contracts
+### Phase 2: AI Texture Product Loop
 
 Goal:
 
-- define the repository's long-lived interfaces
+- complete the texture workflow as a true product feature
 
 Tasks:
 
-- formalize config schema
-- formalize metadata schema
-- formalize naming rules
-- formalize atlas ordering policy
-- formalize output folder policy
+- stabilize request/pack schema
+- support `.env` provider configuration
+- add built-in calls for `nano_banana`
+- add built-in calls for `nano_banana_pro`
+- bind selected textures back into Blender materials
 
-Deliverables:
-
-- `docs/CONFIG_SCHEMA.md`
-- `docs/METADATA_SCHEMA.md`
-- `docs/ATLAS_POLICY.md`
-
-## Phase 2: Blender Export Validation
+### Phase 3: Agent-Callable Orchestration
 
 Goal:
 
-- make Blender export reliable enough for repeated use
+- optimize the tool for vibe-coding AI usage
 
 Tasks:
 
-- improve `render_tiles.py`
-- support object custom properties cleanly
-- validate collections and camera existence
-- emit better errors
-- add dry-run manifest inspection
+- keep CLI/file IO machine-friendly
+- add higher-level orchestration commands
+- document contract-first workflows
 
-Deliverables:
-
-- stronger render script
-- validation script
-
-## Phase 3: Sample Factory Scene
+### Phase 4: Engine Adapters
 
 Goal:
 
-- prove the workflow in a minimal but complete way
+- map the core outputs into engine-specific import formats
 
 Tasks:
 
-- create sample `.blend`
-- create minimal export collections
-- create minimal assets
-- confirm render output matches docs
-
-Deliverables:
-
-- sample scene
-- sample manifest
-- sample atlas
-
-## Phase 4: Atlas and Metadata Hardening
-
-Goal:
-
-- make atlas generation stable and adapter-ready
-
-Tasks:
-
-- improve atlas builder
-- support padding options
-- support deterministic manifest consumption
-- emit `tileset.json`
-- document output guarantees
-
-## Phase 5: Engine Adapter Layer
-
-Goal:
-
-- add optional adapters without polluting the core
-
-Possible adapters:
-
-- Godot
-- Tiled
-- generic JSON consumer
-
-Important rule:
-
-- adapters should consume metadata
-- adapters should not redefine core render rules
-
-## Phase 6: AI Material and Texture Hooks
-
-Goal:
-
-- connect image generation to a stable geometry pipeline
-
-Possible tasks:
-
-- texture import conventions
-- material variant presets
-- generated texture cache handling
-- optional prompt-to-texture helper docs
-
-This phase should happen after the core render and atlas flow is stable.
-
-## Repository File Plan
-
-Recommended additions for the new repository:
-
-- `README.md`
-- `requirements.txt`
-- `.gitignore`
-- `docs/SPEC.md`
-- `docs/BLENDER_WORKFLOW.md`
-- `docs/REPO_PLAN.md`
-- `docs/CONFIG_SCHEMA.md`
-- `docs/METADATA_SCHEMA.md`
-- `docs/ATLAS_POLICY.md`
-- `blender/scripts/render_tiles.py`
-- `pipeline/build_atlas.py`
-- `pipeline/validate_factory.py`
-- `examples/config.json`
-- `examples/sample_manifest.json`
-
-## Risks To Watch
-
-### Risk 1: Camera Drift
-
-If camera settings are changed casually, output stops being consistent.
-
-Mitigation:
-
-- validate camera name and type
-- document camera lock policy
-
-### Risk 2: Atlas Index Drift
-
-If ordering is not fully deterministic, engine-side references become fragile.
-
-Mitigation:
-
-- require numeric prefixes
-- sort strictly by name
-
-### Risk 3: Asset Anchoring Drift
-
-If artists place meshes inconsistently, props will no longer align.
-
-Mitigation:
-
-- document origin rules
-- add validation checks later
-
-### Risk 4: Overcoupling To Godot
-
-If the repository starts assuming Godot internals too early, it stops being reusable.
-
-Mitigation:
-
-- keep Godot import as a separate adapter
-
-### Risk 5: AI Scope Creep
-
-If AI texture generation is treated as part of the core too early, the base pipeline may stay unstable.
-
-Mitigation:
-
-- stabilize geometry/render/atlas first
-- integrate AI after the core is dependable
-
-## New Codex Project Handoff Checklist
-
-When opening the new Codex project, start with this checklist:
-
-- confirm repository root and name
-- confirm Blender version
-- confirm Python version
-- decide whether `output/` is ignored
-- copy current docs and scripts
-- define config schema v1
-- define metadata schema v1
-- define atlas ordering policy
-- decide sample scene scope
-- decide whether adapters are in-scope for v1
-
-## Recommended First Task In The New Project
-
-The best first task is:
-
-- formalize config and metadata schemas before adding more rendering features
-
-That keeps the repository from drifting into ad hoc scripting.
-
-## Recommended Second Task In The New Project
-
-- build and validate a minimal sample Blender factory scene
-
-That will expose the real gaps faster than adding more code in the abstract.
+- adapter skeletons
+- Godot-first adapter path
