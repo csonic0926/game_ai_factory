@@ -1,16 +1,17 @@
 {
-  "atlas_png_sha256": "a7190755fb9ed701bcd9c6c8a4a9e9c7f82dd01fad3db05f4af57e2d5759f2a3",
+  "atlas_png_sha256": "af517b0e107f37162d1fa4c2135f6040a951d91be3fc985f7365a6148f2458c0",
   "png_sha256": {
-    "001_floor_plain_rot0.png": "9934d8fad59f36866c5dd202ff0071f17e336bb1b54466e42928b28946ba547d",
-    "101_wall_straight_rot0.png": "9934d8fad59f36866c5dd202ff0071f17e336bb1b54466e42928b28946ba547d",
-    "101_wall_straight_rot90.png": "43b89934111a7b9a75f8be44812c414d16bc52c2901ea06b5587aeaf5bfff15f",
-    "201_stair_up_rot0.png": "43b89934111a7b9a75f8be44812c414d16bc52c2901ea06b5587aeaf5bfff15f",
-    "201_stair_up_rot90.png": "62c69dd847bd46eb5d365d6861c92211f2674e0b2fd25d48dbd4b0bcdef7ea39",
-    "301_prop_switch_rot0.png": "62c69dd847bd46eb5d365d6861c92211f2674e0b2fd25d48dbd4b0bcdef7ea39",
-    "301_prop_switch_rot180.png": "62c69dd847bd46eb5d365d6861c92211f2674e0b2fd25d48dbd4b0bcdef7ea39",
-    "301_prop_switch_rot270.png": "0083e6d31674d69057ff65fbb4ecde0dd74bcac97cbe45dd4a1ec370fdaf1b3c",
-    "301_prop_switch_rot90.png": "0083e6d31674d69057ff65fbb4ecde0dd74bcac97cbe45dd4a1ec370fdaf1b3c"
+    "001_floor_plain_rot0.png": "a3ef7bfb6d99c86e26f504b30a9db732078527aad55f2d1908966f8b1bb251b4",
+    "002_floor_half_rot0.png": "a3ef7bfb6d99c86e26f504b30a9db732078527aad55f2d1908966f8b1bb251b4",
+    "101_wall_straight_rot0.png": "a3ef7bfb6d99c86e26f504b30a9db732078527aad55f2d1908966f8b1bb251b4",
+    "101_wall_straight_rot90.png": "3bbd7a07c4a4aabbd0969b51c131e9ca92c6842d17394981018043a8a5dfffb1",
+    "201_stair_up_rot0.png": "3bbd7a07c4a4aabbd0969b51c131e9ca92c6842d17394981018043a8a5dfffb1",
+    "201_stair_up_rot90.png": "a884461e52a7a2323cb6dc00a2e23e6b86679c82bd5d68118496871e9d13214a",
+    "301_prop_switch_rot0.png": "a884461e52a7a2323cb6dc00a2e23e6b86679c82bd5d68118496871e9d13214a",
+    "301_prop_switch_rot180.png": "a884461e52a7a2323cb6dc00a2e23e6b86679c82bd5d68118496871e9d13214a",
+    "301_prop_switch_rot270.png": "a884461e52a7a2323cb6dc00a2e23e6b86679c82bd5d68118496871e9d13214a",
+    "301_prop_switch_rot90.png": "a884461e52a7a2323cb6dc00a2e23e6b86679c82bd5d68118496871e9d13214a"
   },
-  "manifest_entry_count": 9,
-  "tileset_entry_count": 9
+  "manifest_entry_count": 10,
+  "tileset_entry_count": 10
 }

@@ -20,7 +20,8 @@ from pipeline.validation import (
 REQUIRED_COLLECTIONS = {
     "Factory_Rig",
     "Factory_Reference",
-    "Export_Floor",
+    "Export_Floor_Plain",
+    "Export_Floor_Half",
     "Export_Walls",
     "Export_Stairs",
     "Export_Props",
@@ -28,13 +29,11 @@ REQUIRED_COLLECTIONS = {
 }
 REQUIRED_RIG_OBJECTS = {
     "IsoCamera": "CAMERA",
-    "SquareCamera": "CAMERA",
-    "KeyLight": "LIGHT",
-    "FillLight": "LIGHT",
+    "TopLight": "LIGHT",
+    "LeftLight": "LIGHT",
+    "RightLight": "LIGHT",
 }
-OPTIONAL_RIG_OBJECTS = {
-    "RimLight": "LIGHT",
-}
+OPTIONAL_RIG_OBJECTS = {}
 REQUIRED_REFERENCE_OBJECTS = {
     "Guide_Tile_1x1",
     "Guide_Tile_2x1",
@@ -42,13 +41,21 @@ REQUIRED_REFERENCE_OBJECTS = {
     "OriginMarker",
 }
 SAMPLE_EXPORT_OBJECTS = {
-    "Export_Floor": {"001_floor_plain": "none"},
+    "Export_Floor_Plain": {"001_floor_plain": "none"},
+    "Export_Floor_Half": {"002_floor_half": "none"},
     "Export_Walls": {"101_wall_straight": "rotate_90"},
     "Export_Stairs": {"201_stair_up": "rotate_90"},
     "Export_Props": {"301_prop_switch": "rotate_360"},
 }
 GROUND_EPSILON = 1e-4
 ORIGIN_EPSILON = 1e-4
+
+
+def expected_min_world_z(scene_object: bpy.types.Object) -> float:
+    object_name = scene_object.name
+    if object_name == "002_floor_half":
+        return 0.5
+    return 0.0
 
 
 def get_cli_argument(argument_name: str) -> str:
@@ -160,9 +167,11 @@ def validate_export_object(scene_object: bpy.types.Object, default_rotation_mode
         )
 
     minimum_z = object_min_world_z(scene_object)
-    if math.fabs(minimum_z) > GROUND_EPSILON:
+    expected_min_z = expected_min_world_z(scene_object)
+    if math.fabs(minimum_z - expected_min_z) > GROUND_EPSILON:
         raise ValidationError(
-            f'Export object "{scene_object.name}" must sit on Z=0; minimum bound z is {minimum_z:.6f}.'
+            f'Export object "{scene_object.name}" must sit on minimum Z={expected_min_z:.6f}; '
+            f"minimum bound z is {minimum_z:.6f}."
         )
 
     rotation_mode = str(scene_object.get("rotation_mode", default_rotation_mode))

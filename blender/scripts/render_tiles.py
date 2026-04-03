@@ -1,6 +1,7 @@
 import bpy
 import json
 import math
+import os
 import sys
 from pathlib import Path
 
@@ -90,8 +91,6 @@ def default_height_class(category: str) -> str:
 
 
 def default_tile_shape(projection_mode: str) -> str:
-    if projection_mode == "square":
-        return "square"
     return "isometric"
 
 
@@ -114,9 +113,10 @@ def build_entry_metadata(export_object: bpy.types.Object, source_collection: str
     }
 
 
-def get_sorted_export_objects(collection_names: list[str]) -> list[dict]:
+def get_sorted_export_objects(collection_names: list[str], allowed_object_names: list[str] | None = None) -> list[dict]:
     export_objects: list[dict] = []
     seen_object_names: set[str] = set()
+    allowed_name_set = {name.strip() for name in (allowed_object_names or []) if str(name).strip()}
 
     for collection_name in collection_names:
         collection = bpy.data.collections.get(collection_name)
@@ -127,6 +127,8 @@ def get_sorted_export_objects(collection_names: list[str]) -> list[dict]:
             if collection_object.type != "MESH":
                 continue
             if collection_object.hide_render:
+                continue
+            if allowed_name_set and collection_object.name not in allowed_name_set:
                 continue
             if collection_object.name in seen_object_names:
                 raise ValidationError(f'Duplicate export object name "{collection_object.name}".')
@@ -140,6 +142,14 @@ def get_sorted_export_objects(collection_names: list[str]) -> list[dict]:
             seen_object_names.add(collection_object.name)
 
     export_objects.sort(key=lambda item: item["object"].name)
+    if allowed_name_set:
+        found_names = {item["object"].name for item in export_objects}
+        missing_names = sorted(allowed_name_set - found_names)
+        if missing_names:
+            raise ValidationError(
+                "Configured export_objects were not found as eligible renderable mesh objects: "
+                + ", ".join(missing_names)
+            )
     if not export_objects:
         raise ValidationError("No eligible export objects were found in the configured export collections.")
     return export_objects
@@ -160,6 +170,67 @@ def configure_render(scene: bpy.types.Scene, width: int, height: int) -> None:
     scene.render.resolution_percentage = 100
 
 
+def set_collection_render_visibility(visible_collection_names: set[str]) -> None:
+    for collection in bpy.data.collections:
+        collection.hide_render = collection.name not in visible_collection_names
+
+
+def rebuild_box_mesh(
+    mesh: bpy.types.Mesh,
+    *,
+    width: float,
+    depth: float,
+    height: float,
+    z_min: float = 0.0,
+) -> None:
+    z_max = z_min + height
+    half_width = width / 2.0
+    half_depth = depth / 2.0
+    vertices = [
+        (-half_width, -half_depth, z_min),
+        (half_width, -half_depth, z_min),
+        (half_width, half_depth, z_min),
+        (-half_width, half_depth, z_min),
+        (-half_width, -half_depth, z_max),
+        (half_width, -half_depth, z_max),
+        (half_width, half_depth, z_max),
+        (-half_width, half_depth, z_max),
+    ]
+    faces = [
+        (0, 1, 2, 3),
+        (4, 5, 6, 7),
+        (0, 1, 5, 4),
+        (1, 2, 6, 5),
+        (2, 3, 7, 6),
+        (3, 0, 4, 7),
+    ]
+    mesh.clear_geometry()
+    mesh.from_pydata(vertices, [], faces)
+    mesh.update()
+
+
+def apply_floor_height_override() -> None:
+    height_mode = os.environ.get("ITF_FLOOR_HEIGHT", "").strip().lower()
+    if height_mode not in {"", "full", "half"}:
+        raise RuntimeError(f"Unsupported ITF_FLOOR_HEIGHT: {height_mode}")
+    if not height_mode:
+        return
+
+    floor_object = bpy.data.objects.get("001_floor_plain")
+    if floor_object is None or floor_object.type != "MESH":
+        return
+
+    height_value = 1.0 if height_mode == "full" else 0.5
+    mesh = floor_object.data
+    z_min = 0.0 if height_mode == "full" else 0.5
+    rebuild_box_mesh(mesh, width=1.0, depth=1.0, height=height_value, z_min=z_min)
+    floor_object.scale = (1.0, 1.0, 1.0)
+    floor_object.location = (0.0, 0.0, 0.0)
+    bpy.context.view_layer.update()
+    floor_object["height_class"] = "full" if height_mode == "full" else "half"
+    floor_object["tags"] = f"sample,floor,{height_mode}"
+
+
 def render_object_variants(config: dict) -> dict:
     scene = bpy.context.scene
     projection_mode = str(config.get("projection_mode", "isometric")).strip().lower()
@@ -178,13 +249,23 @@ def render_object_variants(config: dict) -> dict:
         int(render_resolution.get("height", 256)),
     )
 
+    apply_floor_height_override()
+
     scene.camera = find_camera(config["camera_name"])
-    export_object_records = get_sorted_export_objects(config.get("export_collections", []))
+    export_object_records = get_sorted_export_objects(
+        config.get("export_collections", []),
+        config.get("export_objects", []),
+    )
 
     original_rotations: dict[str, tuple[float, float, float]] = {}
+    original_hide_render: dict[str, bool] = {}
+    original_collection_hide_render: dict[str, bool] = {
+        collection.name: bool(collection.hide_render) for collection in bpy.data.collections
+    }
     for export_record in export_object_records:
         export_object = export_record["object"]
         original_rotations[export_object.name] = tuple(export_object.rotation_euler)
+        original_hide_render[export_object.name] = bool(export_object.hide_render)
 
     manifest_entries: list[dict] = []
 
@@ -197,6 +278,12 @@ def render_object_variants(config: dict) -> dict:
         rotation_degrees_list = get_rotation_degrees(rotation_mode)
         entry_metadata = build_entry_metadata(export_object, source_collection, projection_mode)
         entry_metadata["render_profile"] = render_profile
+
+        set_collection_render_visibility({"Factory_Rig", source_collection})
+        for other_export_record in export_object_records:
+            other_export_object = other_export_record["object"]
+            other_export_object.hide_render = other_export_object.name != export_object.name
+        bpy.context.view_layer.update()
 
         for rotation_degrees in rotation_degrees_list:
             export_object.rotation_euler[2] = math.radians(rotation_degrees)
@@ -223,6 +310,11 @@ def render_object_variants(config: dict) -> dict:
         export_object = export_record["object"]
         original_rotation = original_rotations[export_object.name]
         export_object.rotation_euler = original_rotation
+        export_object.hide_render = original_hide_render[export_object.name]
+    for collection in bpy.data.collections:
+        if collection.name in original_collection_hide_render:
+            collection.hide_render = original_collection_hide_render[collection.name]
+    bpy.context.view_layer.update()
 
     manifest_data = {
         "tileset_name": config.get("tileset_name", "tileset"),

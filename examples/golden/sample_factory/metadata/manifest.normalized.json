@@ -12,10 +12,11 @@
       "anchor_type": "tile_center",
       "footprint_width": 1,
       "footprint_height": 1,
-      "height_class": "flat",
+      "height_class": "full",
       "tags": [
         "sample",
-        "floor"
+        "floor",
+        "full"
       ],
       "source_collection": "Export_Floor",
       "material_variant": "default",
@@ -23,6 +24,32 @@
       "rotation": 0,
       "file": "001_floor_plain_rot0.png",
       "file_name": "001_floor_plain_rot0.png",
+      "width": 256,
+      "height": 256
+    },
+    {
+      "id": "002_floor_half_rot0",
+      "name": "002_floor_half",
+      "source_object": "002_floor_half",
+      "category": "floor",
+      "projection_mode": "isometric",
+      "tile_shape": "isometric",
+      "render_profile": "iso_base",
+      "anchor_type": "tile_center",
+      "footprint_width": 1,
+      "footprint_height": 1,
+      "height_class": "half",
+      "tags": [
+        "sample",
+        "floor",
+        "half"
+      ],
+      "source_collection": "Export_Floor",
+      "material_variant": "default",
+      "render_preset": "default",
+      "rotation": 0,
+      "file": "002_floor_half_rot0.png",
+      "file_name": "002_floor_half_rot0.png",
       "width": 256,
       "height": 256
     },

@@ -1,20 +1,16 @@
-# Sample Scene Plan v1
+# Sample Scene
 
 ## Purpose
 
-This file defines the minimal Blender sample scene that the repository should maintain as its baseline fixture.
+`examples/sample_factory.blend` is the canonical Blender fixture for this repo.
 
-The sample scene exists to validate the factory contract, not to show a content library.
+It exists to provide:
 
-## Scene File Intent
+- stable render references
+- stable camera + silhouette geometry
+- a small validation target for the CLI
 
-Recommended path once added:
-
-- `examples/sample_factory.blend`
-
-The file should be small, fast to render, and safe to commit.
-
-## Required Top-Level Collections
+## Required top-level collections
 
 - `Factory_Rig`
 - `Factory_Reference`
@@ -24,98 +20,43 @@ The file should be small, fast to render, and safe to commit.
 - `Export_Props`
 - `Disabled_Archive`
 
-## Required Rig Contents
+## Required rig contents
 
-### `Factory_Rig`
+Inside `Factory_Rig`:
 
 - `IsoCamera`
-- `SquareCamera`
 - `KeyLight`
 - `FillLight`
 - optional `RimLight`
 
-### `Factory_Reference`
+Inside `Factory_Reference`:
 
 - `Guide_Tile_1x1`
 - `Guide_Tile_2x1`
 - `Guide_Height_1`
 - `OriginMarker`
 
-Reference guides must not render.
+These reference helpers must not render.
 
-## Required Export Objects
-
-### `Export_Floor`
+## Required sample export objects
 
 - `001_floor_plain`
-
-### `Export_Walls`
-
+- `002_floor_half`
 - `101_wall_straight`
-
-### `Export_Stairs`
-
 - `201_stair_up`
-
-### `Export_Props`
-
 - `301_prop_switch`
 
-## Required Object Rules
+The two floor objects are especially important because they define the canonical full/half pair used by the Gemini reference workflow.
 
-- all export objects are mesh objects
-- all export objects sit on `Z = 0`
-- all export objects follow the shared anchor rule
-- all export objects use deterministic names
-- each export object is one export unit
-
-## Rotation Policy for Sample Scene
-
-Use this minimal setup:
-
-- `001_floor_plain`: `rotation_mode=none`
-- `101_wall_straight`: `rotation_mode=rotate_90`
-- `201_stair_up`: `rotation_mode=rotate_90`
-- `301_prop_switch`: `rotation_mode=rotate_360`
-
-This gives the sample enough coverage to test variant generation without making the fixture large.
-
-## Validation Expectations
-
-The sample scene should be enough to verify:
-
-- camera lookup
-- collection lookup
-- deterministic object ordering
-- category inference
-- rotation expansion
-- manifest generation
-- atlas generation
-
-Recommended validation command:
+## Validation command
 
 ```bash
-blender -b examples/sample_factory.blend -P blender/scripts/validate_scene.py -- --config examples/config.json --sample-scene=true
+python3 itf.py validate \
+  --scene examples/sample_factory.blend \
+  --config examples/config.json \
+  --sample-scene
 ```
 
-Square-path validation command:
+## Rule
 
-```bash
-blender -b examples/sample_factory.blend -P blender/scripts/validate_scene.py -- --config examples/config.square.json --sample-scene=true
-```
-
-Recommended generation command:
-
-```bash
-python3 itf.py create-sample-scene
-```
-
-## Out of Scope
-
-The sample scene should not include:
-
-- project-specific gameplay metadata
-- engine-specific scene setup
-- large texture libraries
-- advanced shader experiments
-- multiple art styles in one file
+Prefer keeping floor reference variants in this one shared scene instead of splitting them across multiple `.blend` files.

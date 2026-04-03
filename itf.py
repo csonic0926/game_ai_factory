@@ -9,18 +9,13 @@ import sys
 from pathlib import Path
 
 from pipeline.build_atlas import build_atlas
-from pipeline.ai_texture import (
-    AITextureError,
-    create_demo_textures,
-    generate_texture_candidates,
-    init_texture_cache,
-    inspect_texture_cache,
-    parse_slot_list,
-    select_texture_candidates,
-    sync_texture_cache,
-    validate_texture_cache,
-)
 from pipeline.inspect_manifest import build_summary
+from pipeline.reference_pair_workflow import (
+    ReferencePairWorkflowError,
+    generate_reference_pair,
+    prepare_reference_pair_run,
+    validate_reference_pair_run,
+)
 from pipeline.sample_regression import snapshot_baseline, verify_baseline
 from pipeline.validation import (
     ValidationError,
@@ -32,7 +27,6 @@ REPO_ROOT = Path(__file__).resolve().parent
 RENDER_SCRIPT = REPO_ROOT / "blender" / "scripts" / "render_tiles.py"
 SCENE_VALIDATE_SCRIPT = REPO_ROOT / "blender" / "scripts" / "validate_scene.py"
 CREATE_SAMPLE_SCRIPT = REPO_ROOT / "blender" / "scripts" / "create_sample_factory.py"
-BIND_AI_TEXTURES_SCRIPT = REPO_ROOT / "blender" / "scripts" / "bind_ai_textures.py"
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -121,108 +115,25 @@ def parse_arguments() -> argparse.Namespace:
         help="Update the committed baseline at the end of the smoke run",
     )
 
-    smoke_square_parser = subparsers.add_parser(
-        "smoke-sample-square",
-        help="Run the full square sample fixture pipeline: create, validate, render, regression",
+    ref_prepare_parser = subparsers.add_parser(
+        "prepare-reference-pair",
+        help="Prepare a reference-pair workflow run with prompts and references for requested variant(s)",
     )
-    smoke_square_parser.add_argument("--config", default="examples/config.square.json", help="Path to config JSON")
-    smoke_square_parser.add_argument(
-        "--scene",
-        default="examples/sample_factory.blend",
-        help="Path to sample Blender scene (.blend)",
-    )
-    smoke_square_parser.add_argument(
-        "--manifest",
-        default="output_square/metadata/manifest.json",
-        help="Path to manifest JSON output",
-    )
-    smoke_square_parser.add_argument(
-        "--output-root",
-        default="output_square",
-        help="Generated output root for regression verification",
-    )
-    smoke_square_parser.add_argument(
-        "--atlas-out",
-        default="output_square/atlas/tileset.png",
-        help="Path to atlas PNG output",
-    )
-    smoke_square_parser.add_argument("--blender-bin", default="blender", help="Blender executable to use")
-    smoke_square_parser.add_argument(
-        "--baseline-root",
-        default="examples/golden/sample_factory_square",
-        help="Baseline directory",
-    )
-    smoke_square_parser.add_argument(
-        "--update-baseline",
-        action="store_true",
-        help="Update the committed baseline at the end of the smoke run",
-    )
+    ref_prepare_parser.add_argument("--spec", required=True, help="Path to reference-pair spec JSON")
 
-    smoke_all_parser = subparsers.add_parser(
-        "smoke-sample-all",
-        help="Run both isometric and square sample smoke/regression flows",
+    ref_generate_parser = subparsers.add_parser(
+        "generate-reference-pair",
+        help="Prepare, generate, and validate requested variant(s) from the reference-pair workflow",
     )
-    smoke_all_parser.add_argument("--blender-bin", default="blender", help="Blender executable to use")
-    smoke_all_parser.add_argument(
-        "--update-baseline",
-        action="store_true",
-        help="Update the committed baselines at the end of the smoke runs",
+    ref_generate_parser.add_argument("--spec", required=True, help="Path to reference-pair spec JSON")
+
+    ref_validate_parser = subparsers.add_parser(
+        "validate-reference-pair",
+        help="Validate generated tile PNGs against the prepared reference-pair run",
     )
-
-    ai_init_parser = subparsers.add_parser("init-ai-textures", help="Initialize AI texture request/cache layout")
-    ai_init_parser.add_argument("--manifest", required=True, help="Path to manifest JSON")
-    ai_init_parser.add_argument("--cache-root", default="texture_cache", help="Texture cache root")
-    ai_init_parser.add_argument("--variant", default="ai_v1", help="Texture variant name")
-    ai_init_parser.add_argument("--required-slots", default="base_color", help="Comma-separated required slots")
-    ai_init_parser.add_argument(
-        "--optional-slots",
-        default="normal,orm,emissive",
-        help="Comma-separated optional slots",
-    )
-
-    ai_sync_parser = subparsers.add_parser("sync-ai-textures", help="Sync pack.json files from texture cache")
-    ai_sync_parser.add_argument("--manifest", required=True, help="Path to manifest JSON")
-    ai_sync_parser.add_argument("--cache-root", default="texture_cache", help="Texture cache root")
-    ai_sync_parser.add_argument("--variant", default="ai_v1", help="Texture variant name")
-
-    ai_generate_parser = subparsers.add_parser("generate-ai-textures", help="Generate AI texture candidates")
-    ai_generate_parser.add_argument("--manifest", required=True, help="Path to manifest JSON")
-    ai_generate_parser.add_argument("--cache-root", default="texture_cache", help="Texture cache root")
-    ai_generate_parser.add_argument("--variant", default="ai_v1", help="Texture variant name")
-    ai_generate_parser.add_argument("--provider", default="mock", help="mock | nano_banana | nano_banana_pro")
-    ai_generate_parser.add_argument("--slots", default="base_color", help="Comma-separated slots")
-    ai_generate_parser.add_argument("--candidate-count", type=int, default=1, help="Candidates per slot")
-    ai_generate_parser.add_argument("--size", type=int, default=256, help="Mock generation size")
-
-    ai_select_parser = subparsers.add_parser("select-ai-textures", help="Select top-ranked AI texture candidates")
-    ai_select_parser.add_argument("--manifest", required=True, help="Path to manifest JSON")
-    ai_select_parser.add_argument("--cache-root", default="texture_cache", help="Texture cache root")
-    ai_select_parser.add_argument("--variant", default="ai_v1", help="Texture variant name")
-    ai_select_parser.add_argument("--slots", default="base_color", help="Comma-separated slots")
-    ai_select_parser.add_argument("--strategy", default="latest", help="Selection strategy")
-
-    ai_validate_parser = subparsers.add_parser("validate-ai-textures", help="Validate AI texture cache contents")
-    ai_validate_parser.add_argument("--manifest", required=True, help="Path to manifest JSON")
-    ai_validate_parser.add_argument("--cache-root", default="texture_cache", help="Texture cache root")
-    ai_validate_parser.add_argument("--variant", default="ai_v1", help="Texture variant name")
-
-    ai_inspect_parser = subparsers.add_parser("inspect-ai-textures", help="Inspect AI texture cache summary")
-    ai_inspect_parser.add_argument("--manifest", required=True, help="Path to manifest JSON")
-    ai_inspect_parser.add_argument("--cache-root", default="texture_cache", help="Texture cache root")
-    ai_inspect_parser.add_argument("--variant", default="ai_v1", help="Texture variant name")
-
-    ai_demo_parser = subparsers.add_parser("create-demo-ai-textures", help="Create demo textures in the AI cache")
-    ai_demo_parser.add_argument("--manifest", required=True, help="Path to manifest JSON")
-    ai_demo_parser.add_argument("--cache-root", default="texture_cache", help="Texture cache root")
-    ai_demo_parser.add_argument("--variant", default="ai_v1", help="Texture variant name")
-    ai_demo_parser.add_argument("--size", type=int, default=256, help="Demo texture size")
-
-    ai_bind_parser = subparsers.add_parser("bind-ai-textures", help="Bind selected AI textures back into Blender materials")
-    ai_bind_parser.add_argument("--scene", required=True, help="Path to Blender scene (.blend)")
-    ai_bind_parser.add_argument("--config", required=True, help="Path to config JSON")
-    ai_bind_parser.add_argument("--cache-root", default="texture_cache", help="Texture cache root")
-    ai_bind_parser.add_argument("--variant", default="ai_v1", help="Texture variant name")
-    ai_bind_parser.add_argument("--blender-bin", default="blender", help="Blender executable to use")
+    ref_validate_parser.add_argument("--run-root", required=True, help="Prepared reference-pair run root")
+    ref_validate_parser.add_argument("--full-image", help="Override generated full image path")
+    ref_validate_parser.add_argument("--half-image", help="Override generated half image path")
 
     return argument_parser.parse_args()
 
@@ -280,6 +191,7 @@ def command_validate(arguments: argparse.Namespace) -> int:
         command = [
             arguments.blender_bin,
             "-b",
+            "--factory-startup",
             str(Path(arguments.scene).expanduser().resolve()),
             "-P",
             str(SCENE_VALIDATE_SCRIPT),
@@ -306,6 +218,7 @@ def command_render(arguments: argparse.Namespace) -> int:
     command = [
         arguments.blender_bin,
         "-b",
+        "--factory-startup",
         str(Path(arguments.scene).expanduser().resolve()),
         "-P",
         str(RENDER_SCRIPT),
@@ -411,6 +324,7 @@ def command_create_sample_scene(arguments: argparse.Namespace) -> int:
     command = [
         arguments.blender_bin,
         "-b",
+        "--factory-startup",
         "-P",
         str(CREATE_SAMPLE_SCRIPT),
     ]
@@ -526,163 +440,38 @@ def command_smoke_sample(arguments: argparse.Namespace) -> int:
     return 0
 
 
-def command_smoke_sample_all(arguments: argparse.Namespace) -> int:
-    run_step(
-        "smoke_sample_isometric",
-        [
-            "python3",
-            str(REPO_ROOT / "itf.py"),
-            "smoke-sample",
-            "--blender-bin",
-            arguments.blender_bin,
-            *(["--update-baseline"] if arguments.update_baseline else []),
-        ],
-    )
-    run_step(
-        "smoke_sample_square",
-        [
-            "python3",
-            str(REPO_ROOT / "itf.py"),
-            "smoke-sample-square",
-            "--blender-bin",
-            arguments.blender_bin,
-            *(["--update-baseline"] if arguments.update_baseline else []),
-        ],
-    )
-    print(
-        json.dumps(
-            {
-                "ok": True,
-                "smoke_sample_all": {
-                    "modes": ["isometric", "square"],
-                    "baseline_mode": "update" if arguments.update_baseline else "verify",
-                },
-            },
-            indent=2,
-        )
-    )
-    return 0
-
-
-def command_init_ai_textures(arguments: argparse.Namespace) -> int:
+def command_prepare_reference_pair(arguments: argparse.Namespace) -> int:
     try:
-        result = init_texture_cache(
-            Path(arguments.manifest).expanduser().resolve(),
-            Path(arguments.cache_root).expanduser().resolve(),
-            variant=arguments.variant,
-            required_slots=parse_slot_list(arguments.required_slots),
-            optional_slots=parse_slot_list(arguments.optional_slots),
-        )
-        print(json.dumps({"ok": True, "mode": "init-ai-textures", "result": result}, indent=2))
+        result = prepare_reference_pair_run(Path(arguments.spec).expanduser().resolve())
+        print(json.dumps({"ok": True, "mode": "prepare-reference-pair", "result": result}, indent=2))
         return 0
-    except AITextureError as error:
-        print(json.dumps({"ok": False, "error": str(error)}, indent=2))
+    except ReferencePairWorkflowError as error:
+        print(json.dumps({"ok": False, "mode": "prepare-reference-pair", "error": str(error)}, indent=2))
         return 1
 
 
-def command_sync_ai_textures(arguments: argparse.Namespace) -> int:
+def command_generate_reference_pair(arguments: argparse.Namespace) -> int:
     try:
-        result = sync_texture_cache(
-            Path(arguments.manifest).expanduser().resolve(),
-            Path(arguments.cache_root).expanduser().resolve(),
-            variant=arguments.variant,
-        )
-        print(json.dumps({"ok": True, "mode": "sync-ai-textures", "result": result}, indent=2))
+        result = generate_reference_pair(Path(arguments.spec).expanduser().resolve())
+        print(json.dumps({"ok": True, "mode": "generate-reference-pair", "result": result}, indent=2))
         return 0
-    except AITextureError as error:
-        print(json.dumps({"ok": False, "error": str(error)}, indent=2))
+    except ReferencePairWorkflowError as error:
+        print(json.dumps({"ok": False, "mode": "generate-reference-pair", "error": str(error)}, indent=2))
         return 1
 
 
-def command_generate_ai_textures(arguments: argparse.Namespace) -> int:
+def command_validate_reference_pair(arguments: argparse.Namespace) -> int:
     try:
-        result = generate_texture_candidates(
-            Path(arguments.manifest).expanduser().resolve(),
-            Path(arguments.cache_root).expanduser().resolve(),
-            variant=arguments.variant,
-            provider=arguments.provider,
-            slots=parse_slot_list(arguments.slots),
-            candidate_count=arguments.candidate_count,
-            size=arguments.size,
+        result = validate_reference_pair_run(
+            Path(arguments.run_root).expanduser().resolve(),
+            full_image=Path(arguments.full_image).expanduser().resolve() if arguments.full_image else None,
+            half_image=Path(arguments.half_image).expanduser().resolve() if arguments.half_image else None,
         )
-        print(json.dumps({"ok": True, "mode": "generate-ai-textures", "result": result}, indent=2))
-        return 0
-    except AITextureError as error:
-        print(json.dumps({"ok": False, "error": str(error)}, indent=2))
-        return 1
-
-
-def command_select_ai_textures(arguments: argparse.Namespace) -> int:
-    try:
-        result = select_texture_candidates(
-            Path(arguments.manifest).expanduser().resolve(),
-            Path(arguments.cache_root).expanduser().resolve(),
-            variant=arguments.variant,
-            slots=parse_slot_list(arguments.slots),
-            strategy=arguments.strategy,
-        )
-        print(json.dumps({"ok": True, "mode": "select-ai-textures", "result": result}, indent=2))
-        return 0
-    except AITextureError as error:
-        print(json.dumps({"ok": False, "error": str(error)}, indent=2))
-        return 1
-
-
-def command_validate_ai_textures(arguments: argparse.Namespace) -> int:
-    try:
-        result = validate_texture_cache(
-            Path(arguments.manifest).expanduser().resolve(),
-            Path(arguments.cache_root).expanduser().resolve(),
-            variant=arguments.variant,
-        )
-        print(json.dumps(result, indent=2))
+        print(json.dumps({"ok": result["ok"], "mode": "validate-reference-pair", "result": result}, indent=2))
         return 0 if result["ok"] else 1
-    except AITextureError as error:
-        print(json.dumps({"ok": False, "error": str(error)}, indent=2))
+    except ReferencePairWorkflowError as error:
+        print(json.dumps({"ok": False, "mode": "validate-reference-pair", "error": str(error)}, indent=2))
         return 1
-
-
-def command_inspect_ai_textures(arguments: argparse.Namespace) -> int:
-    try:
-        result = inspect_texture_cache(
-            Path(arguments.manifest).expanduser().resolve(),
-            Path(arguments.cache_root).expanduser().resolve(),
-            variant=arguments.variant,
-        )
-        print(json.dumps({"ok": True, "mode": "inspect-ai-textures", "result": result}, indent=2))
-        return 0
-    except AITextureError as error:
-        print(json.dumps({"ok": False, "error": str(error)}, indent=2))
-        return 1
-
-
-def command_create_demo_ai_textures(arguments: argparse.Namespace) -> int:
-    try:
-        result = create_demo_textures(
-            Path(arguments.manifest).expanduser().resolve(),
-            Path(arguments.cache_root).expanduser().resolve(),
-            variant=arguments.variant,
-            size=arguments.size,
-        )
-        print(json.dumps({"ok": True, "mode": "create-demo-ai-textures", "result": result}, indent=2))
-        return 0
-    except AITextureError as error:
-        print(json.dumps({"ok": False, "error": str(error)}, indent=2))
-        return 1
-
-
-def command_bind_ai_textures(arguments: argparse.Namespace) -> int:
-    command = [
-        arguments.blender_bin,
-        str(Path(arguments.scene).expanduser().resolve()),
-        "-P",
-        str(BIND_AI_TEXTURES_SCRIPT),
-        "--",
-        f"--config={Path(arguments.config).expanduser().resolve()}",
-        f"--cache-root={Path(arguments.cache_root).expanduser().resolve()}",
-        f"--variant={arguments.variant}",
-    ]
-    return run_subprocess(command)
 
 
 def main() -> None:
@@ -702,26 +491,12 @@ def main() -> None:
         raise SystemExit(command_sample_regression(arguments))
     if arguments.command == "smoke-sample":
         raise SystemExit(command_smoke_sample(arguments))
-    if arguments.command == "smoke-sample-square":
-        raise SystemExit(command_smoke_sample(arguments))
-    if arguments.command == "smoke-sample-all":
-        raise SystemExit(command_smoke_sample_all(arguments))
-    if arguments.command == "init-ai-textures":
-        raise SystemExit(command_init_ai_textures(arguments))
-    if arguments.command == "sync-ai-textures":
-        raise SystemExit(command_sync_ai_textures(arguments))
-    if arguments.command == "generate-ai-textures":
-        raise SystemExit(command_generate_ai_textures(arguments))
-    if arguments.command == "select-ai-textures":
-        raise SystemExit(command_select_ai_textures(arguments))
-    if arguments.command == "validate-ai-textures":
-        raise SystemExit(command_validate_ai_textures(arguments))
-    if arguments.command == "inspect-ai-textures":
-        raise SystemExit(command_inspect_ai_textures(arguments))
-    if arguments.command == "create-demo-ai-textures":
-        raise SystemExit(command_create_demo_ai_textures(arguments))
-    if arguments.command == "bind-ai-textures":
-        raise SystemExit(command_bind_ai_textures(arguments))
+    if arguments.command == "prepare-reference-pair":
+        raise SystemExit(command_prepare_reference_pair(arguments))
+    if arguments.command == "generate-reference-pair":
+        raise SystemExit(command_generate_reference_pair(arguments))
+    if arguments.command == "validate-reference-pair":
+        raise SystemExit(command_validate_reference_pair(arguments))
 
     raise SystemExit(f"Unknown command: {arguments.command}")
 

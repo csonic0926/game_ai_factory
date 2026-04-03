@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 VALID_ROTATION_MODES = {"none", "rotate_90", "rotate_360"}
-VALID_PROJECTION_MODES = {"isometric", "square"}
+VALID_PROJECTION_MODES = {"isometric"}
 VALID_OUTPUT_MODES = {"png", "atlas", "both"}
 OBJECT_NAME_PATTERN = re.compile(r"^\d{3}_[a-z0-9]+_[a-z0-9_]+$")
 CONFIG_REQUIRED_KEYS = {
@@ -24,6 +24,7 @@ CONFIG_OPTIONAL_KEYS = {
     "default_rotation_mode",
     "render_resolution",
     "atlas",
+    "export_objects",
 }
 CONFIG_ALLOWED_KEYS = CONFIG_REQUIRED_KEYS | CONFIG_OPTIONAL_KEYS
 MANIFEST_ENTRY_REQUIRED_KEYS = {
@@ -78,6 +79,14 @@ def validate_config_data(config_data: dict) -> tuple[dict, list[str]]:
         raise ValidationError("Config 'export_collections' must be a non-empty array of strings.")
     if any(not isinstance(item, str) or not item.strip() for item in export_collections):
         raise ValidationError("Every 'export_collections' entry must be a non-empty string.")
+
+    export_objects = config_data.get("export_objects", [])
+    if export_objects is None:
+        export_objects = []
+    if not isinstance(export_objects, list):
+        raise ValidationError("Config 'export_objects' must be an array of strings when provided.")
+    if any(not isinstance(item, str) or not item.strip() for item in export_objects):
+        raise ValidationError("Every 'export_objects' entry must be a non-empty string.")
 
     if not isinstance(config_data["tileset_name"], str) or not config_data["tileset_name"].strip():
         raise ValidationError("Config 'tileset_name' must be a non-empty string.")
@@ -193,6 +202,7 @@ def validate_config_data(config_data: dict) -> tuple[dict, list[str]]:
         "tileset_name": config_data["tileset_name"].strip(),
         "output_root": config_data["output_root"].strip(),
         "export_collections": [item.strip() for item in export_collections],
+        "export_objects": [item.strip() for item in export_objects],
         "camera_name": active_render_profile["camera_name"],
         "projection_mode": active_render_profile["projection_mode"],
         "output_mode": output_mode,

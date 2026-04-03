@@ -1,46 +1,34 @@
 # isometric_tile_factory
 
-Generic Blender-based tile and prop rendering pipeline for agentic workflows.
+Blender-first isometric tile factory focused on one workflow:
 
-License: MIT
+1. render canonical tile references from Blender
+2. send those references to Gemini/Nano Banana
+3. validate the returned tile PNGs against the Blender-defined silhouettes
 
-This tool is meant to:
+## Main workflow
 
-1. let vibe-coding AI or local users generate tile assets through stable CLI contracts
-2. support both isometric and regular square tile production over time
-3. produce atlas outputs, individual PNG outputs, or both
-4. keep geometry shape stable through Blender-based 3D rendering
-5. prepare texture-generation and engine-adapter workflows around one core metadata contract
+Use the reference-pair workflow when you want Gemini to generate final tile images while preserving the canonical shape/camera from Blender.
 
-This repository is intentionally project-agnostic.
+High-level commands:
 
-## Structure
+- `prepare-reference-pair`
+- `generate-reference-pair`
+- `validate-reference-pair`
 
-- `docs/` design and workflow notes
-- `adapters/` future engine-specific integration boundary
-- `blender/scripts/` Blender automation scripts
-- `pipeline/` atlas and metadata tooling
-- `output/` generated files
-- `examples/` sample config files
+See:
 
-## Key design docs
-
-- `docs/SPEC.md`
+- `docs/REFERENCE_PAIR_WORKFLOW.md`
 - `docs/BLENDER_WORKFLOW.md`
 - `docs/SAMPLE_SCENE.md`
-- `docs/ADAPTERS.md`
-- `docs/AI_TEXTURE_BOUNDARY.md`
-- `docs/AI_TEXTURE_WORKFLOW.md`
 
-## CLI
-
-Primary repo CLI:
+## Core CLI
 
 ```bash
 python3 itf.py --help
 ```
 
-Commands:
+Available commands:
 
 - `validate`
 - `render`
@@ -49,169 +37,108 @@ Commands:
 - `create-sample-scene`
 - `sample-regression`
 - `smoke-sample`
-- `smoke-sample-square`
-- `smoke-sample-all`
-- `init-ai-textures`
-- `create-demo-ai-textures`
-- `sync-ai-textures`
-- `validate-ai-textures`
-- `inspect-ai-textures`
+- `prepare-reference-pair`
+- `generate-reference-pair`
+- `validate-reference-pair`
 
 ## Runtime
 
-- Blender 5.1.x as the primary tested baseline
+- Blender 4.5.x LTS on macOS Apple Silicon is the current stable baseline
 - Python 3.11+
 
-Install Python dependency:
+Install dependencies:
 
 ```bash
 python3 -m pip install -r requirements.txt
 ```
 
-## First commands
+## Canonical sample scene
 
-Validate config:
+The stable fixture is:
 
-```bash
-python3 itf.py validate --config examples/config.json
-```
+- `examples/sample_factory.blend`
 
-Validate square config:
+Important canonical floor pair:
 
-```bash
-python3 itf.py validate --config examples/config.square.json
-```
+- `001_floor_plain` = full-height reference
+- `002_floor_half` = half-height reference
 
-Validate Blender scene structure:
+## Low-level Blender commands
 
-```bash
-python3 itf.py validate --scene your_scene.blend --config examples/config.json
-```
-
-Validate the strict sample fixture contract:
+Validate the sample scene:
 
 ```bash
-python3 itf.py validate --scene examples/sample_factory.blend --config examples/config.json --sample-scene
+python3 itf.py validate \
+  --scene examples/sample_factory.blend \
+  --config examples/config.json \
+  --sample-scene
 ```
 
-Render from Blender:
+Render the sample scene:
 
 ```bash
-python3 itf.py render --scene your_scene.blend --config examples/config.json
+python3 itf.py render --scene examples/sample_factory.blend --config examples/config.json
 ```
 
-If config `output_mode` is `atlas` or `both`, `render` now auto-builds the atlas after PNG render.
+## Reference-pair workflow
 
-Render the square sample path:
+Prepare a run:
 
 ```bash
-python3 itf.py render --scene examples/sample_factory.blend --config examples/config.square.json
+python3 itf.py prepare-reference-pair \
+  --spec examples/reference_pair_workflow/pixel_grass_demo.spec.json
 ```
 
-Build atlas:
+Auto-generate and validate:
 
 ```bash
-python3 itf.py build-atlas --manifest output/metadata/manifest.json --out output/atlas/tileset.png
+python3 itf.py generate-reference-pair \
+  --spec examples/reference_pair_workflow/pixel_grass_demo.spec.json
 ```
 
-Validate manifest:
+Validate prepared/generated output later:
 
 ```bash
-python3 itf.py validate --manifest output/metadata/manifest.json
+python3 itf.py validate-reference-pair \
+  --run-root output/reference_pair_runs/pixel_grass_demo
 ```
 
-Inspect manifest:
+For a real Gemini/Nano Banana run:
 
-```bash
-python3 itf.py inspect-manifest --manifest output/metadata/manifest.json
-```
+1. set `provider.name` to `nano_banana` or `nano_banana_pro`
+2. provide `GEMINI_API_KEY` in process env or repo `.env`
+3. run the same `generate-reference-pair` command
 
-Create the sample scene fixture:
+## Regression
 
-```bash
-python3 itf.py create-sample-scene
-```
-
-Then validate it:
-
-```bash
-python3 itf.py validate --scene examples/sample_factory.blend --config examples/config.json --sample-scene
-```
-
-Update the committed sample baseline from current output:
+Refresh the committed baseline:
 
 ```bash
 python3 itf.py sample-regression --update
 ```
 
-Verify current output against the committed baseline:
+Verify current output against the baseline:
 
 ```bash
 python3 itf.py sample-regression
 ```
 
-Run the full sample smoke/regression flow:
+Run the sample smoke flow:
 
 ```bash
 python3 itf.py smoke-sample
 ```
 
-Run the square sample smoke/regression flow:
+## Direction
 
-```bash
-python3 itf.py smoke-sample-square
-```
+This repo is intentionally no longer organized around:
 
-Run both sample smoke/regression flows:
+- AI texture cache orchestration
+- square-mode product surfaces
+- generic external orchestration contracts
 
-```bash
-python3 itf.py smoke-sample-all
-```
+It is organized around:
 
-Run the full flow and refresh the baseline:
-
-```bash
-python3 itf.py smoke-sample --update-baseline
-```
-
-## AI texture-ready local workflow
-
-Initialize cache layout from a manifest:
-
-```bash
-python3 itf.py init-ai-textures --manifest output/metadata/manifest.json
-```
-
-Create demo textures so the full local flow can run end-to-end:
-
-```bash
-python3 itf.py create-demo-ai-textures --manifest output/metadata/manifest.json
-```
-
-Sync cache state:
-
-```bash
-python3 itf.py sync-ai-textures --manifest output/metadata/manifest.json
-```
-
-Validate cache contents:
-
-```bash
-python3 itf.py validate-ai-textures --manifest output/metadata/manifest.json
-```
-
-Inspect cache summary:
-
-```bash
-python3 itf.py inspect-ai-textures --manifest output/metadata/manifest.json
-```
-
-## Status
-
-Working baseline with:
-
-- isometric + square projection configs
-- `output_mode` support: `png`, `atlas`, `both`
-- `render_profile` / `render_profiles` config support
-- projection-aware manifest metadata
-- committed sample baselines for both sample outputs
+- Blender canonical references
+- Gemini-driven tile generation
+- reference-based validation

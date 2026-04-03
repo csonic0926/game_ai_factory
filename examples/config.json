@@ -4,7 +4,8 @@
   "projection_mode": "isometric",
   "output_mode": "both",
   "export_collections": [
-    "Export_Floor",
+    "Export_Floor_Plain",
+    "Export_Floor_Half",
     "Export_Walls",
     "Export_Stairs",
     "Export_Props"

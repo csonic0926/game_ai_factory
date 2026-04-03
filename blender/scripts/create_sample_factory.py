@@ -1,10 +1,11 @@
 import json
 import math
+import os
 import sys
 from pathlib import Path
 
 import bpy
-from mathutils import Matrix
+from mathutils import Matrix, Vector
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_BLEND_PATH = REPO_ROOT / "examples" / "sample_factory.blend"
@@ -70,6 +71,7 @@ def create_camera(factory_rig: bpy.types.Collection) -> bpy.types.Object:
     camera_data = bpy.data.cameras.new("IsoCamera")
     camera_data.type = "ORTHO"
     camera_data.ortho_scale = 4.0
+    camera_data.shift_y = 26.0 / 256.0
     camera_object = bpy.data.objects.new("IsoCamera", camera_data)
     camera_object.location = (8.0, -8.0, 8.0)
     camera_object.rotation_euler = (math.radians(54.7356), 0.0, math.radians(45.0))
@@ -78,27 +80,25 @@ def create_camera(factory_rig: bpy.types.Collection) -> bpy.types.Object:
     return camera_object
 
 
-def create_square_camera(factory_rig: bpy.types.Collection) -> bpy.types.Object:
-    camera_data = bpy.data.cameras.new("SquareCamera")
-    camera_data.type = "ORTHO"
-    camera_data.ortho_scale = 2.5
-    camera_object = bpy.data.objects.new("SquareCamera", camera_data)
-    camera_object.location = (0.0, 0.0, 8.0)
-    camera_object.rotation_euler = (0.0, 0.0, 0.0)
-    link_object(camera_object, factory_rig)
-    return camera_object
-
-
 def create_light(
     collection: bpy.types.Collection,
     name: str,
     location: tuple[float, float, float],
     energy: float,
+    *,
+    light_type: str = "AREA",
+    target: tuple[float, float, float] = (0.0, 0.0, 0.5),
+    size: float = 6.0,
 ) -> bpy.types.Object:
-    light_data = bpy.data.lights.new(name=name, type="SUN")
+    light_data = bpy.data.lights.new(name=name, type=light_type)
     light_data.energy = energy
+    if light_type == "AREA":
+        light_data.shape = "SQUARE"
+        light_data.size = size
     light_object = bpy.data.objects.new(name, light_data)
     light_object.location = location
+    direction = Vector(target) - Vector(location)
+    light_object.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
     link_object(light_object, collection)
     return light_object
 
@@ -137,20 +137,64 @@ def create_origin_marker(collection: bpy.types.Collection) -> bpy.types.Object:
     return marker
 
 
-def create_floor_tile(collection: bpy.types.Collection) -> bpy.types.Object:
-    bpy.ops.mesh.primitive_plane_add(size=1.0, location=(0.0, 0.0, 0.0))
-    scene_object = bpy.context.active_object
-    scene_object.name = "001_floor_plain"
+def build_box_mesh(
+    mesh: bpy.types.Mesh,
+    *,
+    width: float,
+    depth: float,
+    height: float,
+    z_min: float = 0.0,
+) -> None:
+    z_max = z_min + height
+    half_width = width / 2.0
+    half_depth = depth / 2.0
+    vertices = [
+        (-half_width, -half_depth, z_min),
+        (half_width, -half_depth, z_min),
+        (half_width, half_depth, z_min),
+        (-half_width, half_depth, z_min),
+        (-half_width, -half_depth, z_max),
+        (half_width, -half_depth, z_max),
+        (half_width, half_depth, z_max),
+        (-half_width, half_depth, z_max),
+    ]
+    faces = [
+        (0, 1, 2, 3),
+        (4, 5, 6, 7),
+        (0, 1, 5, 4),
+        (1, 2, 6, 5),
+        (2, 3, 7, 6),
+        (3, 0, 4, 7),
+    ]
+    mesh.from_pydata(vertices, [], faces)
+    mesh.update()
+
+
+def create_floor_tile(
+    collection: bpy.types.Collection,
+    *,
+    object_name: str,
+    height_mode: str = "full",
+) -> bpy.types.Object:
+    normalized_height_mode = (height_mode or "full").strip().lower()
+    if normalized_height_mode not in {"full", "half"}:
+        raise ValueError(f"Unsupported height_mode: {height_mode}")
+
+    z_height = 1.0 if normalized_height_mode == "full" else 0.5
+    z_min = 0.0 if normalized_height_mode == "full" else 0.5
+    mesh = bpy.data.meshes.new(object_name)
+    build_box_mesh(mesh, width=1.0, depth=1.0, height=z_height, z_min=z_min)
+    scene_object = bpy.data.objects.new(object_name, mesh)
+    scene_object.name = object_name
     assign_rotation_mode(scene_object, "none")
     assign_sample_metadata(
         scene_object,
         anchor_type="tile_center",
         footprint_width=1,
         footprint_height=1,
-        height_class="flat",
-        tags=["sample", "floor"],
+        height_class="full" if normalized_height_mode == "full" else "half",
+        tags=["sample", "floor", normalized_height_mode],
     )
-    unlink_from_scene_root(scene_object)
     link_object(scene_object, collection)
     return scene_object
 
@@ -247,36 +291,73 @@ def save_scene(output_path: Path) -> None:
     bpy.ops.wm.save_as_mainfile(filepath=str(output_path))
 
 
+def remove_object_if_exists(object_name: str) -> None:
+    scene_object = bpy.data.objects.get(object_name)
+    if scene_object is None:
+        return
+    mesh = scene_object.data if scene_object.type == "MESH" else None
+    bpy.data.objects.remove(scene_object, do_unlink=True)
+    if mesh is not None and mesh.users == 0:
+        bpy.data.meshes.remove(mesh)
+
+
+def set_collection_render_visibility(visible_collection_names: set[str]) -> None:
+    for collection in bpy.data.collections:
+        collection.hide_render = collection.name not in visible_collection_names
+
+
+def set_compatible_render_engine() -> str:
+    render_settings = bpy.context.scene.render
+    supported_engines = {item.identifier for item in render_settings.bl_rna.properties["engine"].enum_items}
+    for engine_name in ("BLENDER_EEVEE_NEXT", "BLENDER_EEVEE", "BLENDER_WORKBENCH", "CYCLES"):
+        if engine_name in supported_engines:
+            render_settings.engine = engine_name
+            return engine_name
+    raise RuntimeError(f"No supported render engine found. Available: {sorted(supported_engines)}")
+
+
 def build_sample_scene() -> dict:
     reset_scene()
 
     factory_rig = ensure_collection("Factory_Rig")
     factory_reference = ensure_collection("Factory_Reference")
-    export_floor = ensure_collection("Export_Floor")
+    export_floor_plain = ensure_collection("Export_Floor_Plain")
+    export_floor_half = ensure_collection("Export_Floor_Half")
     export_walls = ensure_collection("Export_Walls")
     export_stairs = ensure_collection("Export_Stairs")
     export_props = ensure_collection("Export_Props")
     ensure_collection("Disabled_Archive")
 
     create_camera(factory_rig)
-    create_square_camera(factory_rig)
-    create_light(factory_rig, "KeyLight", (6.0, -6.0, 8.0), 2.0)
-    create_light(factory_rig, "FillLight", (-4.0, 4.0, 6.0), 1.0)
-    create_light(factory_rig, "RimLight", (-6.0, -6.0, 7.0), 0.5)
+    create_light(factory_rig, "TopLight", (0.0, 0.0, 6.0), 3800.0, target=(0.0, 0.0, 1.0), size=7.0)
+    create_light(factory_rig, "LeftLight", (-5.0, -1.5, 2.5), 1800.0, target=(-0.5, 0.0, 0.5), size=6.0)
+    create_light(factory_rig, "RightLight", (1.5, -5.0, 2.0), 180.0, target=(0.5, -0.5, 0.5), size=6.0)
 
     create_reference_plane(factory_reference, "Guide_Tile_1x1", 1.0, 1.0)
     create_reference_plane(factory_reference, "Guide_Tile_2x1", 2.0, 1.0)
     create_reference_plane(factory_reference, "Guide_Height_1", 0.2, 0.2, z=1.0)
     create_origin_marker(factory_reference)
 
-    create_floor_tile(export_floor)
+    create_floor_tile(export_floor_plain, object_name="001_floor_plain", height_mode="full")
+    create_floor_tile(export_floor_half, object_name="002_floor_half", height_mode="half")
     create_wall_tile(export_walls)
     create_stair_tile(export_stairs)
     create_prop(export_props)
 
-    bpy.context.scene.render.engine = "BLENDER_EEVEE"
+    chosen_engine = set_compatible_render_engine()
     bpy.context.scene.render.film_transparent = True
 
+    set_collection_render_visibility(
+        {
+            "Factory_Rig",
+            "Factory_Reference",
+            "Export_Floor_Plain",
+            "Export_Floor_Half",
+            "Export_Walls",
+            "Export_Stairs",
+            "Export_Props",
+        }
+    )
     save_scene(OUTPUT_BLEND_PATH)
 
     return {
@@ -284,7 +365,8 @@ def build_sample_scene() -> dict:
         "collections": [
             "Factory_Rig",
             "Factory_Reference",
-            "Export_Floor",
+            "Export_Floor_Plain",
+            "Export_Floor_Half",
             "Export_Walls",
             "Export_Stairs",
             "Export_Props",
@@ -292,14 +374,16 @@ def build_sample_scene() -> dict:
         ],
         "export_objects": [
             "001_floor_plain",
+            "002_floor_half",
             "101_wall_straight",
             "201_stair_up",
             "301_prop_switch",
         ],
+        "floor_height_mode": "static_full_and_half",
         "cameras": [
             "IsoCamera",
-            "SquareCamera",
         ],
+        "render_engine": chosen_engine,
     }
 
 
