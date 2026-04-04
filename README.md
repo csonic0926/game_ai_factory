@@ -64,6 +64,13 @@ Important canonical floor pair:
 - `001_floor_plain` = full-height reference
 - `002_floor_half` = half-height reference
 
+Current sample reference-pair specs point at the manually corrected scaled references:
+
+- `examples/workflow_references/floor_height_pair/floor_full_k_scaled.png`
+- `examples/workflow_references/floor_height_pair/floor_half_k_scaled.png`
+
+This lets the workflow use artist-adjusted framing instead of the raw Blender render when needed.
+
 ## Low-level Blender commands
 
 Validate the sample scene:
@@ -97,7 +104,13 @@ python3 itf.py generate-reference-pair \
   --spec examples/reference_pair_workflow/pixel_grass_demo.spec.json
 ```
 
-The sample spec now demonstrates `background.mode = "color_key"`, which asks Gemini for a flat `#FF00FF` background, removes that color locally, and only then runs the geometry checks.
+The sample specs now demonstrate `background.mode = "color_key"` with a two-color chroma-key policy:
+
+- Gemini must choose between `#FF00FF` and `#00FF00`
+- the choice is guided by the **top surface / upper silhouette / ground material colors**, not by the lower side walls
+- green-dominant top surfaces such as grass should prefer `#FF00FF`
+
+The workflow then removes the chosen key color locally, generates six cleanup variants, runs geometry/edge selection, and exports the selected normalized final tile.
 
 Validate prepared/generated output later:
 
@@ -105,6 +118,16 @@ Validate prepared/generated output later:
 python3 itf.py validate-reference-pair \
   --run-root output/reference_pair_runs/pixel_grass_demo
 ```
+
+Select the best cleanup variant and export the normalized final tile:
+
+```bash
+python3 itf.py select-reference-pair-variant \
+  --run-root output/reference_pair_runs/pixel_grass_demo \
+  --variant full
+```
+
+The final export includes a post-scale edge safeguard: after scaling, the selector checks key left-edge pixels such as `(0,32)` and `(0,33)` and applies a small corrective nudge when needed.
 
 For a real Gemini/Nano Banana run:
 
