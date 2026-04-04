@@ -132,6 +132,43 @@ def normalize_rgba_image(image: Image.Image, *, target_size: int = TARGET_SIZE) 
     return normalized, bbox
 
 
+def raw_alpha_bbox(image: Image.Image) -> tuple[int, int, int, int]:
+    bbox = alpha_mask(image).getbbox()
+    if bbox is None:
+        raise VariantSelectorError("Image has no opaque pixels.")
+    return bbox
+
+
+def render_final_output(
+    image: Image.Image,
+    *,
+    reference_path: Path,
+    target_size: int = TARGET_SIZE,
+) -> Image.Image:
+    reference_image = Image.open(reference_path).convert("RGBA")
+    ref_bbox = raw_alpha_bbox(reference_image)
+    ref_left, ref_top, ref_right_exclusive, ref_bottom_exclusive = ref_bbox
+    target_left = int(round(ref_left * target_size / reference_image.width))
+    target_top = int(round(ref_top * target_size / reference_image.height))
+    target_right = int(round(ref_right_exclusive * target_size / reference_image.width))
+    target_bottom = int(round(ref_bottom_exclusive * target_size / reference_image.height))
+    target_width = max(1, target_right - target_left)
+    target_height = max(1, target_bottom - target_top)
+
+    src_left, src_top, src_right_exclusive, src_bottom_exclusive = raw_alpha_bbox(image)
+    cropped = image.crop((src_left, src_top, src_right_exclusive, src_bottom_exclusive))
+    scale = min(target_width / cropped.width, target_height / cropped.height)
+    resized_width = max(1, int(round(cropped.width * scale)))
+    resized_height = max(1, int(round(cropped.height * scale)))
+    resized = cropped.resize((resized_width, resized_height), Image.NEAREST)
+
+    paste_x = target_left + max(0, (target_width - resized_width) // 2)
+    paste_y = target_top + max(0, (target_height - resized_height) // 2)
+    canvas = Image.new("RGBA", (target_size, target_size), (0, 0, 0, 0))
+    canvas.alpha_composite(resized, (paste_x, paste_y))
+    return canvas
+
+
 def mask_area(mask: Image.Image) -> int:
     histogram = mask.histogram()
     return int(histogram[255]) if len(histogram) > 255 else 0
@@ -268,10 +305,16 @@ def top_boundary_key_contamination(candidate_path: Path, *, active_key_color: st
     }
 
 
-def score_candidate(candidate_path: Path, reference_mask_normalized: Image.Image, reference_anchors: dict[str, tuple[int, int] | None], output_dir: Path) -> dict[str, Any]:
+def score_candidate(
+    candidate_path: Path,
+    reference_path: Path,
+    reference_mask_normalized: Image.Image,
+    reference_anchors: dict[str, tuple[int, int] | None],
+    output_dir: Path,
+) -> dict[str, Any]:
     image = Image.open(candidate_path).convert("RGBA")
     candidate_mask_normalized, bbox = normalize_mask(alpha_mask(image))
-    candidate_rgba_normalized, _rgba_bbox = normalize_rgba_image(image)
+    candidate_rgba_normalized = render_final_output(image, reference_path=reference_path)
     candidate_anchors = mask_anchors(candidate_mask_normalized)
     candidate_iou = iou(reference_mask_normalized, candidate_mask_normalized)
     candidate_anchor_error = anchor_error(candidate_anchors, reference_anchors)
@@ -411,7 +454,10 @@ def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, A
     output_dir.mkdir(parents=True, exist_ok=True)
     reference_mask_normalized.save(output_dir / "reference.normalized.png")
 
-    scored = [score_candidate(candidate, reference_mask_normalized, reference_anchors, output_dir) for candidate in candidates]
+    scored = [
+        score_candidate(candidate, reference_path, reference_mask_normalized, reference_anchors, output_dir)
+        for candidate in candidates
+    ]
     candidate_by_name = {Path(candidate["path"]).stem.replace(f"generated_{variant}.", ""): candidate for candidate in scored}
     ordered_names = [name for name in KNOWN_VARIANTS if name in candidate_by_name]
     ordered_candidates = [candidate_by_name[name] for name in ordered_names]
