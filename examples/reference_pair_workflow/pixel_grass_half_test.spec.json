@@ -1,0 +1,35 @@
+{
+  "schema_version": "reference_pair_workflow_v1",
+  "theme": "pixel grass demo",
+  "run_id": "pixel_grass_half_test",
+  "output_root": "../../output/reference_pair_runs",
+  "variants": [
+    "half"
+  ],
+  "provider": {
+    "name": "nano_banana"
+  },
+  "background": {
+    "mode": "color_key",
+    "prompt_color": "#FF00FF",
+    "fallback_colors": [
+      "#00FF00"
+    ],
+    "tolerance": 24
+  },
+  "reference_pair": {
+    "full": "../workflow_references/floor_height_pair/floor_full.png",
+    "half": "../workflow_references/floor_height_pair/floor_half.png"
+  },
+  "prompt": "pixel art style grass tile, a small amount of readable grass blades growing on the top face, with the lower half rendered as brown dirt/soil",
+  "negative_prompt": "no scene background, no cast shadow, no extra props, no border, no text, no watermark, no shape deformation",
+  "generator_notes": "keep the grass inside the tile silhouette; preserve the same tile family between full and half",
+  "validation": {
+    "iou_soft_fail": 0.92,
+    "iou_hard_fail": 0.8,
+    "bbox_delta_soft_fail": 6,
+    "bbox_delta_hard_fail": 16,
+    "pair_height_ratio_soft_fail": 0.08,
+    "pair_height_ratio_hard_fail": 0.16
+  }
+}

@@ -18,17 +18,34 @@ KNOWN_VARIANTS = (
     "05_aggressive",
     "06_aggressive_plus",
 )
-MIN_NORMALIZED_IOU = 0.94
-MAX_ANCHOR_ERROR = 3.0
-MAX_SHOULDER_INSET = 2
-MAX_MID_INSET = 2
-MAX_BOTTOM_TIP_DRIFT = 3
-MIN_EFFECTIVE_SCALE_RATIO = 0.88
-TOP_BOUNDARY_SCAN_RATIO = 0.35
-TOP_BOUNDARY_KEY_SIMILARITY_FAIL = 0.55
-TOP_BOUNDARY_KEY_PIXEL_RATIO_FAIL = 0.03
-TOP_BOUNDARY_KEY_PIXEL_COUNT_FAIL = 8
-TOP_BOUNDARY_KEY_RUN_FAIL = 3
+FAIL_RULES_BY_VARIANT = {
+    "full": {
+        "min_normalized_iou": 0.94,
+        "max_anchor_error": 3.0,
+        "max_shoulder_inset": 2,
+        "max_mid_inset": 2,
+        "max_bottom_tip_drift": 3,
+        "min_effective_scale_ratio": 0.88,
+        "top_boundary_scan_ratio": 0.35,
+        "top_boundary_key_similarity_fail": 0.55,
+        "top_boundary_key_pixel_ratio_fail": 0.03,
+        "top_boundary_key_pixel_count_fail": 8,
+        "top_boundary_key_run_fail": 3,
+    },
+    "half": {
+        "min_normalized_iou": 0.91,
+        "max_anchor_error": 3.0,
+        "max_shoulder_inset": 2,
+        "max_mid_inset": 2,
+        "max_bottom_tip_drift": 3,
+        "min_effective_scale_ratio": 0.88,
+        "top_boundary_scan_ratio": 0.35,
+        "top_boundary_key_similarity_fail": 0.55,
+        "top_boundary_key_pixel_ratio_fail": 0.03,
+        "top_boundary_key_pixel_count_fail": 8,
+        "top_boundary_key_run_fail": 3,
+    },
+}
 
 
 class VariantSelectorError(RuntimeError):
@@ -188,12 +205,17 @@ def overlay_preview(reference_mask: Image.Image, candidate_mask: Image.Image, ou
     canvas.save(output_path)
 
 
-def top_boundary_key_contamination(candidate_path: Path, *, active_key_color: str) -> dict[str, Any]:
+def top_boundary_key_contamination(candidate_path: Path, *, active_key_color: str, fail_rules: dict[str, float | int]) -> dict[str, Any]:
     image = Image.open(candidate_path).convert("RGBA")
     mask = alpha_mask(image)
     bbox = effective_bbox(mask)
     key_color = parse_hex_color(active_key_color)
-    scan_limit = bbox.top + max(1, int(round(bbox.height * TOP_BOUNDARY_SCAN_RATIO)))
+    scan_ratio = float(fail_rules["top_boundary_scan_ratio"])
+    similarity_fail = float(fail_rules["top_boundary_key_similarity_fail"])
+    pixel_ratio_fail = float(fail_rules["top_boundary_key_pixel_ratio_fail"])
+    pixel_count_fail = int(fail_rules["top_boundary_key_pixel_count_fail"])
+    run_fail = int(fail_rules["top_boundary_key_run_fail"])
+    scan_limit = bbox.top + max(1, int(round(bbox.height * scan_ratio)))
     contaminated_pixels = 0
     scanned_pixels = 0
     max_contiguous_run = 0
@@ -212,7 +234,7 @@ def top_boundary_key_contamination(candidate_path: Path, *, active_key_color: st
             current_run = 0
             continue
         scanned_pixels += 1
-        if first_hit["similarity"] >= TOP_BOUNDARY_KEY_SIMILARITY_FAIL:
+        if first_hit["similarity"] >= similarity_fail:
             contaminated_pixels += 1
             current_run += 1
             max_contiguous_run = max(max_contiguous_run, current_run)
@@ -223,9 +245,9 @@ def top_boundary_key_contamination(candidate_path: Path, *, active_key_color: st
     strongest_samples.sort(key=lambda item: item["similarity"], reverse=True)
     contamination_ratio = contaminated_pixels / scanned_pixels if scanned_pixels else 0.0
     fail = (
-        contaminated_pixels >= TOP_BOUNDARY_KEY_PIXEL_COUNT_FAIL
-        or contamination_ratio >= TOP_BOUNDARY_KEY_PIXEL_RATIO_FAIL
-        or max_contiguous_run >= TOP_BOUNDARY_KEY_RUN_FAIL
+        contaminated_pixels >= pixel_count_fail
+        or contamination_ratio >= pixel_ratio_fail
+        or max_contiguous_run >= run_fail
     )
     return {
         "active_key_color": active_key_color,
@@ -233,7 +255,7 @@ def top_boundary_key_contamination(candidate_path: Path, *, active_key_color: st
         "contaminated_pixels": contaminated_pixels,
         "contamination_ratio": contamination_ratio,
         "max_contiguous_run": max_contiguous_run,
-        "similarity_threshold": TOP_BOUNDARY_KEY_SIMILARITY_FAIL,
+        "similarity_threshold": similarity_fail,
         "fail": fail,
         "strongest_samples": strongest_samples[:12],
     }
@@ -275,19 +297,20 @@ def evaluate_fail_rules(
     reference_effective_bbox: EffectiveBBox,
     reference_anchors: dict[str, tuple[int, int] | None],
     active_key_color: str,
+    fail_rules: dict[str, float | int],
 ) -> list[str]:
     fail_reasons: list[str] = []
-    if candidate["normalized_iou"] < MIN_NORMALIZED_IOU:
+    if candidate["normalized_iou"] < float(fail_rules["min_normalized_iou"]):
         fail_reasons.append("normalized_iou_too_low")
-    if candidate["anchor_error"] > MAX_ANCHOR_ERROR:
+    if candidate["anchor_error"] > float(fail_rules["max_anchor_error"]):
         fail_reasons.append("anchor_error_too_high")
 
     bbox = candidate["effective_bbox"]
     width_ratio = bbox["width"] / reference_effective_bbox.width
     height_ratio = bbox["height"] / reference_effective_bbox.height
-    if width_ratio < MIN_EFFECTIVE_SCALE_RATIO:
+    if width_ratio < float(fail_rules["min_effective_scale_ratio"]):
         fail_reasons.append("effective_width_too_small")
-    if height_ratio < MIN_EFFECTIVE_SCALE_RATIO:
+    if height_ratio < float(fail_rules["min_effective_scale_ratio"]):
         fail_reasons.append("effective_height_too_small")
 
     anchors = candidate["anchors"]
@@ -311,18 +334,18 @@ def evaluate_fail_rules(
     ref_right_mid = reference_anchors["right_mid"]
     ref_bottom_tip = reference_anchors["bottom_tip"]
 
-    if left_shoulder is not None and ref_left_shoulder is not None and left_shoulder[0] - ref_left_shoulder[0] > MAX_SHOULDER_INSET:
+    if left_shoulder is not None and ref_left_shoulder is not None and left_shoulder[0] - ref_left_shoulder[0] > int(fail_rules["max_shoulder_inset"]):
         fail_reasons.append("left_shoulder_inset_too_large")
-    if right_shoulder is not None and ref_right_shoulder is not None and ref_right_shoulder[0] - right_shoulder[0] > MAX_SHOULDER_INSET:
+    if right_shoulder is not None and ref_right_shoulder is not None and ref_right_shoulder[0] - right_shoulder[0] > int(fail_rules["max_shoulder_inset"]):
         fail_reasons.append("right_shoulder_inset_too_large")
-    if left_mid is not None and ref_left_mid is not None and left_mid[0] - ref_left_mid[0] > MAX_MID_INSET:
+    if left_mid is not None and ref_left_mid is not None and left_mid[0] - ref_left_mid[0] > int(fail_rules["max_mid_inset"]):
         fail_reasons.append("left_mid_inset_too_large")
-    if right_mid is not None and ref_right_mid is not None and ref_right_mid[0] - right_mid[0] > MAX_MID_INSET:
+    if right_mid is not None and ref_right_mid is not None and ref_right_mid[0] - right_mid[0] > int(fail_rules["max_mid_inset"]):
         fail_reasons.append("right_mid_inset_too_large")
-    if bottom_tip is not None and ref_bottom_tip is not None and abs(bottom_tip[1] - ref_bottom_tip[1]) > MAX_BOTTOM_TIP_DRIFT:
+    if bottom_tip is not None and ref_bottom_tip is not None and abs(bottom_tip[1] - ref_bottom_tip[1]) > int(fail_rules["max_bottom_tip_drift"]):
         fail_reasons.append("bottom_tip_drift_too_large")
 
-    contamination = top_boundary_key_contamination(Path(candidate["path"]), active_key_color=active_key_color)
+    contamination = top_boundary_key_contamination(Path(candidate["path"]), active_key_color=active_key_color, fail_rules=fail_rules)
     candidate["top_boundary_contamination"] = contamination
     if contamination["fail"]:
         fail_reasons.append("top_boundary_key_contamination")
@@ -355,6 +378,9 @@ def fail_reason_cutoff_direction(fail_reasons: list[str]) -> str | None:
 
 
 def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, Any]:
+    if variant not in FAIL_RULES_BY_VARIANT:
+        raise VariantSelectorError(f"Unsupported variant '{variant}'.")
+    fail_rules = FAIL_RULES_BY_VARIANT[variant]
     request = load_json(run_root / "request" / "request.json")
     validation_path = run_root / "validation" / "validation.json"
     validation_payload = load_json(validation_path) if validation_path.exists() else {}
@@ -389,6 +415,7 @@ def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, A
             reference_effective_bbox=reference_bbox,
             reference_anchors=reference_anchors,
             active_key_color=active_key_color,
+            fail_rules=fail_rules,
         )
         candidate_name = Path(candidate["path"]).stem.replace(f"generated_{variant}.", "")
         base_fail_reasons_by_name[candidate_name] = fail_reasons
@@ -442,17 +469,17 @@ def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, A
         },
         "active_key_color": active_key_color,
         "fail_rule_thresholds": {
-            "min_normalized_iou": MIN_NORMALIZED_IOU,
-            "max_anchor_error": MAX_ANCHOR_ERROR,
-            "max_shoulder_inset": MAX_SHOULDER_INSET,
-            "max_mid_inset": MAX_MID_INSET,
-            "max_bottom_tip_drift": MAX_BOTTOM_TIP_DRIFT,
-            "min_effective_scale_ratio": MIN_EFFECTIVE_SCALE_RATIO,
-            "top_boundary_scan_ratio": TOP_BOUNDARY_SCAN_RATIO,
-            "top_boundary_key_similarity_fail": TOP_BOUNDARY_KEY_SIMILARITY_FAIL,
-            "top_boundary_key_pixel_ratio_fail": TOP_BOUNDARY_KEY_PIXEL_RATIO_FAIL,
-            "top_boundary_key_pixel_count_fail": TOP_BOUNDARY_KEY_PIXEL_COUNT_FAIL,
-            "top_boundary_key_run_fail": TOP_BOUNDARY_KEY_RUN_FAIL,
+            "min_normalized_iou": float(fail_rules["min_normalized_iou"]),
+            "max_anchor_error": float(fail_rules["max_anchor_error"]),
+            "max_shoulder_inset": int(fail_rules["max_shoulder_inset"]),
+            "max_mid_inset": int(fail_rules["max_mid_inset"]),
+            "max_bottom_tip_drift": int(fail_rules["max_bottom_tip_drift"]),
+            "min_effective_scale_ratio": float(fail_rules["min_effective_scale_ratio"]),
+            "top_boundary_scan_ratio": float(fail_rules["top_boundary_scan_ratio"]),
+            "top_boundary_key_similarity_fail": float(fail_rules["top_boundary_key_similarity_fail"]),
+            "top_boundary_key_pixel_ratio_fail": float(fail_rules["top_boundary_key_pixel_ratio_fail"]),
+            "top_boundary_key_pixel_count_fail": int(fail_rules["top_boundary_key_pixel_count_fail"]),
+            "top_boundary_key_run_fail": int(fail_rules["top_boundary_key_run_fail"]),
         },
         "pass_candidates": pass_candidates,
         "failed_candidates": failed_candidates,

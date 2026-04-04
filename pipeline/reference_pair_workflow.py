@@ -227,6 +227,14 @@ def compose_reference_sheet(full_image_path: Path, half_image_path: Path, output
 
 def build_generation_prompt(spec: dict[str, Any], *, height: str, use_reference_sheet: bool) -> str:
     role_text = "full-height cube tile" if height == "full" else "half-height cube tile"
+    height_sentence = (
+        "Full-height means a normal tall cube tile with the expected full vertical side depth. "
+        "Do not compress the side faces or turn it into a shallow slab. "
+        if height == "full"
+        else "Half-height means a shallow half-block slab: the visible side faces must be short, and the total visible tile height "
+        "should be clearly about half of a full-height cube with the same footprint. Do not generate a full-height cube, "
+        "do not use tall vertical side faces, and do not fake half-height by only changing texture."
+    )
     reference_rule = (
         "Use the supplied reference sheet for structure only (upper reference = full-height; lower reference = half-height). "
         if use_reference_sheet
@@ -260,6 +268,7 @@ def build_generation_prompt(spec: dict[str, Any], *, height: str, use_reference_
     return (
         f"Create one isometric game tile PNG as a {role_text}. "
         f"{reference_rule}"
+        f"{height_sentence}"
         f"For this output, match the {role_text} geometry exactly: keep camera angle, silhouette, perspective, "
         f"face visibility, footprint width, and overall proportions aligned to the corresponding reference. "
         "Do not add a scene, ground shadow, border, glow, extra objects, text, or watermark. "
@@ -782,6 +791,25 @@ def write_preview_variants(image: Image.Image, output_path: Path, variant_name: 
     return preview_paths
 
 
+def mirror_variant_pool_to_generated(run_root: Path, *, variant: str, preprocessing_payload: dict[str, Any]) -> None:
+    generated_dir = run_root / "generated"
+    generated_dir.mkdir(parents=True, exist_ok=True)
+    variants_payload = preprocessing_payload.get("variants", {})
+    if not isinstance(variants_payload, dict):
+        return
+    for variant_name, variant_info in variants_payload.items():
+        if not isinstance(variant_info, dict):
+            continue
+        output_value = variant_info.get("output")
+        if not output_value:
+            continue
+        source_path = Path(str(output_value))
+        if not source_path.exists():
+            continue
+        destination_path = generated_dir / f"generated_{variant}.{variant_name}{source_path.suffix}"
+        shutil.copy2(source_path, destination_path)
+
+
 def apply_color_key_to_image(
     image_path: Path,
     output_path: Path,
@@ -1020,6 +1048,7 @@ def validate_reference_pair_run(run_root: Path, *, full_image: Path | None = Non
                 tolerance=int(background.get("tolerance", 24)),
                 emit_variant_pool=True,
             )
+            mirror_variant_pool_to_generated(run_root, variant="full", preprocessing_payload=preprocessing["full"])
         if "half" in variants:
             half_generated = run_root / "processed" / "generated_half.keyed.png"
             preprocessing["half"] = apply_color_key_to_image(
@@ -1030,6 +1059,7 @@ def validate_reference_pair_run(run_root: Path, *, full_image: Path | None = Non
                 tolerance=int(background.get("tolerance", 24)),
                 emit_variant_pool=True,
             )
+            mirror_variant_pool_to_generated(run_root, variant="half", preprocessing_payload=preprocessing["half"])
     if "full" in variants and not full_generated.exists():
         raise ReferencePairWorkflowError(f"Missing generated full image: {full_generated}")
     if "half" in variants and not half_generated.exists():
