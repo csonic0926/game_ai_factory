@@ -17,6 +17,7 @@ from pipeline.reference_pair_workflow import (
     validate_reference_pair_run,
 )
 from pipeline.sample_regression import snapshot_baseline, verify_baseline
+from pipeline.variant_selector import VariantSelectorError, select_variant_pool
 from pipeline.validation import (
     ValidationError,
     load_and_validate_config,
@@ -135,6 +136,13 @@ def parse_arguments() -> argparse.Namespace:
     ref_validate_parser.add_argument("--full-image", help="Override generated full image path")
     ref_validate_parser.add_argument("--half-image", help="Override generated half image path")
 
+    select_variant_parser = subparsers.add_parser(
+        "select-reference-pair-variant",
+        help="Score generated cleanup variants against normalized reference geometry",
+    )
+    select_variant_parser.add_argument("--run-root", required=True, help="Prepared reference-pair run root")
+    select_variant_parser.add_argument("--variant", default="full", choices=("full", "half"), help="Variant to score")
+
     return argument_parser.parse_args()
 
 
@@ -202,6 +210,16 @@ def command_validate(arguments: argparse.Namespace) -> int:
             command.append("--sample-scene=true")
         return run_subprocess(command)
 
+    return 0
+
+
+def command_select_reference_pair_variant(arguments: argparse.Namespace) -> int:
+    try:
+        result = select_variant_pool(Path(arguments.run_root).expanduser().resolve(), variant=arguments.variant)
+    except VariantSelectorError as error:
+        print(json.dumps({"ok": False, "mode": "select-reference-pair-variant", "error": str(error)}, indent=2))
+        return 1
+    print(json.dumps({"ok": True, "mode": "select-reference-pair-variant", "result": result}, indent=2))
     return 0
 
 
@@ -497,6 +515,8 @@ def main() -> None:
         raise SystemExit(command_generate_reference_pair(arguments))
     if arguments.command == "validate-reference-pair":
         raise SystemExit(command_validate_reference_pair(arguments))
+    if arguments.command == "select-reference-pair-variant":
+        raise SystemExit(command_select_reference_pair_variant(arguments))
 
     raise SystemExit(f"Unknown command: {arguments.command}")
 

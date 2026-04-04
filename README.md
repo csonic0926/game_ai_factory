@@ -4,7 +4,8 @@ Blender-first isometric tile factory focused on one workflow:
 
 1. render canonical tile references from Blender
 2. send those references to Gemini/Nano Banana
-3. validate the returned tile PNGs against the Blender-defined silhouettes
+3. optionally color-key the returned PNGs
+4. validate the processed tile PNGs against the Blender-defined silhouettes
 
 ## Main workflow
 
@@ -95,6 +96,8 @@ Auto-generate and validate:
 python3 itf.py generate-reference-pair \
   --spec examples/reference_pair_workflow/pixel_grass_demo.spec.json
 ```
+
+The sample spec now demonstrates `background.mode = "color_key"`, which asks Gemini for a flat `#FF00FF` background, removes that color locally, and only then runs the geometry checks.
 
 Validate prepared/generated output later:
 

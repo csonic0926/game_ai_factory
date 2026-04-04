@@ -7,6 +7,11 @@ This workflow uses two canonical render references:
 
 The references constrain **shape and camera**, while the prompt controls **style and surface detail**.
 
+The workflow now supports two background modes:
+
+- `transparent` — ask Gemini/Nano Banana for native transparency
+- `color_key` — ask for a flat chroma-key background such as `#FF00FF`, remove it locally, then run geometry validation on the keyed PNG
+
 By default, the workflow still generates a matched `full` + `half` pair, but the spec can now request only one variant:
 
 - `"variants": ["half"]`
@@ -28,6 +33,8 @@ This creates:
 - `refs/reference_pair_sheet.png`
 - `request/request.json`
 - one or more prompt files such as `request/prompt_half.txt`
+
+If `background.mode` is `color_key`, the prompt will explicitly request the configured flat background color.
 
 Use these files if you want to send the prompts/images to Gemini manually.
 
@@ -60,6 +67,8 @@ After Gemini returns images, save them to the prepared run directory:
 - `generated/generated_full.png` when `full` was requested
 - `generated/generated_half.png` when `half` was requested
 
+If the run uses `background.mode = "color_key"`, the validator will first create keyed copies under `processed/` and then run silhouette checks against those processed PNGs.
+
 Then run:
 
 ```bash
@@ -88,7 +97,7 @@ The validator writes:
 
 Per image:
 
-- transparent-background silhouette presence
+- transparent-background silhouette presence after optional color-key removal
 - silhouette IoU vs reference
 - bbox drift vs reference
 - likely full-canvas background fill

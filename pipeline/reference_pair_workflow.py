@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -114,6 +115,26 @@ def load_and_validate_spec(spec_path: Path) -> tuple[dict[str, Any], list[str]]:
     if validation_data is not None and not isinstance(validation_data, dict):
         raise ReferencePairWorkflowError("validation must be an object when provided.")
 
+    background_data = raw.get("background", {})
+    if background_data is not None and not isinstance(background_data, dict):
+        raise ReferencePairWorkflowError("background must be an object when provided.")
+    background_mode = str(background_data.get("mode", "transparent")).strip().lower() or "transparent"
+    if background_mode not in {"transparent", "color_key"}:
+        raise ReferencePairWorkflowError("background.mode must be one of: transparent, color_key")
+    prompt_color = str(background_data.get("prompt_color", "#FF00FF")).strip().upper() or "#FF00FF"
+    fallback_colors_raw = background_data.get("fallback_colors", ["#00FF00"])
+    if isinstance(fallback_colors_raw, str):
+        fallback_colors_raw = [fallback_colors_raw]
+    if not isinstance(fallback_colors_raw, list):
+        raise ReferencePairWorkflowError("background.fallback_colors must be an array when provided.")
+    fallback_colors = [require_non_empty_string(color, "background.fallback_colors[]").upper() for color in fallback_colors_raw]
+    parse_hex_color(prompt_color)
+    for fallback_color in fallback_colors:
+        parse_hex_color(fallback_color)
+    color_key_tolerance = int(background_data.get("tolerance", 24))
+    if color_key_tolerance < 0 or color_key_tolerance > 255:
+        raise ReferencePairWorkflowError("background.tolerance must be between 0 and 255.")
+
     variants_raw = raw.get("variants", ["full", "half"])
     if not isinstance(variants_raw, list) or not variants_raw:
         raise ReferencePairWorkflowError("variants must be a non-empty array when provided.")
@@ -144,9 +165,15 @@ def load_and_validate_spec(spec_path: Path) -> tuple[dict[str, Any], list[str]]:
         "reference_intent": str(raw.get("reference_intent", "")).strip()
         or (
             "Use the references to preserve camera angle, silhouette, proportions, face visibility, "
-            "height relationship, and transparent-background single-tile framing."
+            "height relationship, and single-tile framing."
         ),
         "generator_notes": str(raw.get("generator_notes", "")).strip(),
+        "background": {
+            "mode": background_mode,
+            "prompt_color": prompt_color,
+            "fallback_colors": fallback_colors,
+            "tolerance": color_key_tolerance,
+        },
         "validation": {
             "iou_soft_fail": float(validation_data.get("iou_soft_fail", 0.92)),
             "iou_hard_fail": float(validation_data.get("iou_hard_fail", 0.80)),
@@ -173,6 +200,7 @@ def build_run_directories(run_root: Path) -> dict[str, Path]:
         "refs": run_root / "refs",
         "request": run_root / "request",
         "generated": run_root / "generated",
+        "processed": run_root / "processed",
         "validation": run_root / "validation",
         "logs": run_root / "logs",
     }
@@ -208,13 +236,35 @@ def build_generation_prompt(spec: dict[str, Any], *, height: str, use_reference_
     extra_negative = f" Negative constraints: {negative_prompt}" if negative_prompt else ""
     generator_notes = spec.get("generator_notes", "")
     generator_sentence = f" Extra notes: {generator_notes}" if generator_notes else ""
+    background = spec.get("background", {})
+    if background.get("mode") == "color_key":
+        allowed_colors = [background["prompt_color"], *background.get("fallback_colors", [])]
+        allowed_colors_text = ", ".join(allowed_colors)
+        background_sentence = (
+            f" Use a single flat solid background color chosen from this allowed set: {allowed_colors_text}. "
+            "Estimate the RGB colors that will appear on the visible outer boundary of the generated tile silhouette, "
+            "then choose the allowed chroma-key color with the largest color-distance from those boundary RGB values. "
+            "Prefer the chroma key that is maximally separated from the tile edge colors and least likely to contaminate the tile edges. "
+            "After choosing one of the allowed colors, use that one single chosen color consistently behind the tile "
+            "for the entire canvas. This background is a temporary chroma-key mask only: no transparency, no gradient, "
+            "no lighting variation, no shadow, no vignette, and no extra colored backdrop elements. "
+            "The background must stay one exact uniform color across the whole non-tile area, with crisp edges and no contamination from the tile colors. "
+        )
+    else:
+        background_sentence = " Keep the tile centered in frame with transparent background. "
+    outline_sentence = (
+        " Do not add any outline, border stroke, rim line, sticker edge, comic contour, or icon-style contour around the tile silhouette. "
+        "Do not add a dark perimeter line between the tile and the background. "
+        "Edge pixels must read as the tile material itself, not as a separating frame."
+    )
     return (
-        f"Create one transparent-background isometric game tile PNG as a {role_text}. "
+        f"Create one isometric game tile PNG as a {role_text}. "
         f"{reference_rule}"
         f"For this output, match the {role_text} geometry exactly: keep camera angle, silhouette, perspective, "
         f"face visibility, footprint width, and overall proportions aligned to the corresponding reference. "
         "Do not add a scene, ground shadow, border, glow, extra objects, text, or watermark. "
-        "Keep the tile centered in frame with transparent background. "
+        f"{background_sentence}"
+        f"{outline_sentence}"
         f"Reference intent: {spec['reference_intent']} "
         f"Art direction: {spec['prompt']}."
         f"{extra_negative}{generator_sentence}"
@@ -270,6 +320,7 @@ def prepare_reference_pair_run(spec_path: Path) -> dict[str, Any]:
         "generation_inputs": generation_inputs,
         "expected_outputs": expected_outputs,
         "prompts": prompts,
+        "background": spec["background"],
         "validation": spec["validation"],
         "warnings": warnings,
     }
@@ -335,22 +386,33 @@ def generate_reference_pair(spec_path: Path) -> dict[str, Any]:
     request_payload = load_json(run_root / "request" / "request.json")
     provider_name = request_payload["provider"]["name"]
     variants: list[str] = request_payload.get("variants", ["full", "half"])
+    background = request_payload.get("background", {"mode": "transparent"})
 
     generation_logs: dict[str, Any] = {}
     generated_paths: dict[str, str] = {}
     for variant in variants:
         output_path = run_root / "generated" / f"generated_{variant}.png"
+        raw_output_path = run_root / "generated" / f"generated_{variant}.raw.png"
         reference_image = Path(request_payload["references"][variant])
         generated_paths[variant] = str(output_path)
         if provider_name == "mock":
-            shutil.copy2(reference_image, output_path)
+            shutil.copy2(reference_image, raw_output_path if background.get("mode") == "color_key" else output_path)
             generation_logs[variant] = {"provider": "mock", "copied_from": str(reference_image)}
         else:
             generation_logs[variant] = generate_with_provider(
                 provider_name=provider_name,
                 prompt_text=request_payload["prompts"][variant],
                 reference_image=Path(request_payload["generation_inputs"][variant]),
-                output_path=output_path,
+                output_path=raw_output_path if background.get("mode") == "color_key" else output_path,
+            )
+        if background.get("mode") == "color_key":
+            generation_logs[variant]["color_key"] = apply_color_key_to_image(
+                raw_output_path,
+                output_path,
+                prompt_color=str(background.get("prompt_color", "#FF00FF")),
+                fallback_colors=list(background.get("fallback_colors", ["#00FF00"])),
+                tolerance=int(background.get("tolerance", 24)),
+                emit_variant_pool=False,
             )
 
     write_json(run_root / "logs" / "generate.json", {"ok": True, "generated_at": now_iso(), "results": generation_logs})
@@ -366,6 +428,423 @@ def generate_reference_pair(spec_path: Path) -> dict[str, Any]:
 def alpha_mask(image: Image.Image) -> Image.Image:
     alpha = image.getchannel("A")
     return alpha.point(lambda value: 255 if value >= ALPHA_THRESHOLD else 0, mode="L")
+
+
+def parse_hex_color(value: str) -> tuple[int, int, int]:
+    normalized = value.strip().lstrip("#")
+    if len(normalized) != 6:
+        raise ReferencePairWorkflowError(f"Invalid hex color '{value}'. Expected #RRGGBB.")
+    try:
+        return tuple(int(normalized[index : index + 2], 16) for index in range(0, 6, 2))  # type: ignore[return-value]
+    except ValueError as error:
+        raise ReferencePairWorkflowError(f"Invalid hex color '{value}'. Expected #RRGGBB.") from error
+
+
+def pixel_matches_any_key(pixel: tuple[int, int, int, int], key_colors: list[tuple[int, int, int]], tolerance: int) -> bool:
+    red, green, blue, _alpha = pixel
+    for key_red, key_green, key_blue in key_colors:
+        if (
+            abs(red - key_red) <= tolerance
+            and abs(green - key_green) <= tolerance
+            and abs(blue - key_blue) <= tolerance
+        ):
+            return True
+    return False
+
+
+def color_key_connected_background_mask(
+    image: Image.Image,
+    *,
+    key_colors: list[tuple[int, int, int]],
+    tolerance: int,
+) -> Image.Image:
+    rgba = image.convert("RGBA")
+    width, height = rgba.size
+    pixels = rgba.load()
+    mask = Image.new("L", rgba.size, 0)
+    mask_pixels = mask.load()
+    queue: deque[tuple[int, int]] = deque()
+
+    def enqueue_if_background(x: int, y: int) -> None:
+        if mask_pixels[x, y] != 0:
+            return
+        if not pixel_matches_any_key(pixels[x, y], key_colors, tolerance):
+            return
+        mask_pixels[x, y] = 255
+        queue.append((x, y))
+
+    for x in range(width):
+        enqueue_if_background(x, 0)
+        enqueue_if_background(x, height - 1)
+    for y in range(height):
+        enqueue_if_background(0, y)
+        enqueue_if_background(width - 1, y)
+
+    while queue:
+        x, y = queue.popleft()
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            next_x = x + dx
+            next_y = y + dy
+            if 0 <= next_x < width and 0 <= next_y < height:
+                enqueue_if_background(next_x, next_y)
+    return mask
+
+
+def color_distance(rgb_a: tuple[int, int, int], rgb_b: tuple[int, int, int]) -> float:
+    return (
+        (rgb_a[0] - rgb_b[0]) ** 2
+        + (rgb_a[1] - rgb_b[1]) ** 2
+        + (rgb_a[2] - rgb_b[2]) ** 2
+    ) ** 0.5
+
+
+def color_key_similarity(rgb: tuple[int, int, int], key_color: tuple[int, int, int]) -> float:
+    max_distance = (3 * (255**2)) ** 0.5
+    return max(0.0, 1.0 - (color_distance(rgb, key_color) / max_distance))
+
+
+def best_key_color_match(
+    rgb: tuple[int, int, int],
+    key_colors: list[tuple[int, int, int]],
+) -> tuple[tuple[int, int, int], float]:
+    best_color = key_colors[0]
+    best_similarity = color_key_similarity(rgb, best_color)
+    for key_color in key_colors[1:]:
+        similarity = color_key_similarity(rgb, key_color)
+        if similarity > best_similarity:
+            best_color = key_color
+            best_similarity = similarity
+    return best_color, best_similarity
+
+
+def detect_active_key_color(
+    image: Image.Image,
+    *,
+    key_colors: list[tuple[int, int, int]],
+) -> tuple[tuple[int, int, int], dict[str, Any]]:
+    rgba = image.convert("RGBA")
+    width, height = rgba.size
+    pixels = rgba.load()
+    scores = {key_color: 0.0 for key_color in key_colors}
+    sample_count = 0
+
+    def sample_pixel(x: int, y: int) -> None:
+        nonlocal sample_count
+        red, green, blue, _alpha = pixels[x, y]
+        rgb = (red, green, blue)
+        for key_color in key_colors:
+            scores[key_color] += color_key_similarity(rgb, key_color)
+        sample_count += 1
+
+    for x in range(width):
+        sample_pixel(x, 0)
+        sample_pixel(x, height - 1)
+    for y in range(1, height - 1):
+        sample_pixel(0, y)
+        sample_pixel(width - 1, y)
+
+    best_color = max(scores, key=scores.get)
+    normalized_scores = {
+        "#{:02X}{:02X}{:02X}".format(*key_color): (scores[key_color] / sample_count if sample_count else 0.0)
+        for key_color in key_colors
+    }
+    return best_color, {
+        "detected_active_key_color": "#{:02X}{:02X}{:02X}".format(*best_color),
+        "border_similarity_scores": normalized_scores,
+        "border_sample_count": sample_count,
+    }
+
+
+def opaque_edge_distance(alpha: Image.Image, *, max_distance: int) -> list[list[int | None]]:
+    width, height = alpha.size
+    alpha_pixels = alpha.load()
+    distances: list[list[int | None]] = [[None for _ in range(width)] for _ in range(height)]
+    queue: deque[tuple[int, int]] = deque()
+
+    for y in range(height):
+        for x in range(width):
+            if alpha_pixels[x, y] == 0:
+                continue
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx = x + dx
+                ny = y + dy
+                if nx < 0 or nx >= width or ny < 0 or ny >= height or alpha_pixels[nx, ny] == 0:
+                    distances[y][x] = 1
+                    queue.append((x, y))
+                    break
+
+    while queue:
+        x, y = queue.popleft()
+        current_distance = distances[y][x]
+        if current_distance is None or current_distance >= max_distance:
+            continue
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx = x + dx
+            ny = y + dy
+            if nx < 0 or nx >= width or ny < 0 or ny >= height:
+                continue
+            if alpha_pixels[nx, ny] == 0 or distances[ny][nx] is not None:
+                continue
+            distances[ny][nx] = current_distance + 1
+            queue.append((nx, ny))
+    return distances
+
+
+def average_neighbor_color(
+    pixels: Any,
+    alpha_pixels: Any,
+    edge_distances: list[list[int | None]],
+    *,
+    center_x: int,
+    center_y: int,
+    min_edge_distance: int,
+    search_radius: int,
+    key_colors: list[tuple[int, int, int]],
+) -> tuple[int, int, int] | None:
+    width = len(edge_distances[0]) if edge_distances else 0
+    height = len(edge_distances)
+    total_red = 0
+    total_green = 0
+    total_blue = 0
+    count = 0
+    for dy in range(-search_radius, search_radius + 1):
+        y = center_y + dy
+        if y < 0 or y >= height:
+            continue
+        for dx in range(-search_radius, search_radius + 1):
+            x = center_x + dx
+            if x < 0 or x >= width:
+                continue
+            if dx == 0 and dy == 0:
+                continue
+            if alpha_pixels[x, y] == 0:
+                continue
+            neighbor_distance = edge_distances[y][x]
+            if neighbor_distance is None or neighbor_distance < min_edge_distance:
+                continue
+            red, green, blue, _alpha = pixels[x, y]
+            _matched_key, similarity = best_key_color_match((red, green, blue), key_colors)
+            if similarity > 0.55:
+                continue
+            total_red += red
+            total_green += green
+            total_blue += blue
+            count += 1
+    if count == 0:
+        return None
+    return (round(total_red / count), round(total_green / count), round(total_blue / count))
+
+
+def despill_key_fringe(
+    image: Image.Image,
+    *,
+    key_colors: list[tuple[int, int, int]],
+    max_edge_distance: int = 7,
+    delete_similarity_threshold: float = 0.48,
+    recolor_similarity_threshold: float = 0.18,
+    neighbor_search_radius: int = 5,
+    passes: int = 3,
+) -> tuple[Image.Image, dict[str, Any]]:
+    result = image.convert("RGBA").copy()
+    pixels = result.load()
+    alpha = result.getchannel("A")
+    alpha_pixels = alpha.load()
+    edge_distances = opaque_edge_distance(alpha, max_distance=max_edge_distance + neighbor_search_radius)
+    changed_pixels = 0
+    deleted_pixels = 0
+    recolored_pixels = 0
+
+    for _pass_index in range(passes):
+        for y in range(result.height):
+            for x in range(result.width):
+                if alpha_pixels[x, y] == 0:
+                    continue
+                edge_distance = edge_distances[y][x]
+                if edge_distance is None or edge_distance > max_edge_distance:
+                    continue
+                red, green, blue, alpha_value = pixels[x, y]
+                matched_key, similarity = best_key_color_match((red, green, blue), key_colors)
+                if similarity < recolor_similarity_threshold:
+                    continue
+                if similarity >= delete_similarity_threshold:
+                    pixels[x, y] = (red, green, blue, 0)
+                    alpha_pixels[x, y] = 0
+                    changed_pixels += 1
+                    deleted_pixels += 1
+                    continue
+                neighbor_color = average_neighbor_color(
+                    pixels,
+                    alpha_pixels,
+                    edge_distances,
+                    center_x=x,
+                    center_y=y,
+                    min_edge_distance=edge_distance + 1,
+                    search_radius=neighbor_search_radius,
+                    key_colors=key_colors,
+                )
+                if neighbor_color is None:
+                    continue
+                if neighbor_color != (red, green, blue):
+                    pixels[x, y] = (neighbor_color[0], neighbor_color[1], neighbor_color[2], alpha_value)
+                    changed_pixels += 1
+                    recolored_pixels += 1
+        alpha = result.getchannel("A")
+        alpha_pixels = alpha.load()
+        edge_distances = opaque_edge_distance(alpha, max_distance=max_edge_distance + neighbor_search_radius)
+
+    return result, {
+        "despill_enabled": True,
+        "key_colors": ["#{:02X}{:02X}{:02X}".format(*key_color) for key_color in key_colors],
+        "max_edge_distance": max_edge_distance,
+        "delete_similarity_threshold": delete_similarity_threshold,
+        "recolor_similarity_threshold": recolor_similarity_threshold,
+        "neighbor_search_radius": neighbor_search_radius,
+        "passes": passes,
+        "changed_pixels": changed_pixels,
+        "deleted_pixels": deleted_pixels,
+        "recolored_pixels": recolored_pixels,
+        "mode": "delete_near_purple_else_recolor_to_edge",
+    }
+
+
+COLOR_KEY_VARIANT_SPECS = [
+    {
+        "name": "01_conservative",
+        "label": "Conservative",
+        "max_edge_distance": 4,
+        "delete_similarity_threshold": 0.60,
+        "recolor_similarity_threshold": 0.26,
+        "neighbor_search_radius": 4,
+        "passes": 2,
+        "is_default": False,
+    },
+    {
+        "name": "02_conservative_plus",
+        "label": "Conservative+",
+        "max_edge_distance": 5,
+        "delete_similarity_threshold": 0.56,
+        "recolor_similarity_threshold": 0.24,
+        "neighbor_search_radius": 4,
+        "passes": 2,
+        "is_default": False,
+    },
+    {
+        "name": "03_balanced",
+        "label": "Balanced",
+        "max_edge_distance": 7,
+        "delete_similarity_threshold": 0.48,
+        "recolor_similarity_threshold": 0.18,
+        "neighbor_search_radius": 5,
+        "passes": 3,
+        "is_default": True,
+    },
+    {
+        "name": "04_balanced_plus",
+        "label": "Balanced+",
+        "max_edge_distance": 8,
+        "delete_similarity_threshold": 0.46,
+        "recolor_similarity_threshold": 0.16,
+        "neighbor_search_radius": 5,
+        "passes": 3,
+        "is_default": False,
+    },
+    {
+        "name": "05_aggressive",
+        "label": "Aggressive",
+        "max_edge_distance": 9,
+        "delete_similarity_threshold": 0.42,
+        "recolor_similarity_threshold": 0.14,
+        "neighbor_search_radius": 6,
+        "passes": 4,
+        "is_default": False,
+    },
+    {
+        "name": "06_aggressive_plus",
+        "label": "Aggressive+",
+        "max_edge_distance": 10,
+        "delete_similarity_threshold": 0.39,
+        "recolor_similarity_threshold": 0.12,
+        "neighbor_search_radius": 6,
+        "passes": 4,
+        "is_default": False,
+    },
+]
+
+
+def write_preview_variants(image: Image.Image, output_path: Path, variant_name: str) -> dict[str, str]:
+    preview_paths: dict[str, str] = {}
+    for background_rgba, suffix in (((240, 240, 240, 255), "light"), ((32, 32, 32, 255), "dark")):
+        canvas = Image.new("RGBA", image.size, background_rgba)
+        canvas.alpha_composite(image)
+        preview_path = output_path.with_name(f"{output_path.stem}.{variant_name}.preview_{suffix}{output_path.suffix}")
+        canvas.save(preview_path)
+        preview_paths[suffix] = str(preview_path)
+    return preview_paths
+
+
+def apply_color_key_to_image(
+    image_path: Path,
+    output_path: Path,
+    *,
+    prompt_color: str,
+    fallback_colors: list[str],
+    tolerance: int,
+    emit_variant_pool: bool = False,
+) -> dict[str, Any]:
+    image = Image.open(image_path).convert("RGBA")
+    colors = [parse_hex_color(prompt_color), *(parse_hex_color(color) for color in fallback_colors)]
+    background_mask = color_key_connected_background_mask(image, key_colors=colors, tolerance=tolerance)
+    active_key_color, detection_stats = detect_active_key_color(image, key_colors=colors)
+    masked_result = image.copy()
+    masked_result.putalpha(ImageChops.subtract(masked_result.getchannel("A"), background_mask))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if not emit_variant_pool:
+        result, despill_stats = despill_key_fringe(masked_result, key_colors=[active_key_color])
+        result.save(output_path)
+        variants_payload = {}
+        selected_variant_name = "03_balanced"
+    else:
+        variants_payload = {}
+        selected_variant_name = "03_balanced"
+        for variant_spec in COLOR_KEY_VARIANT_SPECS:
+            variant_image, variant_stats = despill_key_fringe(
+                masked_result.copy(),
+                key_colors=[active_key_color],
+                max_edge_distance=int(variant_spec["max_edge_distance"]),
+                delete_similarity_threshold=float(variant_spec["delete_similarity_threshold"]),
+                recolor_similarity_threshold=float(variant_spec["recolor_similarity_threshold"]),
+                neighbor_search_radius=int(variant_spec["neighbor_search_radius"]),
+                passes=int(variant_spec["passes"]),
+            )
+            variant_output_path = output_path.with_name(f"{output_path.stem}.{variant_spec['name']}{output_path.suffix}")
+            variant_image.save(variant_output_path)
+            preview_paths = write_preview_variants(variant_image, output_path, str(variant_spec["name"]))
+            variants_payload[str(variant_spec["name"])] = {
+                "label": variant_spec["label"],
+                "output": str(variant_output_path),
+                "previews": preview_paths,
+                "despill": variant_stats,
+            }
+            if bool(variant_spec.get("is_default")):
+                selected_variant_name = str(variant_spec["name"])
+                variant_image.save(output_path)
+                despill_stats = variant_stats
+        if selected_variant_name not in variants_payload:
+            raise ReferencePairWorkflowError("No default color-key variant was configured.")
+
+    return {
+        "input": str(image_path),
+        "output": str(output_path),
+        "prompt_color": prompt_color,
+        "fallback_colors": fallback_colors,
+        "tolerance": tolerance,
+        "removed_background_pixels": mask_area(background_mask),
+        "active_key_color": detection_stats["detected_active_key_color"],
+        "key_color_detection": detection_stats,
+        "selected_variant": selected_variant_name,
+        "variants": variants_payload,
+        "despill": despill_stats,
+    }
 
 
 def mask_area(mask: Image.Image) -> int:
@@ -516,10 +995,41 @@ def validate_reference_pair_run(run_root: Path, *, full_image: Path | None = Non
     request_payload = load_json(run_root / "request" / "request.json")
     thresholds = request_payload["validation"]
     variants: list[str] = request_payload.get("variants", ["full", "half"])
+    background = request_payload.get("background", {"mode": "transparent"})
     full_reference = Path(request_payload["references"]["full"])
     half_reference = Path(request_payload["references"]["half"])
-    full_generated = full_image or run_root / "generated" / "generated_full.png"
-    half_generated = half_image or run_root / "generated" / "generated_half.png"
+    full_raw_default = run_root / "generated" / "generated_full.raw.png"
+    half_raw_default = run_root / "generated" / "generated_half.raw.png"
+    full_generated_input = full_image or (
+        full_raw_default if background.get("mode") == "color_key" and full_raw_default.exists() else run_root / "generated" / "generated_full.png"
+    )
+    half_generated_input = half_image or (
+        half_raw_default if background.get("mode") == "color_key" and half_raw_default.exists() else run_root / "generated" / "generated_half.png"
+    )
+    full_generated = full_generated_input
+    half_generated = half_generated_input
+    preprocessing: dict[str, Any] = {}
+    if background.get("mode") == "color_key":
+        if "full" in variants:
+            full_generated = run_root / "processed" / "generated_full.keyed.png"
+            preprocessing["full"] = apply_color_key_to_image(
+                full_generated_input,
+                full_generated,
+                prompt_color=str(background.get("prompt_color", "#FF00FF")),
+                fallback_colors=list(background.get("fallback_colors", ["#00FF00"])),
+                tolerance=int(background.get("tolerance", 24)),
+                emit_variant_pool=True,
+            )
+        if "half" in variants:
+            half_generated = run_root / "processed" / "generated_half.keyed.png"
+            preprocessing["half"] = apply_color_key_to_image(
+                half_generated_input,
+                half_generated,
+                prompt_color=str(background.get("prompt_color", "#FF00FF")),
+                fallback_colors=list(background.get("fallback_colors", ["#00FF00"])),
+                tolerance=int(background.get("tolerance", 24)),
+                emit_variant_pool=True,
+            )
     if "full" in variants and not full_generated.exists():
         raise ReferencePairWorkflowError(f"Missing generated full image: {full_generated}")
     if "half" in variants and not half_generated.exists():
@@ -597,6 +1107,8 @@ def validate_reference_pair_run(run_root: Path, *, full_image: Path | None = Non
         "validated_at": now_iso(),
         "run_root": str(run_root),
         "variants": variants,
+        "background": background,
+        "preprocessing": preprocessing,
         "pair_relationship": {
             "status": pair_status,
             "failures": pair_failures,
