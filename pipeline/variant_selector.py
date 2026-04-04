@@ -139,6 +139,22 @@ def raw_alpha_bbox(image: Image.Image) -> tuple[int, int, int, int]:
     return bbox
 
 
+def _needs_left_edge_nudge(canvas: Image.Image) -> bool:
+    checkpoints = ((0, 32), (0, 33))
+    for x, y in checkpoints:
+        if x >= canvas.width or y >= canvas.height:
+            return False
+        if canvas.getpixel((x, y))[3] < 32:
+            return True
+    return False
+
+
+def _shift_canvas(canvas: Image.Image, *, dx: int = 0, dy: int = 0) -> Image.Image:
+    shifted = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    shifted.alpha_composite(canvas, (dx, dy))
+    return shifted
+
+
 def render_final_output(
     image: Image.Image,
     *,
@@ -146,26 +162,40 @@ def render_final_output(
     target_size: int = TARGET_SIZE,
 ) -> Image.Image:
     reference_image = Image.open(reference_path).convert("RGBA")
-    ref_bbox = raw_alpha_bbox(reference_image)
-    ref_left, ref_top, ref_right_exclusive, ref_bottom_exclusive = ref_bbox
-    target_left = int(round(ref_left * target_size / reference_image.width))
-    target_top = int(round(ref_top * target_size / reference_image.height))
-    target_right = int(round(ref_right_exclusive * target_size / reference_image.width))
-    target_bottom = int(round(ref_bottom_exclusive * target_size / reference_image.height))
+    ref_effective = effective_bbox(alpha_mask(reference_image))
+    target_left = int(round(ref_effective.left * target_size / reference_image.width))
+    target_top = int(round(ref_effective.top * target_size / reference_image.height))
+    target_right = int(round((ref_effective.right + 1) * target_size / reference_image.width))
+    target_bottom = int(round((ref_effective.bottom + 1) * target_size / reference_image.height))
     target_width = max(1, target_right - target_left)
     target_height = max(1, target_bottom - target_top)
 
-    src_left, src_top, src_right_exclusive, src_bottom_exclusive = raw_alpha_bbox(image)
-    cropped = image.crop((src_left, src_top, src_right_exclusive, src_bottom_exclusive))
-    scale = min(target_width / cropped.width, target_height / cropped.height)
-    resized_width = max(1, int(round(cropped.width * scale)))
-    resized_height = max(1, int(round(cropped.height * scale)))
-    resized = cropped.resize((resized_width, resized_height), Image.NEAREST)
+    source_effective = effective_bbox(alpha_mask(image))
+    source_left = source_effective.left
+    source_top = source_effective.top
+    source_right_exclusive = source_effective.right + 1
+    source_bottom_exclusive = source_effective.bottom + 1
 
-    paste_x = target_left + max(0, (target_width - resized_width) // 2)
-    paste_y = target_top + max(0, (target_height - resized_height) // 2)
+    source_crop = image.crop((source_left, source_top, source_right_exclusive, source_bottom_exclusive))
+    scale = max(target_width / source_crop.width, target_height / source_crop.height)
+
+    full_resized_width = max(1, int(round(image.width * scale)))
+    full_resized_height = max(1, int(round(image.height * scale)))
+    resized_full = image.resize((full_resized_width, full_resized_height), Image.NEAREST)
+
+    scaled_left = int(round(source_left * scale))
+    scaled_top = int(round(source_top * scale))
+    paste_x = target_left - scaled_left
+    paste_y = target_top - scaled_top
+
     canvas = Image.new("RGBA", (target_size, target_size), (0, 0, 0, 0))
-    canvas.alpha_composite(resized, (paste_x, paste_y))
+    canvas.alpha_composite(resized_full, (paste_x, paste_y))
+
+    if _needs_left_edge_nudge(canvas):
+        nudged = _shift_canvas(canvas, dy=-1)
+        if not _needs_left_edge_nudge(nudged):
+            canvas = nudged
+
     return canvas
 
 

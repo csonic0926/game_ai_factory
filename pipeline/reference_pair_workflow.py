@@ -251,8 +251,11 @@ def build_generation_prompt(spec: dict[str, Any], *, height: str, use_reference_
         background_sentence = (
             f" Use a single flat solid background color chosen from this allowed set: {allowed_colors_text}. "
             "Estimate the RGB colors that will appear on the visible outer boundary of the generated tile silhouette, "
-            "then choose the allowed chroma-key color with the largest color-distance from those boundary RGB values. "
-            "Prefer the chroma key that is maximally separated from the tile edge colors and least likely to contaminate the tile edges. "
+            "but prioritize the top surface, top rim, upper silhouette, and ground material colors over the lower side walls. "
+            "Choose the allowed chroma-key color with the largest color-distance from those top-surface and upper-edge RGB values. "
+            "Treat the lower dirt or side-wall materials as secondary when choosing the chroma-key color. "
+            "If the tile's top surface is grass, foliage, moss, or otherwise green-dominant, prefer #FF00FF and avoid #00FF00. "
+            "Prefer the chroma key that is maximally separated from the top-surface colors and least likely to contaminate the tile edges. "
             "After choosing one of the allowed colors, use that one single chosen color consistently behind the tile "
             "for the entire canvas. This background is a temporary chroma-key mask only: no transparency, no gradient, "
             "no lighting variation, no shadow, no vignette, and no extra colored backdrop elements. "

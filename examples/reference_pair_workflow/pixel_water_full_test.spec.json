@@ -18,8 +18,8 @@
     "tolerance": 24
   },
   "reference_pair": {
-    "full": "../workflow_references/floor_height_pair/floor_full.png",
-    "half": "../workflow_references/floor_height_pair/floor_half.png"
+    "full": "../workflow_references/floor_height_pair/floor_full_k_scaled.png",
+    "half": "../workflow_references/floor_height_pair/floor_half_k_scaled.png"
   },
   "prompt": "pixel art style water tile, readable blue water surface on the top face with subtle wave clusters and darker aquatic depth on the side faces",
   "negative_prompt": "no scene background, no cast shadow, no extra props, no border, no text, no watermark, no shape deformation",

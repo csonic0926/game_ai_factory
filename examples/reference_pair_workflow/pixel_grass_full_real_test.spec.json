@@ -18,8 +18,8 @@
     "tolerance": 24
   },
   "reference_pair": {
-    "full": "../workflow_references/floor_height_pair/floor_full.png",
-    "half": "../workflow_references/floor_height_pair/floor_half.png"
+    "full": "../workflow_references/floor_height_pair/floor_full_k_scaled.png",
+    "half": "../workflow_references/floor_height_pair/floor_half_k_scaled.png"
   },
   "prompt": "pixel art style grass tile, a small amount of readable grass blades growing on the top face, with the lower half rendered as brown dirt/soil",
   "negative_prompt": "no scene background, no cast shadow, no extra props, no border, no text, no watermark, no shape deformation",

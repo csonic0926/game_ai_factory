@@ -18,8 +18,8 @@
     "tolerance": 24
   },
   "reference_pair": {
-    "full": "../workflow_references/floor_height_pair/floor_full.png",
-    "half": "../workflow_references/floor_height_pair/floor_half.png"
+    "full": "../workflow_references/floor_height_pair/floor_full_k_scaled.png",
+    "half": "../workflow_references/floor_height_pair/floor_half_k_scaled.png"
   },
   "prompt": "pixel art style snow tile, readable white snow cover on the top face with subtle icy shading and colder bluish snow depth on the side faces",
   "negative_prompt": "no scene background, no cast shadow, no extra props, no border, no text, no watermark, no shape deformation",
