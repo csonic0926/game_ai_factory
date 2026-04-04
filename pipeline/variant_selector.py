@@ -125,6 +125,13 @@ def normalize_mask(mask: Image.Image, *, target_size: int = TARGET_SIZE) -> tupl
     return normalized, bbox
 
 
+def normalize_rgba_image(image: Image.Image, *, target_size: int = TARGET_SIZE) -> tuple[Image.Image, EffectiveBBox]:
+    bbox = effective_bbox(alpha_mask(image))
+    cropped = image.crop((bbox.left, bbox.top, bbox.right + 1, bbox.bottom + 1))
+    normalized = cropped.resize((target_size, target_size), Image.NEAREST)
+    return normalized, bbox
+
+
 def mask_area(mask: Image.Image) -> int:
     histogram = mask.histogram()
     return int(histogram[255]) if len(histogram) > 255 else 0
@@ -264,17 +271,21 @@ def top_boundary_key_contamination(candidate_path: Path, *, active_key_color: st
 def score_candidate(candidate_path: Path, reference_mask_normalized: Image.Image, reference_anchors: dict[str, tuple[int, int] | None], output_dir: Path) -> dict[str, Any]:
     image = Image.open(candidate_path).convert("RGBA")
     candidate_mask_normalized, bbox = normalize_mask(alpha_mask(image))
+    candidate_rgba_normalized, _rgba_bbox = normalize_rgba_image(image)
     candidate_anchors = mask_anchors(candidate_mask_normalized)
     candidate_iou = iou(reference_mask_normalized, candidate_mask_normalized)
     candidate_anchor_error = anchor_error(candidate_anchors, reference_anchors)
     score = (candidate_iou * 1000.0) - (candidate_anchor_error * 4.0)
     overlay_path = output_dir / f"{candidate_path.stem}.overlay.png"
     normalized_path = output_dir / f"{candidate_path.stem}.normalized.png"
+    final_path = output_dir / f"{candidate_path.stem}.final.png"
     overlay_preview(reference_mask_normalized, candidate_mask_normalized, overlay_path)
     candidate_mask_normalized.save(normalized_path)
+    candidate_rgba_normalized.save(final_path)
     return {
         "path": str(candidate_path),
         "normalized_path": str(normalized_path),
+        "final_path": str(final_path),
         "overlay_path": str(overlay_path),
         "effective_bbox": {
             "left": bbox.left,
@@ -485,5 +496,14 @@ def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, A
         "failed_candidates": failed_candidates,
         "selected": pass_candidates[0] if pass_candidates else None,
     }
+    if result["selected"] is not None:
+        selected_path = Path(str(result["selected"]["final_path"]))
+        final_dir = run_root / "final"
+        final_dir.mkdir(parents=True, exist_ok=True)
+        final_output_path = final_dir / f"selected_{variant}.png"
+        Image.open(selected_path).save(final_output_path)
+        result["selected_final_output"] = str(final_output_path)
+    else:
+        result["selected_final_output"] = None
     write_json(run_root / "selection" / f"{variant}.selection.json", result)
     return result
