@@ -8,7 +8,7 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
@@ -20,6 +20,7 @@ NANO_BANANA_SCRIPT = NANO_BANANA_ROOT / "scripts" / "generate_image.js"
 SCHEMA_VERSION = "reference_pair_workflow_v1"
 SUPPORTED_PROVIDERS = {"mock", "nano_banana", "nano_banana_pro"}
 SUPPORTED_VARIANTS = {"full", "half"}
+SUPPORTED_CONVERSION_MODES = {"none", "transform"}
 PROVIDER_MODELS = {
     "nano_banana": "nano-banana-2",
     "nano_banana_pro": "nano-banana-pro",
@@ -111,6 +112,15 @@ def load_and_validate_spec(spec_path: Path) -> tuple[dict[str, Any], list[str]]:
         if not image_path.exists():
             raise ReferencePairWorkflowError(f"{label} was not found: {image_path}")
 
+    conversion_data = raw.get("conversion", {})
+    if conversion_data is not None and not isinstance(conversion_data, dict):
+        raise ReferencePairWorkflowError("conversion must be an object when provided.")
+    conversion_mode = str(conversion_data.get("mode", "none")).strip().lower() or "none"
+    if conversion_mode not in SUPPORTED_CONVERSION_MODES:
+        raise ReferencePairWorkflowError(
+            f"Unsupported conversion.mode '{conversion_mode}'. Expected one of: {', '.join(sorted(SUPPORTED_CONVERSION_MODES))}"
+        )
+
     validation_data = raw.get("validation", {})
     if validation_data is not None and not isinstance(validation_data, dict):
         raise ReferencePairWorkflowError("validation must be an object when provided.")
@@ -148,6 +158,32 @@ def load_and_validate_spec(spec_path: Path) -> tuple[dict[str, Any], list[str]]:
         if variant_name not in variants:
             variants.append(variant_name)
 
+    conversion_source_variant: str | None = None
+    conversion_source_image: Path | None = None
+    if conversion_mode == "transform":
+        conversion_source_variant = require_non_empty_string(
+            conversion_data.get("source_variant"),
+            "conversion.source_variant",
+        ).lower()
+        if conversion_source_variant not in SUPPORTED_VARIANTS:
+            raise ReferencePairWorkflowError(
+                "conversion.source_variant must be one of: full, half"
+            )
+        if len(variants) != 1:
+            raise ReferencePairWorkflowError(
+                "conversion.mode=transform requires exactly one target variant in variants."
+            )
+        if variants[0] == conversion_source_variant:
+            raise ReferencePairWorkflowError(
+                "conversion.source_variant must be the opposite height of the requested target variant."
+            )
+        conversion_source_image = resolve_input_path(
+            require_non_empty_string(conversion_data.get("source_image"), "conversion.source_image"),
+            base_path=spec_path.parent,
+        )
+        if not conversion_source_image.exists():
+            raise ReferencePairWorkflowError(f"conversion.source_image was not found: {conversion_source_image}")
+
     output_root = resolve_input_path(require_non_empty_string(raw.get("output_root"), "output_root"), base_path=spec_path.parent)
     theme = require_non_empty_string(raw.get("theme"), "theme")
     run_id = str(raw.get("run_id", "")).strip() or slugify(theme)
@@ -160,6 +196,11 @@ def load_and_validate_spec(spec_path: Path) -> tuple[dict[str, Any], list[str]]:
         "variants": variants,
         "provider": {"name": provider_name},
         "reference_pair": {"full": str(full_reference), "half": str(half_reference)},
+        "conversion": {
+            "mode": conversion_mode,
+            "source_variant": conversion_source_variant,
+            "source_image": str(conversion_source_image) if conversion_source_image else "",
+        },
         "prompt": require_non_empty_string(raw.get("prompt"), "prompt"),
         "negative_prompt": str(raw.get("negative_prompt", "")).strip(),
         "reference_intent": str(raw.get("reference_intent", "")).strip()
@@ -225,7 +266,14 @@ def compose_reference_sheet(full_image_path: Path, half_image_path: Path, output
     return output_path
 
 
-def build_generation_prompt(spec: dict[str, Any], *, height: str, use_reference_sheet: bool) -> str:
+def build_generation_prompt(
+    spec: dict[str, Any],
+    *,
+    height: str,
+    use_reference_sheet: bool,
+    conversion_mode: str = "none",
+    conversion_source_variant: str | None = None,
+) -> str:
     role_text = "full-height cube tile" if height == "full" else "half-height cube tile"
     height_sentence = (
         "Full-height means a normal tall cube tile with the expected full vertical side depth. "
@@ -235,11 +283,20 @@ def build_generation_prompt(spec: dict[str, Any], *, height: str, use_reference_
         "should be clearly about half of a full-height cube with the same footprint. Do not generate a full-height cube, "
         "do not use tall vertical side faces, and do not fake half-height by only changing texture."
     )
-    reference_rule = (
-        "Use the supplied reference sheet for structure only (upper reference = full-height; lower reference = half-height). "
-        if use_reference_sheet
-        else f"Use the supplied {role_text} reference image for structure only. "
-    )
+    if conversion_mode == "transform":
+        source_role_text = "full-height cube tile" if conversion_source_variant == "full" else "half-height cube tile"
+        reference_rule = (
+            f"Two separate reference images are provided. The first image is the source {source_role_text} that must be transformed. "
+            f"The second image is the target {role_text} geometry reference that defines the required height and silhouette. "
+            f"Preserve the source tile's material identity, top-surface pattern, palette, shading language, edge character, and tile-family details; only change the height and geometry needed to become the target {role_text}. "
+            "Do not redesign, re-theme, invent a different tile, or replace the source surface treatment with unrelated new content. "
+        )
+    else:
+        reference_rule = (
+            "Use the supplied reference sheet for structure only (upper reference = full-height; lower reference = half-height). "
+            if use_reference_sheet
+            else f"Use the supplied {role_text} reference image for structure only. "
+        )
     negative_prompt = spec.get("negative_prompt", "")
     extra_negative = f" Negative constraints: {negative_prompt}" if negative_prompt else ""
     generator_notes = spec.get("generator_notes", "")
@@ -269,7 +326,7 @@ def build_generation_prompt(spec: dict[str, Any], *, height: str, use_reference_
         "Edge pixels must read as the tile material itself, not as a separating frame."
     )
     return (
-        f"Create one isometric game tile PNG as a {role_text}. "
+        f"{'Edit' if conversion_mode == 'transform' else 'Create'} one isometric game tile PNG as a {role_text}. "
         f"{reference_rule}"
         f"{height_sentence}"
         f"For this output, match the {role_text} geometry exactly: keep camera angle, silhouette, perspective, "
@@ -281,6 +338,29 @@ def build_generation_prompt(spec: dict[str, Any], *, height: str, use_reference_
         f"Art direction: {spec['prompt']}."
         f"{extra_negative}{generator_sentence}"
     )
+
+
+def validate_prompt_background_consistency(prompt_text: str, *, background_mode: str) -> None:
+    normalized_prompt = prompt_text.lower()
+    normalized_mode = str(background_mode).strip().lower()
+    if normalized_mode == "transparent":
+        forbidden_fragments = (
+            "single flat solid background color",
+            "temporary chroma-key mask",
+            "chroma-key color",
+            "#ff00ff",
+            "#00ff00",
+        )
+        for fragment in forbidden_fragments:
+            if fragment in normalized_prompt:
+                raise ReferencePairWorkflowError(
+                    "Prompt/background mismatch: transparent mode prompt still contains color-key instructions."
+                )
+    elif normalized_mode == "color_key":
+        if "transparent background" in normalized_prompt:
+            raise ReferencePairWorkflowError(
+                "Prompt/background mismatch: color_key mode prompt still contains transparent-background instructions."
+            )
 
 
 def prepare_reference_pair_run(spec_path: Path) -> dict[str, Any]:
@@ -304,18 +384,41 @@ def prepare_reference_pair_run(spec_path: Path) -> dict[str, Any]:
     prompts: dict[str, str] = {}
     prompt_paths: dict[str, str] = {}
     expected_outputs: dict[str, str] = {}
-    generation_inputs: dict[str, str] = {}
-    use_reference_sheet = len(variants) == 2
+    generation_inputs: dict[str, Any] = {}
+    conversion = spec.get("conversion", {"mode": "none"})
+    conversion_mode = str(conversion.get("mode", "none"))
+    use_reference_sheet = len(variants) == 2 and conversion_mode != "transform"
     for variant in variants:
-        prompt_text = build_generation_prompt(spec, height=variant, use_reference_sheet=use_reference_sheet)
+        generation_input_paths: list[Path]
+        if conversion_mode == "transform":
+            source_image_src = Path(str(conversion["source_image"]))
+            source_image_dst = directories["refs"] / f"conversion_source_{conversion['source_variant']}.png"
+            shutil.copy2(source_image_src, source_image_dst)
+            generation_input_paths = [
+                source_image_dst,
+                directories["refs"] / f"floor_{variant}.png",
+            ]
+        else:
+            generation_input_paths = [
+                reference_sheet_path if len(variants) == 2 else directories["refs"] / f"floor_{variant}.png"
+            ]
+        prompt_text = build_generation_prompt(
+            spec,
+            height=variant,
+            use_reference_sheet=use_reference_sheet,
+            conversion_mode=conversion_mode,
+            conversion_source_variant=conversion.get("source_variant"),
+        )
+        validate_prompt_background_consistency(
+            prompt_text,
+            background_mode=str(spec.get("background", {}).get("mode", "transparent")),
+        )
         prompt_path = directories["request"] / f"prompt_{variant}.txt"
         prompt_path.write_text(prompt_text + "\n", encoding="utf-8")
         prompts[variant] = prompt_text
         prompt_paths[variant] = str(prompt_path)
         expected_outputs[variant] = str(directories["generated"] / f"generated_{variant}.png")
-        generation_inputs[variant] = (
-            str(reference_sheet_path) if len(variants) == 2 else str(directories["refs"] / f"floor_{variant}.png")
-        )
+        generation_inputs[variant] = [str(path) for path in generation_input_paths]
 
     request_payload = {
         "schema_version": SCHEMA_VERSION,
@@ -324,6 +427,7 @@ def prepare_reference_pair_run(spec_path: Path) -> dict[str, Any]:
         "theme": spec["theme"],
         "variants": variants,
         "provider": spec["provider"],
+        "conversion": spec["conversion"],
         "references": {
             "full": str(full_reference_dst),
             "half": str(half_reference_dst),
@@ -357,24 +461,35 @@ def provider_env_for_generation(provider_name: str) -> dict[str, str]:
         raise ReferencePairWorkflowError(str(error)) from error
 
 
-def generate_with_provider(*, provider_name: str, prompt_text: str, reference_image: Path, output_path: Path) -> dict[str, Any]:
+def generate_with_provider(
+    *,
+    provider_name: str,
+    prompt_text: str,
+    reference_images: Sequence[Path],
+    output_path: Path,
+) -> dict[str, Any]:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if provider_name == "mock":
         return {"provider": "mock", "model": "mock", "stdout": "mock mode skips external generation"}
     if not NANO_BANANA_SCRIPT.exists():
         raise ReferencePairWorkflowError(f"Nano Banana CLI not found: {NANO_BANANA_SCRIPT}")
 
+    normalized_reference_images = list(reference_images)
+    if not normalized_reference_images:
+        raise ReferencePairWorkflowError("generate_with_provider requires at least one reference image.")
+
     command = [
         "node",
         str(NANO_BANANA_SCRIPT),
         f"--prompt={prompt_text}",
-        f"--image={reference_image}",
         f"--out={output_path}",
         "--key=company",
         f"--model={PROVIDER_MODELS[provider_name]}",
         "--aspect-ratio=1:1",
         "--image-size=1K",
     ]
+    for reference_image in normalized_reference_images:
+        command.append(f"--image={reference_image}")
     completed = subprocess.run(
         command,
         cwd=NANO_BANANA_ROOT,
@@ -384,7 +499,27 @@ def generate_with_provider(*, provider_name: str, prompt_text: str, reference_im
         timeout=180,
     )
     if completed.returncode != 0:
-        raise ReferencePairWorkflowError(completed.stderr.strip() or completed.stdout.strip() or "Gemini provider failed")
+        stderr_text = completed.stderr.strip()
+        stdout_text = completed.stdout.strip()
+        combined_text = stderr_text or stdout_text or "Gemini provider failed"
+        details = [
+            "Gemini provider failed.",
+            f"provider={provider_name}",
+            f"model={PROVIDER_MODELS[provider_name]}",
+            "reference_images=" + ",".join(str(path) for path in normalized_reference_images),
+            f"output_path={output_path}",
+            f"cwd={NANO_BANANA_ROOT}",
+            f"exit_code={completed.returncode}",
+        ]
+        if "fetch failed" in combined_text.lower():
+            details.append(
+                "likely_causes=network blocked/unavailable, DNS/TLS failure reaching generativelanguage.googleapis.com, local fetch timeout, or external API access failure before any HTTP response was returned"
+            )
+        if stderr_text:
+            details.append(f"stderr={stderr_text}")
+        if stdout_text:
+            details.append(f"stdout={stdout_text}")
+        raise ReferencePairWorkflowError(" | ".join(details))
     return {
         "provider": provider_name,
         "model": PROVIDER_MODELS[provider_name],
@@ -405,16 +540,23 @@ def generate_reference_pair(spec_path: Path) -> dict[str, Any]:
     for variant in variants:
         output_path = run_root / "generated" / f"generated_{variant}.png"
         raw_output_path = run_root / "generated" / f"generated_{variant}.raw.png"
-        reference_image = Path(request_payload["references"][variant])
+        generation_inputs_raw = request_payload["generation_inputs"][variant]
+        if isinstance(generation_inputs_raw, str):
+            generation_input_paths = [Path(generation_inputs_raw)]
+        elif isinstance(generation_inputs_raw, list) and generation_inputs_raw:
+            generation_input_paths = [Path(str(value)) for value in generation_inputs_raw]
+        else:
+            raise ReferencePairWorkflowError(f"Invalid generation_inputs for variant '{variant}'.")
         generated_paths[variant] = str(output_path)
         if provider_name == "mock":
-            shutil.copy2(reference_image, raw_output_path if background.get("mode") == "color_key" else output_path)
-            generation_logs[variant] = {"provider": "mock", "copied_from": str(reference_image)}
+            mock_source = Path(request_payload["references"][variant])
+            shutil.copy2(mock_source, raw_output_path if background.get("mode") == "color_key" else output_path)
+            generation_logs[variant] = {"provider": "mock", "copied_from": str(mock_source), "note": "mock mode simulates a successful target-height transform"}
         else:
             generation_logs[variant] = generate_with_provider(
                 provider_name=provider_name,
                 prompt_text=request_payload["prompts"][variant],
-                reference_image=Path(request_payload["generation_inputs"][variant]),
+                reference_images=generation_input_paths,
                 output_path=raw_output_path if background.get("mode") == "color_key" else output_path,
             )
         if background.get("mode") == "color_key":

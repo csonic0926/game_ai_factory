@@ -22,6 +22,13 @@ By default, the workflow generates a matched `full` + `half` pair, but the spec 
 - `"variants": ["full"]`
 - `"variants": ["full", "half"]` (default)
 
+The workflow also supports **height conversion edit mode**:
+
+- input an existing `half` tile and transform it into `full`
+- input an existing `full` tile and transform it into `half`
+
+In this mode, Gemini/Nano Banana should **edit the supplied tile**, not invent a new tile family. The source tile and target geometry reference are sent as separate images, not as one combined sheet.
+
 ## Workflow stages
 
 ### 1. Prepare a run
@@ -37,6 +44,11 @@ This command creates:
 - `refs/reference_pair_sheet.png`
 - `request/request.json`
 - one or more prompt files such as `request/prompt_half.txt`
+
+If `conversion.mode = "transform"`, prepare also copies the source tile into the run and records two separate generation inputs:
+
+- first image = source tile to preserve
+- second image = target-height canonical geometry reference
 
 If `background.mode` is `color_key`, the prompt will explicitly request the configured flat background color.
 
@@ -57,7 +69,7 @@ Real Gemini run:
 2. ensure `GEMINI_API_KEY` is available in the process env or repo `.env`
 3. run the same command
 
-Note: the local Nano Banana wrapper accepts one image input.
+Note: the local Nano Banana wrapper accepts repeated `--image=...` arguments and forwards them as separate image parts to Gemini.
 
 Reference input behavior:
 
@@ -65,6 +77,10 @@ Reference input behavior:
   - upper reference = full-height
   - lower reference = half-height
 - single-variant runs use only that variant's canonical reference image, so the unused height is not sent to the model
+- conversion runs use two separate image inputs
+  - first image = source tile that must be transformed
+  - second image = target-height canonical reference
+  - prompt explicitly says to preserve source identity and only change height/geometry
 
 `generate-reference-pair` performs generation and immediate validation for the requested variants. It does not select the final cleanup variant export.
 

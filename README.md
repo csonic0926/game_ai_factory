@@ -130,13 +130,61 @@ The generation workflow then:
 3. runs geometry validation
 4. preserves the variant pool for later selection
 
+The same pipeline also supports **height conversion edit mode**:
+
+- source `half` tile -> edited into `full`
+- source `full` tile -> edited into `half`
+
+In that mode, the provider receives **two separate image inputs**:
+
+- image 1 = source tile to preserve
+- image 2 = target canonical geometry reference
+
+This keeps the downstream flow unchanged: color-key cleanup, geometry validation, and final variant selection still work the same way.
+
 Provider outputs do not need to match the reference canvas size exactly. If Gemini/Nano Banana returns a larger image such as `1024x1024` while the canonical reference is `256x256`, validation aligns the generated image to the reference canvas before silhouette checks. Canvas mismatch alone is not treated as a hard failure.
 
 For a real Gemini/Nano Banana run:
 
 1. set `provider.name` to `nano_banana` or `nano_banana_pro`
-2. provide `GEMINI_API_KEY` in process env or repo `.env`
+2. provide `GEMINI_API_KEY` in process env or this repo's `.env`
 3. run the same `generate-reference-pair` command
+
+If the factory is being called from another repo such as IMT, export the caller repo's key into the **current process env** before invoking `itf.py`. The current factory runtime does **not** auto-read some other repo's `.env`.
+
+Example from the IMT repo:
+
+```bash
+set -a
+source /Users/hunglingki/git_projects/Godot/simplest_infinity_magic_tower/.env
+set +a
+python3 /Users/hunglingki/git_projects/tools/isometric_tile_factory/itf.py generate-reference-pair \
+  --spec /absolute/path/to/spec.json
+```
+
+### Height conversion spec pattern
+
+To convert an existing selected half tile into a full tile, use `conversion.mode = "transform"` and request only the target height:
+
+```json
+{
+  "variants": ["full"],
+  "conversion": {
+    "mode": "transform",
+    "source_variant": "half",
+    "source_image": "/absolute/path/to/final/selected_half.png"
+  }
+}
+```
+
+The inverse flow is symmetrical:
+
+- `source_variant = "half"` + `variants = ["full"]`
+- `source_variant = "full"` + `variants = ["half"]`
+
+This is the preferred path when you already have one approved selected tile and want the matching opposite-height version without redesigning the tile family.
+
+Important limitation: the current `transform` mode is for **opposite-height conversion** only. If you point at an existing tile and ask for a same-height seasonal/material restyle, that is **not** an identity-preserving edit contract yet; treat it as a different workflow and do not silently route it through fresh reference-only generation if source-tile identity matters.
 
 ### 3. Validate
 
