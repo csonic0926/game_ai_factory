@@ -129,6 +129,8 @@ python3 itf.py select-reference-pair-variant \
 
 The final export includes a post-scale edge safeguard: after scaling, the selector checks key left-edge pixels such as `(0,32)` and `(0,33)` and applies a small corrective nudge when needed.
 
+Selector note: cleanup variants are still scored by normalized silhouette similarity, but the selector now blocks any later cleanup step whose score rebounds by more than 10 points versus the previous step, because increasingly aggressive cleanup should not geometrically 'recover'. Half-height tiles also use a slightly looser shoulder inset tolerance than full-height tiles.
+
 For a real Gemini/Nano Banana run:
 
 1. set `provider.name` to `nano_banana` or `nano_banana_pro`

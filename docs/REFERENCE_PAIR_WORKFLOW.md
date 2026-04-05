@@ -87,6 +87,12 @@ python3 itf.py validate-reference-pair \
 
 ## Validation outputs
 
+Selection behavior notes:
+- cleanup variants are evaluated in their fixed order (`01_conservative` -> `06_aggressive_plus`)
+- if a later variant's score rebounds by more than 10 points versus the previous variant, that variant and all later variants are treated as invalid (`blocked_by_score_rebound_gt_10`)
+- half-height variants use a looser shoulder inset tolerance than full-height variants because the shorter silhouette amplifies the same pixel drift
+
+
 The validator writes:
 
 - `validation/validation.json`

@@ -10,6 +10,8 @@ from pipeline.reference_pair_workflow import color_key_similarity, parse_hex_col
 
 
 TARGET_SIZE = 128
+MAX_SCORE_REBOUND = 10.0
+
 KNOWN_VARIANTS = (
     "01_conservative",
     "02_conservative_plus",
@@ -35,7 +37,7 @@ FAIL_RULES_BY_VARIANT = {
     "half": {
         "min_normalized_iou": 0.91,
         "max_anchor_error": 3.0,
-        "max_shoulder_inset": 2,
+        "max_shoulder_inset": 4,
         "max_mid_inset": 2,
         "max_bottom_tip_drift": 3,
         "min_effective_scale_ratio": 0.88,
@@ -94,28 +96,8 @@ def effective_bbox(mask: Image.Image) -> EffectiveBBox:
     bbox = mask.getbbox()
     if bbox is None:
         raise VariantSelectorError("Mask has no opaque pixels.")
-    left0, top0, right0, bottom0 = bbox
-    bottom = bottom0 - 1
-    right = right0 - 1
-
-    spans: list[tuple[int, int, int]] = []
-    for y in range(top0, bottom + 1):
-        span = row_span(mask, y)
-        if span is None:
-            continue
-        spans.append((y, span[0], span[1]))
-    if not spans:
-        raise VariantSelectorError("Could not compute row spans for mask.")
-
-    max_width = max((span_right - span_left + 1) for _y, span_left, span_right in spans)
-    width_gate = max(3, int(round(max_width * 0.60)))
-    top_candidates = [y for y, span_left, span_right in spans if (span_right - span_left + 1) >= width_gate]
-    top = min(top_candidates) if top_candidates else top0
-
-    relevant_spans = [(y, span_left, span_right) for y, span_left, span_right in spans if y >= top]
-    left = min(span_left for _y, span_left, _span_right in relevant_spans)
-    right = max(span_right for _y, _span_left, span_right in relevant_spans)
-    return EffectiveBBox(left=left, top=top, right=right, bottom=bottom)
+    left, top, right0, bottom0 = bbox
+    return EffectiveBBox(left=left, top=top, right=right0 - 1, bottom=bottom0 - 1)
 
 
 def normalize_mask(mask: Image.Image, *, target_size: int = TARGET_SIZE) -> tuple[Image.Image, EffectiveBBox]:
@@ -343,11 +325,13 @@ def score_candidate(
     output_dir: Path,
 ) -> dict[str, Any]:
     image = Image.open(candidate_path).convert("RGBA")
-    candidate_mask_normalized, bbox = normalize_mask(alpha_mask(image))
+    candidate_alpha_mask = alpha_mask(image)
+    candidate_mask_normalized, bbox = normalize_mask(candidate_alpha_mask)
     candidate_rgba_normalized = render_final_output(image, reference_path=reference_path)
     candidate_anchors = mask_anchors(candidate_mask_normalized)
     candidate_iou = iou(reference_mask_normalized, candidate_mask_normalized)
     candidate_anchor_error = anchor_error(candidate_anchors, reference_anchors)
+    candidate_raw_area = mask_area(candidate_alpha_mask)
     score = (candidate_iou * 1000.0) - (candidate_anchor_error * 4.0)
     overlay_path = output_dir / f"{candidate_path.stem}.overlay.png"
     normalized_path = output_dir / f"{candidate_path.stem}.normalized.png"
@@ -370,6 +354,7 @@ def score_candidate(
         },
         "normalized_iou": candidate_iou,
         "anchor_error": candidate_anchor_error,
+        "raw_mask_area": candidate_raw_area,
         "score": score,
         "anchors": {key: list(value) if value is not None else None for key, value in candidate_anchors.items()},
     }
@@ -461,6 +446,18 @@ def fail_reason_cutoff_direction(fail_reasons: list[str]) -> str | None:
     return None
 
 
+def detect_score_rebound_cutoff(ordered_names: list[str], candidate_by_name: dict[str, dict[str, Any]]) -> tuple[str, float] | None:
+    previous_score: float | None = None
+    for name in ordered_names:
+        score = float(candidate_by_name[name]["score"])
+        if previous_score is not None:
+            rebound = score - previous_score
+            if rebound > MAX_SCORE_REBOUND:
+                return name, rebound
+        previous_score = score
+    return None
+
+
 def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, Any]:
     if variant not in FAIL_RULES_BY_VARIANT:
         raise VariantSelectorError(f"Unsupported variant '{variant}'.")
@@ -509,6 +506,19 @@ def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, A
         base_cutoff_by_name[candidate_name] = fail_reason_cutoff_direction(fail_reasons)
 
     blocked_names: dict[str, str] = {}
+    rebound_cutoff = detect_score_rebound_cutoff(ordered_names, candidate_by_name)
+    if rebound_cutoff is not None:
+        rebound_name, rebound_amount = rebound_cutoff
+        rebound_index = ordered_names.index(rebound_name)
+        for affected_name in ordered_names[rebound_index:]:
+            if affected_name not in blocked_names:
+                blocked_names[affected_name] = f"blocked_by_score_rebound_gt_{int(MAX_SCORE_REBOUND)}"
+            candidate_by_name[affected_name]["score_rebound_trigger"] = {
+                "triggered_at": rebound_name,
+                "rebound_amount": rebound_amount,
+                "threshold": MAX_SCORE_REBOUND,
+            }
+
     for index, name in enumerate(ordered_names):
         fail_reasons = base_fail_reasons_by_name[name]
         cutoff_direction = base_cutoff_by_name[name]
