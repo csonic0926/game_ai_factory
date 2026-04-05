@@ -904,9 +904,13 @@ def mask_center(mask: Image.Image) -> tuple[float, float] | None:
 
 def pair_metrics(image_path: Path) -> PairMetrics:
     image = Image.open(image_path).convert("RGBA")
+    return pair_metrics_from_image(image, image_path=image_path)
+
+
+def pair_metrics_from_image(image: Image.Image, *, image_path: Path | None = None) -> PairMetrics:
     mask = alpha_mask(image)
     return PairMetrics(
-        image_path=str(image_path),
+        image_path=str(image_path) if image_path is not None else "<in-memory>",
         size=image.size,
         bbox=mask.getbbox(),
         area_pixels=mask_area(mask),
@@ -943,9 +947,23 @@ def mask_visual(mask: Image.Image, color: tuple[int, int, int, int]) -> Image.Im
     return Image.composite(rgba, transparent, mask)
 
 
+def align_generated_to_reference_canvas(reference: Image.Image, generated: Image.Image) -> tuple[Image.Image, dict[str, Any] | None]:
+    if reference.size == generated.size:
+        return generated, None
+    return (
+        generated.resize(reference.size, Image.Resampling.LANCZOS),
+        {
+            "reference_size": list(reference.size),
+            "generated_size": list(generated.size),
+            "action": "resized_generated_to_reference_canvas",
+        },
+    )
+
+
 def create_overlay(reference_path: Path, generated_path: Path, output_path: Path) -> None:
     reference = Image.open(reference_path).convert("RGBA")
     generated = Image.open(generated_path).convert("RGBA")
+    generated, _alignment = align_generated_to_reference_canvas(reference, generated)
     ref_mask = alpha_mask(reference)
     gen_mask = alpha_mask(generated)
     ref_outline = ImageChops.subtract(ref_mask.filter(ImageFilter.MaxFilter(3)), ref_mask)
@@ -961,6 +979,7 @@ def create_overlay(reference_path: Path, generated_path: Path, output_path: Path
 def create_diff_mask(reference_path: Path, generated_path: Path, output_path: Path) -> None:
     reference = Image.open(reference_path).convert("RGBA")
     generated = Image.open(generated_path).convert("RGBA")
+    generated, _alignment = align_generated_to_reference_canvas(reference, generated)
     ref_mask = alpha_mask(reference)
     gen_mask = alpha_mask(generated)
     added = ImageChops.subtract(gen_mask, ref_mask)
@@ -975,16 +994,12 @@ def create_diff_mask(reference_path: Path, generated_path: Path, output_path: Pa
 def validate_single_pair(reference_path: Path, generated_path: Path, thresholds: dict[str, Any]) -> dict[str, Any]:
     reference_image = Image.open(reference_path).convert("RGBA")
     generated_image = Image.open(generated_path).convert("RGBA")
-    if reference_image.size != generated_image.size:
-        return {
-            "status": "hard_fail",
-            "reason": f"Canvas size mismatch: reference={reference_image.size}, generated={generated_image.size}",
-        }
+    generated_image, canvas_alignment = align_generated_to_reference_canvas(reference_image, generated_image)
 
     reference_mask = alpha_mask(reference_image)
     generated_mask = alpha_mask(generated_image)
-    reference_metrics = pair_metrics(reference_path)
-    generated_metrics = pair_metrics(generated_path)
+    reference_metrics = pair_metrics_from_image(reference_image, image_path=reference_path)
+    generated_metrics = pair_metrics_from_image(generated_image, image_path=generated_path)
     iou = intersection_over_union(reference_mask, generated_mask)
     deltas = bbox_deltas(reference_metrics.bbox, generated_metrics.bbox)
     non_transparent_canvas = generated_metrics.bbox == (0, 0, generated_image.width, generated_image.height)
@@ -1017,6 +1032,7 @@ def validate_single_pair(reference_path: Path, generated_path: Path, thresholds:
         "failures": failures,
         "reference": reference_metrics.__dict__,
         "generated": generated_metrics.__dict__,
+        "canvas_alignment": canvas_alignment,
         "iou": iou,
         "bbox_deltas": deltas,
     }

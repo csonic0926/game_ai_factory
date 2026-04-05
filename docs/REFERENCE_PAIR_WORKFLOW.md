@@ -1,24 +1,28 @@
 # Reference Pair Workflow
 
-This workflow uses two canonical render references:
+This document describes the Gemini/Nano Banana generation workflow that consumes canonical Blender references and produces validated tile PNGs.
+
+The workflow uses two canonical render references:
 
 - `examples/workflow_references/floor_height_pair/floor_full.png`
 - `examples/workflow_references/floor_height_pair/floor_half.png`
 
-The references constrain **shape and camera**, while the prompt controls **style and surface detail**.
+The references define **geometry and camera**. The prompt controls **style and surface detail**.
 
-The workflow now supports two background modes:
+## Background modes
+
+The workflow supports two background modes:
 
 - `transparent` — ask Gemini/Nano Banana for native transparency
-- `color_key` — ask for a flat chroma-key background such as `#FF00FF`, remove it locally, then run geometry validation on the keyed PNG
+- `color_key` — ask for a flat chroma-key background such as `#FF00FF`, remove it locally, then validate the keyed PNG
 
-By default, the workflow still generates a matched `full` + `half` pair, but the spec can now request only one variant:
+By default, the workflow generates a matched `full` + `half` pair, but the spec may request only one variant:
 
 - `"variants": ["half"]`
 - `"variants": ["full"]`
 - `"variants": ["full", "half"]` (default)
 
-## Commands
+## Workflow stages
 
 ### 1. Prepare a run
 
@@ -27,7 +31,7 @@ python3 itf.py prepare-reference-pair \
   --spec examples/reference_pair_workflow/pixel_grass_demo.spec.json
 ```
 
-This creates:
+This command creates:
 
 - copied references under `refs/`
 - `refs/reference_pair_sheet.png`
@@ -36,9 +40,9 @@ This creates:
 
 If `background.mode` is `color_key`, the prompt will explicitly request the configured flat background color.
 
-Use these files if you want to send the prompts/images to Gemini manually.
+Use these artifacts when the prompt or image request will be submitted manually.
 
-### 2. Auto-generate and validate
+### 2. Generate
 
 Mock smoke test:
 
@@ -55,19 +59,25 @@ Real Gemini run:
 
 Note: the local Nano Banana wrapper accepts one image input.
 
-- pair runs use one vertical reference sheet:
+Reference input behavior:
+
+- pair runs use one vertical reference sheet
   - upper reference = full-height
   - lower reference = half-height
-- single-variant runs use only that variant's canonical reference image, so you do not burn tokens on the unused height
+- single-variant runs use only that variant's canonical reference image, so the unused height is not sent to the model
 
-### 3. Validate returned images
+`generate-reference-pair` performs generation and immediate validation for the requested variants. It does not select the final cleanup variant export.
 
-After Gemini returns images, save them to the prepared run directory:
+### 3. Validate generated images
+
+To validate an existing run, save provider outputs to the prepared run directory:
 
 - `generated/generated_full.png` when `full` was requested
 - `generated/generated_half.png` when `half` was requested
 
-If the run uses `background.mode = "color_key"`, the validator will first create keyed copies under `processed/` and then run silhouette checks against those processed PNGs.
+If the run uses `background.mode = "color_key"`, validation first creates keyed copies under `processed/` and then runs silhouette checks against those processed PNGs.
+
+If the generated image canvas does not match the canonical reference size—for example, Gemini returns `1024x1024` while the reference is `256x256`—validation first aligns the generated image to the reference canvas and then evaluates silhouette geometry. Canvas mismatch alone is not a hard failure.
 
 Then run:
 
@@ -85,13 +95,23 @@ python3 itf.py validate-reference-pair \
   --half-image /absolute/path/to/half.png
 ```
 
-## Validation outputs
+### 4. Select the final cleanup variant
 
-Selection behavior notes:
-- cleanup variants are evaluated in their fixed order (`01_conservative` -> `06_aggressive_plus`)
-- if a later variant's score rebounds by more than 10 points versus the previous variant, that variant and all later variants are treated as invalid (`blocked_by_score_rebound_gt_10`)
+```bash
+python3 itf.py select-reference-pair-variant \
+  --run-root output/reference_pair_runs/pixel_grass_demo \
+  --variant full
+```
+
+This command scores cleanup variants against normalized reference geometry and exports the selected final tile under `final/`.
+
+Selection behavior:
+
+- cleanup variants are evaluated in fixed order: `01_conservative` -> `06_aggressive_plus`
+- if a later variant's score rebounds by more than 10 points versus the previous variant, that variant and all later variants are treated as invalid
 - half-height variants use a looser shoulder inset tolerance than full-height variants because the shorter silhouette amplifies the same pixel drift
 
+## Validation outputs
 
 The validator writes:
 
@@ -99,16 +119,19 @@ The validator writes:
 - `validation/overlay_<variant>.png` for each requested variant
 - `validation/diff_<variant>.png` for each requested variant
 
-## What validation checks
+When canvas alignment is applied, `validation.json` records it under `canvas_alignment` for the affected variant.
 
-Per image:
+## Validation checks
 
+Per image, validation checks:
+
+- canvas alignment to reference size before geometry checks when provider output size differs
 - transparent-background silhouette presence after optional color-key removal
 - silhouette IoU vs reference
 - bbox drift vs reference
 - likely full-canvas background fill
 
-Pair-level:
+At pair level, validation checks:
 
 - half/full height ratio remains close to the reference pair when both variants were requested
 
