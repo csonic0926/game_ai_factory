@@ -1,0 +1,196 @@
+{
+  "schema_version": "canonical_tile_spec_v1",
+  "tile_unit": 128,
+  "notes": [
+    "This file defines game-facing 2D canonical placement geometry.",
+    "These shapes are target placement specs for final exported textures, not raw Blender render truth.",
+    "Coordinates are in pixel space with origin at top-left.",
+    "This spec is written for the tile factory only; it describes 2D placement and opacity rules, not world coordinates."
+  ],
+  "tiles": {
+    "floor_full": {
+      "kind": "floor",
+      "canvas": {
+        "width": 128,
+        "height": 128
+      },
+      "placement": {
+        "opaque_half": "both",
+        "contact_role": "base_tile"
+      },
+      "faces": {
+        "top": [
+          [64, 0],
+          [128, 32],
+          [64, 64],
+          [0, 32]
+        ],
+        "left": [
+          [0, 32],
+          [64, 64],
+          [64, 128],
+          [0, 96]
+        ],
+        "right": [
+          [64, 64],
+          [128, 32],
+          [128, 96],
+          [64, 128]
+        ]
+      },
+      "anchors": {
+        "top_tip": [64, 0],
+        "left_tip": [0, 32],
+        "right_tip": [128, 32],
+        "center": [64, 64],
+        "bottom_left": [0, 96],
+        "bottom_tip": [64, 128],
+        "bottom_right": [128, 96]
+      },
+      "contact_edges": {
+        "wall_left_base": [
+          [0, 96],
+          [64, 64]
+        ],
+        "wall_right_base": [
+          [64, 64],
+          [128, 96]
+        ]
+      }
+    },
+    "wall_left_1u": {
+      "kind": "wall",
+      "canvas": {
+        "width": 128,
+        "height": 128
+      },
+      "placement": {
+        "attach_edge": "top_left",
+        "opaque_half": "left",
+        "transparent_half": "right",
+        "height_units": 1
+      },
+      "body": [
+        [0, 96],
+        [0, 32],
+        [64, 0],
+        [64, 64]
+      ],
+      "anchors": {
+        "bottom_left": [0, 96],
+        "top_left": [0, 32],
+        "top_tip": [64, 0],
+        "bottom_right": [64, 64]
+      },
+      "contact_edge": [
+        [0, 96],
+        [64, 64]
+      ],
+      "derived_from": {
+        "base_floor": "floor_full",
+        "base_edge": "wall_left_base"
+      }
+    },
+    "wall_right_1u": {
+      "kind": "wall",
+      "canvas": {
+        "width": 128,
+        "height": 128
+      },
+      "placement": {
+        "attach_edge": "top_right",
+        "opaque_half": "right",
+        "transparent_half": "left",
+        "height_units": 1
+      },
+      "body": [
+        [64, 64],
+        [64, 0],
+        [128, 32],
+        [128, 96]
+      ],
+      "anchors": {
+        "bottom_left": [64, 64],
+        "top_left": [64, 0],
+        "top_tip": [128, 32],
+        "bottom_right": [128, 96]
+      },
+      "contact_edge": [
+        [64, 64],
+        [128, 96]
+      ],
+      "derived_from": {
+        "base_floor": "floor_full",
+        "base_edge": "wall_right_base"
+      }
+    },
+    "wall_left_2u": {
+      "kind": "wall",
+      "canvas": {
+        "width": 128,
+        "height": 256
+      },
+      "placement": {
+        "attach_edge": "top_left",
+        "opaque_half": "left",
+        "transparent_half": "right",
+        "height_units": 2,
+        "height_extension_rule": "extend upward while preserving the same lower-half handedness and contact-edge behavior as wall_left_1u"
+      },
+      "body": [
+        [0, 224],
+        [0, 32],
+        [64, 0],
+        [64, 192]
+      ],
+      "anchors": {
+        "bottom_left": [0, 224],
+        "top_left": [0, 32],
+        "top_tip": [64, 0],
+        "bottom_right": [64, 192]
+      },
+      "contact_edge": [
+        [0, 224],
+        [64, 192]
+      ],
+      "derived_from": {
+        "base_variant": "wall_left_1u",
+        "rule": "same footprint and handedness as 1u, extended upward by one additional tile unit"
+      }
+    },
+    "wall_right_2u": {
+      "kind": "wall",
+      "canvas": {
+        "width": 128,
+        "height": 256
+      },
+      "placement": {
+        "attach_edge": "top_right",
+        "opaque_half": "right",
+        "transparent_half": "left",
+        "height_units": 2,
+        "height_extension_rule": "extend upward while preserving the same lower-half handedness and contact-edge behavior as wall_right_1u"
+      },
+      "body": [
+        [64, 192],
+        [64, 0],
+        [128, 32],
+        [128, 224]
+      ],
+      "anchors": {
+        "bottom_left": [64, 192],
+        "top_left": [64, 0],
+        "top_tip": [128, 32],
+        "bottom_right": [128, 224]
+      },
+      "contact_edge": [
+        [64, 192],
+        [128, 224]
+      ],
+      "derived_from": {
+        "base_variant": "wall_right_1u",
+        "rule": "same footprint and handedness as 1u, extended upward by one additional tile unit"
+      }
+    }
+  }
+}

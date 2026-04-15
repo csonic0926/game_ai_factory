@@ -2,7 +2,9 @@
 
 This document describes the Gemini/Nano Banana generation workflow that consumes canonical Blender references and produces validated tile PNGs.
 
-The workflow uses two canonical render references:
+The workflow uses canonical render references keyed by variant name.
+
+The default floor example uses:
 
 - `examples/workflow_references/floor_height_pair/floor_full.png`
 - `examples/workflow_references/floor_height_pair/floor_half.png`
@@ -16,11 +18,44 @@ The workflow supports two background modes:
 - `transparent` — ask Gemini/Nano Banana for native transparency
 - `color_key` — ask for a flat chroma-key background such as `#FF00FF`, remove it locally, then validate the keyed PNG
 
-By default, the workflow generates a matched `full` + `half` pair, but the spec may request only one variant:
+By default, the floor workflow generates a matched `full` + `half` pair, but the spec may request only one variant:
 
 - `"variants": ["half"]`
 - `"variants": ["full"]`
 - `"variants": ["full", "half"]` (default)
+
+The same machinery can also be used with non-floor pairs such as:
+
+- `"variants": ["left", "right"]`
+- `reference_pair.left`
+- `reference_pair.right`
+- `variant_profiles.left/right`
+
+For walls, the repo now also exposes a high-level helper command:
+
+```bash
+python3 itf.py generate-wall-reference-pair
+python3 itf.py generate-wall-reference-pair --height 2
+python3 itf.py generate-wall-reference-pair --height 2 --variant left
+python3 itf.py generate-wall-reference-pair --variant right
+```
+
+Behavior:
+
+- defaults to both `left` + `right`
+- `--height 1` uses `101_wall_straight`
+- `--height 2` uses `102_wall_straight_2u`
+- single-side generation is controlled by repeating `--variant`
+- canonical handedness is:
+  - `left wall -> rot90`
+  - `right wall -> rot0`
+
+So the canonical wall references are:
+
+- `1u left -> examples/golden/sample_factory/images/101_wall_straight_rot90.png`
+- `1u right -> examples/golden/sample_factory/images/101_wall_straight_rot0.png`
+- `2u left -> examples/golden/sample_factory/images/102_wall_straight_2u_rot90.png`
+- `2u right -> examples/golden/sample_factory/images/102_wall_straight_2u_rot0.png`
 
 The workflow also supports **height conversion edit mode**:
 
@@ -44,6 +79,13 @@ This command creates:
 - `refs/reference_pair_sheet.png`
 - `request/request.json`
 - one or more prompt files such as `request/prompt_half.txt`
+
+If the spec uses arbitrary variants like `left` / `right`, those names are preserved through the whole run:
+
+- `generated/generated_left.png`
+- `generated/generated_right.png`
+- `validation/overlay_left.png`
+- `validation/overlay_right.png`
 
 If `conversion.mode = "transform"`, prepare also copies the source tile into the run and records two separate generation inputs:
 
@@ -126,6 +168,17 @@ Selection behavior:
 - cleanup variants are evaluated in fixed order: `01_conservative` -> `06_aggressive_plus`
 - if a later variant's score rebounds by more than 10 points versus the previous variant, that variant and all later variants are treated as invalid
 - half-height variants use a looser shoulder inset tolerance than full-height variants because the shorter silhouette amplifies the same pixel drift
+
+#### Wall iso-skew finalization
+
+For wall variants, the selector applies a **perspective skew** step that aligns the Gemini-generated wall to exact game-iso geometry:
+
+1. **Edge detection** — fits four lines (face, top, bottom, outer) to the source alpha mask using least-squares
+2. **Corner extraction** — intersects the four lines to find the four body corners; line extension handles corners that fall outside the source canvas
+3. **Perspective transform** — solves an 8-coefficient homography mapping the detected source corners to the canonical body polygon from the tile spec
+4. **Clipping** — masks the result to the 4-point body polygon and enforces the opaque-half rule
+
+This replaces the earlier mean-value-coordinate warp approach. The perspective transform runs in C (via PIL) and produces cleaner results without triangle seam artifacts.
 
 ## Validation outputs
 

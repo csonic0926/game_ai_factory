@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, ImageDraw
 from pipeline.reference_pair_workflow import color_key_similarity, parse_hex_color
 
 
 TARGET_SIZE = 128
 MAX_SCORE_REBOUND = 10.0
+REPO_ROOT = Path(__file__).resolve().parent.parent
+CANONICAL_TILE_SPEC_PATH = REPO_ROOT / "examples" / "workflow_references" / "canonical_tile_spec.json"
 
 KNOWN_VARIANTS = (
     "01_conservative",
@@ -40,6 +43,19 @@ FAIL_RULES_BY_VARIANT = {
         "max_shoulder_inset": 4,
         "max_mid_inset": 2,
         "max_bottom_tip_drift": 3,
+        "min_effective_scale_ratio": 0.88,
+        "top_boundary_scan_ratio": 0.35,
+        "top_boundary_key_similarity_fail": 0.55,
+        "top_boundary_key_pixel_ratio_fail": 0.03,
+        "top_boundary_key_pixel_count_fail": 8,
+        "top_boundary_key_run_fail": 3,
+    },
+    "wall": {
+        "min_normalized_iou": 0.90,
+        "max_anchor_error": 10.0,
+        "max_shoulder_inset": 24,
+        "max_mid_inset": 2,
+        "max_bottom_tip_drift": 12,
         "min_effective_scale_ratio": 0.88,
         "top_boundary_scan_ratio": 0.35,
         "top_boundary_key_similarity_fail": 0.55,
@@ -84,6 +100,79 @@ def alpha_mask(image: Image.Image) -> Image.Image:
     return alpha.point(lambda value: 255 if value >= 32 else 0, mode="L")
 
 
+def polygon_bbox(points: list[list[int]]) -> EffectiveBBox:
+    xs = [int(point[0]) for point in points]
+    ys = [int(point[1]) for point in points]
+    return EffectiveBBox(left=min(xs), top=min(ys), right=max(xs), bottom=max(ys))
+
+
+def canonical_tile_spec() -> dict[str, Any]:
+    return load_json(CANONICAL_TILE_SPEC_PATH)
+
+
+def infer_canonical_tile_key(*, variant: str, selector_profile: str, variant_profile: dict[str, Any]) -> str | None:
+    if selector_profile == "wall":
+        wall_profile = variant_profile.get("wall_profile", {}) if isinstance(variant_profile, dict) else {}
+        height_units_raw = wall_profile.get("height_units") if isinstance(wall_profile, dict) else None
+        height_units: int | None = None
+        if height_units_raw is not None and str(height_units_raw).strip():
+            try:
+                height_units = int(height_units_raw)
+            except (TypeError, ValueError):
+                height_units = None
+        if height_units not in {1, 2}:
+            role_text = str(variant_profile.get("role_text", "")).strip().lower()
+            height_units = 2 if "two-tile-high" in role_text or "2u" in role_text else 1
+        height_suffix = "2u" if height_units == 2 else "1u"
+        if variant in {"left", "right"}:
+            return f"wall_{variant}_{height_suffix}"
+    if variant in {"full", "half"}:
+        return f"floor_{variant}"
+    return None
+
+
+def canonical_target_for_variant(*, variant: str, selector_profile: str, variant_profile: dict[str, Any]) -> dict[str, Any] | None:
+    tile_key = infer_canonical_tile_key(variant=variant, selector_profile=selector_profile, variant_profile=variant_profile)
+    if tile_key is None:
+        return None
+    spec = canonical_tile_spec()
+    tile = spec.get("tiles", {}).get(tile_key)
+    if not isinstance(tile, dict):
+        return None
+    canvas = tile.get("canvas", {})
+    if not isinstance(canvas, dict):
+        return None
+    target_polygon = tile.get("body")
+    if not isinstance(target_polygon, list):
+        faces = tile.get("faces", {})
+        if isinstance(faces, dict):
+            target_polygon = []
+            for face_name in ("top", "left", "right"):
+                face_points = faces.get(face_name)
+                if isinstance(face_points, list):
+                    target_polygon.extend(face_points)
+    if not isinstance(target_polygon, list) or not target_polygon:
+        return None
+    if str(tile_key).startswith("wall_"):
+        target_polygon = _wall_canonical_polygon(
+            canvas_width=int(canvas.get("width", TARGET_SIZE)),
+            canvas_height=int(canvas.get("height", TARGET_SIZE)),
+            wall_side="left" if "_left_" in tile_key else "right",
+            target_tile=tile,
+        )
+    target_bbox = polygon_bbox(target_polygon)
+    return {
+        "tile_key": tile_key,
+        "canvas_width": int(canvas.get("width", TARGET_SIZE)),
+        "canvas_height": int(canvas.get("height", TARGET_SIZE)),
+        "target_bbox": target_bbox,
+        "target_polygon": target_polygon,
+        "contact_edge": tile.get("contact_edge"),
+        "anchors": tile.get("anchors", {}),
+        "placement": tile.get("placement", {}),
+    }
+
+
 def row_span(mask: Image.Image, y: int) -> tuple[int, int] | None:
     pixels = mask.load()
     xs = [x for x in range(mask.width) if pixels[x, y] >= 128]
@@ -122,7 +211,11 @@ def raw_alpha_bbox(image: Image.Image) -> tuple[int, int, int, int]:
 
 
 def _needs_left_edge_nudge(canvas: Image.Image) -> bool:
-    checkpoints = ((0, 32), (0, 33))
+    scale = canvas.height / TARGET_SIZE if TARGET_SIZE else 1.0
+    checkpoints = (
+        (0, int(round(32 * scale))),
+        (0, int(round(33 * scale))),
+    )
     for x, y in checkpoints:
         if x >= canvas.width or y >= canvas.height:
             return False
@@ -137,18 +230,577 @@ def _shift_canvas(canvas: Image.Image, *, dx: int = 0, dy: int = 0) -> Image.Ima
     return shifted
 
 
+def _align_canvas_bbox(
+    canvas: Image.Image,
+    *,
+    target_left: int,
+    target_top: int,
+) -> Image.Image:
+    bbox = alpha_mask(canvas).getbbox()
+    if bbox is None:
+        return canvas
+    dx = target_left - bbox[0]
+    dy = target_top - bbox[1]
+    if dx == 0 and dy == 0:
+        return canvas
+    return _shift_canvas(canvas, dx=dx, dy=dy)
+
+
+def _apply_polygon_mask(canvas: Image.Image, polygon: list[list[int]]) -> Image.Image:
+    masked = canvas.copy()
+    mask = Image.new("L", canvas.size, 0)
+    draw = ImageDraw.Draw(mask)
+    draw.polygon([(int(point[0]), int(point[1])) for point in polygon], fill=255)
+    alpha = masked.getchannel("A")
+    masked.putalpha(ImageChops.multiply(alpha, mask))
+    return masked
+
+
+def _polygon_mask(size: tuple[int, int], polygon: list[list[int]]) -> Image.Image:
+    mask = Image.new("L", size, 0)
+    draw = ImageDraw.Draw(mask)
+    draw.polygon([(int(point[0]), int(point[1])) for point in polygon], fill=255)
+    return mask
+
+
+def _apply_opaque_half_rule(canvas: Image.Image, opaque_half: str) -> Image.Image:
+    if opaque_half not in {"left", "right"}:
+        return canvas
+    masked = canvas.copy()
+    mask = Image.new("L", canvas.size, 0)
+    draw = ImageDraw.Draw(mask)
+    midpoint = canvas.width // 2
+    if opaque_half == "left":
+        draw.rectangle((0, 0, midpoint, canvas.height), fill=255)
+    else:
+        draw.rectangle((midpoint, 0, canvas.width, canvas.height), fill=255)
+    alpha = masked.getchannel("A")
+    masked.putalpha(ImageChops.multiply(alpha, mask))
+    return masked
+
+
+def _opaque_half_mask(size: tuple[int, int], opaque_half: str) -> Image.Image:
+    mask = Image.new("L", size, 0)
+    if opaque_half not in {"left", "right"}:
+        ImageDraw.Draw(mask).rectangle((0, 0, size[0], size[1]), fill=255)
+        return mask
+    draw = ImageDraw.Draw(mask)
+    midpoint = size[0] // 2
+    if opaque_half == "left":
+        draw.rectangle((0, 0, midpoint, size[1]), fill=255)
+    else:
+        draw.rectangle((midpoint, 0, size[0], size[1]), fill=255)
+    return mask
+
+
+def _wall_side_from_target(canonical_target: dict[str, Any]) -> str:
+    tile_key = str(canonical_target.get("tile_key", "")).lower()
+    if "_left_" in tile_key:
+        return "left"
+    if "_right_" in tile_key:
+        return "right"
+    placement = canonical_target.get("placement", {})
+    attach_edge = str(placement.get("attach_edge", "")).strip().lower() if isinstance(placement, dict) else ""
+    if attach_edge == "top_left":
+        return "left"
+    if attach_edge == "top_right":
+        return "right"
+    raise VariantSelectorError("Could not infer wall side from canonical target.")
+
+
+def _clamp_point_to_canvas(point: tuple[float, float], *, width: int, height: int) -> tuple[float, float]:
+    x, y = point
+    return (
+        min(max(float(x), 0.0), float(max(0, width - 1))),
+        min(max(float(y), 0.0), float(max(0, height - 1))),
+    )
+
+
+def _wall_canonical_polygon(
+    *,
+    canvas_width: int,
+    canvas_height: int,
+    wall_side: str,
+    target_tile: dict[str, Any],
+) -> list[tuple[float, float]]:
+    placement = target_tile.get("placement", {})
+    anchors = target_tile.get("anchors", {})
+    if not isinstance(placement, dict):
+        placement = {}
+    if not isinstance(anchors, dict):
+        anchors = {}
+
+    side_x = 0.0 if wall_side == "left" else float(max(0, canvas_width - 1))
+    outer_x = float(max(0, canvas_width - 1)) if wall_side == "left" else 0.0
+
+    contact_edge = target_tile.get("contact_edge")
+    if isinstance(contact_edge, list) and len(contact_edge) >= 2:
+        side_bottom = _clamp_point_to_canvas(tuple(contact_edge[0]), width=canvas_width, height=canvas_height)
+        inner_bottom = _clamp_point_to_canvas(tuple(contact_edge[1]), width=canvas_width, height=canvas_height)
+    else:
+        bottom_y = float(anchors.get("bottom_left", [0, 0])[1]) if isinstance(anchors.get("bottom_left"), list) else float(canvas_height - 1)
+        side_bottom = (side_x, bottom_y)
+        inner_bottom = (float(canvas_width) / 2.0, bottom_y)
+
+    side_top = anchors.get("top_left")
+    if isinstance(side_top, list) and len(side_top) == 2:
+        side_top_point = _clamp_point_to_canvas((float(side_top[0]), float(side_top[1])), width=canvas_width, height=canvas_height)
+    else:
+        side_top_point = (side_x, float(inner_bottom[1]) if inner_bottom else 0.0)
+
+    top_tip = anchors.get("top_tip")
+    if isinstance(top_tip, list) and len(top_tip) == 2:
+        top_tip_point = _clamp_point_to_canvas((float(top_tip[0]), float(top_tip[1])), width=canvas_width, height=canvas_height)
+    else:
+        top_tip_point = (float(canvas_width) / 2.0, 0.0)
+
+    top_y = float(side_top_point[1])
+    bottom_y = float(side_bottom[1])
+    outer_top = _clamp_point_to_canvas((outer_x, top_y), width=canvas_width, height=canvas_height)
+    outer_bottom = _clamp_point_to_canvas((outer_x, bottom_y), width=canvas_width, height=canvas_height)
+
+    if isinstance(inner_bottom, tuple):
+        inner_bottom_point = _clamp_point_to_canvas((float(inner_bottom[0]), float(inner_bottom[1])), width=canvas_width, height=canvas_height)
+    else:
+        inner_bottom_point = (float(canvas_width) / 2.0, min(bottom_y, float(canvas_height - 1)))
+    return [side_bottom, side_top_point, top_tip_point, outer_top, outer_bottom, inner_bottom_point]
+
+
+def _wall_target_face_anchors(canonical_target: dict[str, Any]) -> list[tuple[float, float]]:
+    canvas_width = int(canonical_target["canvas_width"])
+    canvas_height = int(canonical_target["canvas_height"])
+    polygon = canonical_target["target_polygon"]
+    side = _wall_side_from_target(canonical_target)
+    xs = [int(point[0]) for point in polygon]
+    side_x_raw = min(xs) if side == "left" else max(xs)
+    side_x = side_x_raw if side == "left" else min(side_x_raw, canvas_width - 1)
+    side_points = [(int(point[0]), int(point[1])) for point in polygon if int(point[0]) == side_x_raw]
+    if len(side_points) < 2:
+        raise VariantSelectorError("Canonical wall polygon is missing the side-face vertical edge.")
+    top_y = min(point[1] for point in side_points)
+    bottom_y = max(point[1] for point in side_points)
+    apex_raw = min(((int(point[0]), int(point[1])) for point in polygon), key=lambda point: (point[1], point[0]))
+    apex = _clamp_point_to_canvas(apex_raw, width=canvas_width, height=canvas_height)
+    return [
+        _clamp_point_to_canvas((side_x, top_y), width=canvas_width, height=canvas_height),
+        _clamp_point_to_canvas((side_x, bottom_y), width=canvas_width, height=canvas_height),
+        apex,
+    ]
+
+
+def _row_span_or_error(mask: Image.Image, y: int, *, label: str) -> tuple[int, int]:
+    span = row_span(mask, y)
+    if span is None:
+        raise VariantSelectorError(f"Wall source image is missing opaque pixels for {label}.")
+    return span
+
+
+def _wall_source_face_anchors(mask: Image.Image, *, wall_side: str) -> list[tuple[float, float]]:
+    bbox = mask.getbbox()
+    if bbox is None:
+        raise VariantSelectorError("Wall source image has no opaque pixels.")
+    pixels = mask.load()
+    anchor_x = 0 if wall_side == "left" else mask.width - 1
+    ys = [y for y in range(mask.height) if pixels[anchor_x, y] >= 128]
+    if not ys:
+        raise VariantSelectorError("Wall source edge did not contain opaque pixels for anchor extraction.")
+    top_y = min(ys)
+    bottom_y = max(ys)
+    top_span = row_span(mask, 0)
+    if top_span is None:
+        raise VariantSelectorError("Wall source top row did not contain opaque pixels for anchor extraction.")
+    top_center_x = (top_span[0] + top_span[1]) / 2.0
+    return [
+        (float(anchor_x), float(top_y)),
+        (float(anchor_x), float(bottom_y)),
+        (float(top_center_x), 0.0),
+    ]
+
+
+
+def _wall_source_deform_anchors(mask: Image.Image, *, wall_side: str) -> dict[str, tuple[float, float]]:
+    bbox = mask.getbbox()
+    if bbox is None:
+        raise VariantSelectorError("Wall source image has no opaque pixels.")
+    pixels = mask.load()
+    edge_x = 0 if wall_side == "left" else mask.width - 1
+    edge_ys = [y for y in range(mask.height) if pixels[edge_x, y] >= 128]
+    if not edge_ys:
+        raise VariantSelectorError("Wall source edge did not contain opaque pixels for deform anchors.")
+    top_y = min(edge_ys)
+    bottom_y = max(edge_ys)
+
+    apex_row_y = top_y
+    apex_span = _row_span_or_error(mask, top_y, label="top row span")
+    search_limit = min(bottom_y, top_y + 24)
+    for y in range(top_y, search_limit + 1):
+        span = row_span(mask, y)
+        if span is None:
+            continue
+        if (span[1] - span[0]) >= 2:
+            apex_row_y = y
+            apex_span = span
+            break
+
+    bottom_span = _row_span_or_error(mask, bottom_y, label="bottom row span")
+    apex_x = (apex_span[0] + apex_span[1]) / 2.0
+    if wall_side == "left":
+        return {
+            "face_top": (0.0, float(top_y)),
+            "apex": (float(apex_x), float(apex_row_y)),
+            "top_outer": (float(apex_span[1]), float(apex_row_y)),
+            "bottom_outer": (float(bottom_span[1]), float(bottom_y)),
+            "face_bottom": (0.0, float(bottom_y)),
+        }
+    return {
+        "face_top": (float(mask.width - 1), float(top_y)),
+        "apex": (float(apex_x), float(apex_row_y)),
+        "top_outer": (float(apex_span[0]), float(apex_row_y)),
+        "bottom_outer": (float(bottom_span[0]), float(bottom_y)),
+        "face_bottom": (float(mask.width - 1), float(bottom_y)),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Wall iso-skew: line fitting, intersection, corner detection, perspective
+# ---------------------------------------------------------------------------
+
+
+def _fit_line(points: list[tuple[float, float]]) -> tuple[float, float, float]:
+    """Fit line ``ax + by + c = 0`` to *points* via least squares.
+
+    Automatically chooses the numerically stable parameterisation
+    (``x = my + k`` when near-vertical, ``y = mx + k`` otherwise).
+    Returns ``(a, b, c)`` normalised so ``a² + b² = 1``.
+    """
+    n = len(points)
+    if n < 2:
+        raise VariantSelectorError("Need at least 2 points to fit a line.")
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    x_range = max(xs) - min(xs)
+    y_range = max(ys) - min(ys)
+
+    if y_range >= x_range:
+        # Near-vertical: fit x = m·y + k
+        sum_t = sum(ys)
+        sum_v = sum(xs)
+        sum_tt = sum(y * y for y in ys)
+        sum_tv = sum(y * x for x, y in points)
+        det = float(n) * sum_tt - sum_t * sum_t
+        if abs(det) < 1e-12:
+            raise VariantSelectorError("Degenerate line fit (all points at same y).")
+        m = (float(n) * sum_tv - sum_t * sum_v) / det
+        k = (sum_tt * sum_v - sum_t * sum_tv) / det
+        a, b, c = 1.0, -m, -k
+    else:
+        # Fit y = m·x + k
+        sum_t = sum(xs)
+        sum_v = sum(ys)
+        sum_tt = sum(x * x for x in xs)
+        sum_tv = sum(x * y for x, y in points)
+        det = float(n) * sum_tt - sum_t * sum_t
+        if abs(det) < 1e-12:
+            raise VariantSelectorError("Degenerate line fit (all points at same x).")
+        m = (float(n) * sum_tv - sum_t * sum_v) / det
+        k = (sum_tt * sum_v - sum_t * sum_tv) / det
+        a, b, c = m, -1.0, k
+
+    norm = math.hypot(a, b)
+    return (a / norm, b / norm, c / norm)
+
+
+def _intersect_lines(
+    line1: tuple[float, float, float],
+    line2: tuple[float, float, float],
+) -> tuple[float, float]:
+    """Intersect two lines ``a·x + b·y + c = 0``.  Returns ``(x, y)``."""
+    a1, b1, c1 = line1
+    a2, b2, c2 = line2
+    det = a1 * b2 - a2 * b1
+    if abs(det) < 1e-9:
+        raise VariantSelectorError("Lines are parallel; cannot intersect.")
+    x = (b1 * c2 - b2 * c1) / det
+    y = (a2 * c1 - a1 * c2) / det
+    return (x, y)
+
+
+def _detect_wall_edge_pixels(
+    mask: Image.Image,
+    *,
+    wall_side: str,
+) -> dict[str, list[tuple[float, float]]]:
+    """Scan alpha *mask* and return pixel lists for four wall edges.
+
+    Returns ``{"face": [...], "top": [...], "bottom": [...], "outer": [...]}``.
+    Each list contains ``(x, y)`` tuples suitable for :func:`_fit_line`.
+    """
+    bbox = mask.getbbox()
+    if bbox is None:
+        raise VariantSelectorError("Wall source mask has no opaque pixels.")
+    bx0, by0, bx1, by1 = bbox
+    bw = bx1 - bx0
+    bh = by1 - by0
+    pixels = mask.load()
+
+    # Vertical range for face/outer edge sampling (middle 60 %)
+    y_margin = int(bh * 0.20)
+    y_lo = by0 + y_margin
+    y_hi = by1 - y_margin
+
+    # Column range for top/bottom edge sampling.
+    # The top edge can start from the face column (the taper diverges outward).
+    # The bottom edge must skip ~25 % near the face to avoid the wall-base
+    # taper where face meets bottom edge.
+    if wall_side == "left":
+        top_col_lo = bx0
+        top_col_hi = bx0 + int(bw * 0.55)
+        bot_col_lo = bx0 + int(bw * 0.25)
+        bot_col_hi = bx0 + int(bw * 0.65)
+    else:
+        top_col_lo = bx1 - int(bw * 0.55)
+        top_col_hi = bx1
+        bot_col_lo = bx1 - int(bw * 0.65)
+        bot_col_hi = bx1 - int(bw * 0.25)
+
+    face_pixels: list[tuple[float, float]] = []
+    outer_pixels: list[tuple[float, float]] = []
+    for y in range(y_lo, y_hi + 1):
+        xs = [x for x in range(bx0, bx1) if pixels[x, y] >= 128]
+        if not xs:
+            continue
+        if wall_side == "left":
+            face_pixels.append((float(min(xs)), float(y)))
+            outer_pixels.append((float(max(xs)), float(y)))
+        else:
+            face_pixels.append((float(max(xs)), float(y)))
+            outer_pixels.append((float(min(xs)), float(y)))
+
+    top_pixels: list[tuple[float, float]] = []
+    for x in range(top_col_lo, top_col_hi + 1):
+        ys_opaque = [y for y in range(by0, by1) if pixels[x, y] >= 128]
+        if ys_opaque:
+            top_pixels.append((float(x), float(min(ys_opaque))))
+
+    bottom_pixels: list[tuple[float, float]] = []
+    for x in range(bot_col_lo, bot_col_hi + 1):
+        ys_opaque = [y for y in range(by0, by1) if pixels[x, y] >= 128]
+        if ys_opaque:
+            bottom_pixels.append((float(x), float(max(ys_opaque))))
+
+    for name, pts in [("face", face_pixels), ("top", top_pixels),
+                      ("bottom", bottom_pixels), ("outer", outer_pixels)]:
+        if len(pts) < 2:
+            raise VariantSelectorError(
+                f"Not enough pixels to fit wall {name} edge (got {len(pts)})."
+            )
+
+    return {"face": face_pixels, "top": top_pixels,
+            "bottom": bottom_pixels, "outer": outer_pixels}
+
+
+def _detect_wall_corners(
+    image: Image.Image,
+    *,
+    wall_side: str,
+) -> list[tuple[float, float]]:
+    """Detect four wall-body corners by fitting edge lines and intersecting.
+
+    Returns corners in the same winding order as the canonical body polygon
+    (counter-clockwise: bottom-left, top-left, top-right, bottom-right).
+
+    For a **left** wall the face is on the left, so the order is
+    ``[face_bottom, face_top, outer_top, outer_bottom]``.
+
+    For a **right** wall the face is on the right, so the order is
+    ``[outer_bottom, outer_top, face_top, face_bottom]``.
+    """
+    mask = alpha_mask(image)
+    edge_px = _detect_wall_edge_pixels(mask, wall_side=wall_side)
+
+    face_line = _fit_line(edge_px["face"])
+    top_line = _fit_line(edge_px["top"])
+    bottom_line = _fit_line(edge_px["bottom"])
+    outer_line = _fit_line(edge_px["outer"])
+
+    face_top = _intersect_lines(face_line, top_line)
+    face_bottom = _intersect_lines(face_line, bottom_line)
+    outer_top = _intersect_lines(outer_line, top_line)
+    outer_bottom = _intersect_lines(outer_line, bottom_line)
+
+    if wall_side == "left":
+        return [face_bottom, face_top, outer_top, outer_bottom]
+    # right wall: face is on the right side of the canvas
+    return [outer_bottom, outer_top, face_top, face_bottom]
+
+
+def _solve_linear_system(
+    matrix: list[list[float]],
+    vector: list[float],
+) -> list[float]:
+    """Solve an N×N linear system via Gaussian elimination with partial pivoting."""
+    size = len(matrix)
+    rows = [row[:] + [v] for row, v in zip(matrix, vector)]
+    for col in range(size):
+        pivot_row = max(range(col, size), key=lambda r: abs(rows[r][col]))
+        if abs(rows[pivot_row][col]) < 1e-12:
+            raise VariantSelectorError("Singular matrix in linear system solve.")
+        if pivot_row != col:
+            rows[col], rows[pivot_row] = rows[pivot_row], rows[col]
+        pivot_val = rows[col][col]
+        rows[col] = [v / pivot_val for v in rows[col]]
+        for r in range(size):
+            if r == col:
+                continue
+            factor = rows[r][col]
+            if abs(factor) < 1e-15:
+                continue
+            rows[r] = [cur - factor * piv for cur, piv in zip(rows[r], rows[col])]
+    return [rows[i][size] for i in range(size)]
+
+
+def _solve_perspective_coefficients(
+    src_points: list[tuple[float, float]],
+    dst_points: list[tuple[float, float]],
+) -> list[float]:
+    """Solve 8 perspective-transform coefficients (PIL convention).
+
+    PIL maps each **destination** pixel ``(X, Y)`` to a **source** pixel::
+
+        x = (a·X + b·Y + c) / (g·X + h·Y + 1)
+        y = (d·X + e·Y + f) / (g·X + h·Y + 1)
+
+    Given four ``(dst → src)`` point pairs, returns ``[a, b, c, d, e, f, g, h]``.
+    """
+    if len(src_points) != 4 or len(dst_points) != 4:
+        raise VariantSelectorError("Perspective solve requires exactly 4 point pairs.")
+
+    # Build the 8×8 system   A · [a,b,c,d,e,f,g,h]^T = rhs
+    mat: list[list[float]] = []
+    rhs: list[float] = []
+    for (dx, dy), (sx, sy) in zip(dst_points, src_points):
+        mat.append([dx, dy, 1.0, 0.0, 0.0, 0.0, -dx * sx, -dy * sx])
+        rhs.append(sx)
+        mat.append([0.0, 0.0, 0.0, dx, dy, 1.0, -dx * sy, -dy * sy])
+        rhs.append(sy)
+
+    return _solve_linear_system(mat, rhs)
+
+
+def _perspective_warp(
+    image: Image.Image,
+    *,
+    source_corners: list[tuple[float, float]],
+    target_corners: list[tuple[float, float]],
+    output_size: tuple[int, int],
+) -> Image.Image:
+    """Perspective-warp *image* so that *source_corners* land on *target_corners*.
+
+    Pads the source image so that off-canvas source coordinates are safe.
+    """
+    # Pad source so line-extension corners outside the image are handled.
+    pad = 128
+    padded = Image.new("RGBA", (image.width + 2 * pad, image.height + 2 * pad), (0, 0, 0, 0))
+    padded.alpha_composite(image, (pad, pad))
+    padded_src = [(x + pad, y + pad) for x, y in source_corners]
+
+    coeffs = _solve_perspective_coefficients(padded_src, target_corners)
+    result = padded.transform(output_size, Image.PERSPECTIVE, coeffs, Image.BICUBIC)
+    return result
+
+
+def _canonical_wall_body(canonical_target: dict[str, Any]) -> list[tuple[float, float]]:
+    """Extract the 4-point body polygon from *canonical_target*.
+
+    Falls back to reading the canonical tile spec if ``body`` is not inlined.
+    """
+    tile_key = canonical_target.get("tile_key", "")
+    spec = canonical_tile_spec()
+    tile = spec.get("tiles", {}).get(tile_key)
+    if isinstance(tile, dict):
+        body = tile.get("body")
+        if isinstance(body, list) and len(body) == 4:
+            return [(float(p[0]), float(p[1])) for p in body]
+    # Fallback: derive from target_polygon (first 4 unique points)
+    polygon = canonical_target.get("target_polygon", [])
+    if len(polygon) >= 4:
+        return [(float(p[0]), float(p[1])) for p in polygon[:4]]
+    raise VariantSelectorError(f"Cannot extract 4-point body for {tile_key}.")
+
+
+
+def _render_wall_output(
+    image: Image.Image,
+    *,
+    canonical_target: dict[str, Any],
+) -> Image.Image:
+    """Fit a wall image to canonical game-iso geometry via perspective warp.
+
+    1. Detect four body-corner lines from the source alpha mask.
+    2. Intersect those lines to find the four source corners (works even
+       when a corner falls outside the canvas).
+    3. Perspective-transform the source so the four corners land on the
+       canonical body polygon.
+    4. Clip to the canonical polygon + opaque-half rule.
+    """
+    canvas_width = int(canonical_target["canvas_width"])
+    canvas_height = int(canonical_target["canvas_height"])
+    wall_side = _wall_side_from_target(canonical_target)
+
+    # Detect source corners from the full (uncropped) image.
+    source_corners = _detect_wall_corners(image, wall_side=wall_side)
+
+    # Target corners from canonical spec body polygon.
+    target_corners = _canonical_wall_body(canonical_target)
+
+    # Perspective warp: source corners → target corners.
+    warped = _perspective_warp(
+        image,
+        source_corners=source_corners,
+        target_corners=target_corners,
+        output_size=(canvas_width, canvas_height),
+    )
+
+    # Clip to the 4-point body polygon + opaque-half rule.
+    warped = _apply_polygon_mask(warped, [list(p) for p in target_corners])
+    placement = canonical_target.get("placement", {})
+    if isinstance(placement, dict):
+        warped = _apply_opaque_half_rule(warped, str(placement.get("opaque_half", "")).strip().lower())
+    return warped
+
+
 def render_final_output(
     image: Image.Image,
     *,
     reference_path: Path,
-    target_size: int = TARGET_SIZE,
+    canonical_target: dict[str, Any] | None = None,
+    target_size: int | None = None,
 ) -> Image.Image:
     reference_image = Image.open(reference_path).convert("RGBA")
-    ref_effective = effective_bbox(alpha_mask(reference_image))
-    target_left = int(round(ref_effective.left * target_size / reference_image.width))
-    target_top = int(round(ref_effective.top * target_size / reference_image.height))
-    target_right = int(round((ref_effective.right + 1) * target_size / reference_image.width))
-    target_bottom = int(round((ref_effective.bottom + 1) * target_size / reference_image.height))
+    if canonical_target is not None:
+        if canonical_target.get("tile_key", "").startswith("wall_"):
+            return _render_wall_output(image, canonical_target=canonical_target)
+        target_bbox: EffectiveBBox = canonical_target["target_bbox"]
+        canvas_width = int(canonical_target["canvas_width"])
+        canvas_height = int(canonical_target["canvas_height"])
+        target_left = target_bbox.left
+        target_top = target_bbox.top
+        target_right = target_bbox.right + 1
+        target_bottom = target_bbox.bottom + 1
+    else:
+        ref_effective = effective_bbox(alpha_mask(reference_image))
+        canvas_width = reference_image.width if target_size is None else target_size
+        canvas_height = reference_image.height if target_size is None else target_size
+        if target_size is None:
+            target_left = ref_effective.left
+            target_top = ref_effective.top
+            target_right = ref_effective.right + 1
+            target_bottom = ref_effective.bottom + 1
+        else:
+            target_left = int(round(ref_effective.left * target_size / reference_image.width))
+            target_top = int(round(ref_effective.top * target_size / reference_image.height))
+            target_right = int(round((ref_effective.right + 1) * target_size / reference_image.width))
+            target_bottom = int(round((ref_effective.bottom + 1) * target_size / reference_image.height))
     target_width = max(1, target_right - target_left)
     target_height = max(1, target_bottom - target_top)
 
@@ -170,8 +822,14 @@ def render_final_output(
     paste_x = target_left - scaled_left
     paste_y = target_top - scaled_top
 
-    canvas = Image.new("RGBA", (target_size, target_size), (0, 0, 0, 0))
+    canvas = Image.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 0))
     canvas.alpha_composite(resized_full, (paste_x, paste_y))
+    canvas = _align_canvas_bbox(canvas, target_left=target_left, target_top=target_top)
+    if canonical_target is not None:
+        canvas = _apply_polygon_mask(canvas, canonical_target["target_polygon"])
+        placement = canonical_target.get("placement", {})
+        if isinstance(placement, dict):
+            canvas = _apply_opaque_half_rule(canvas, str(placement.get("opaque_half", "")).strip().lower())
 
     if _needs_left_edge_nudge(canvas):
         nudged = _shift_canvas(canvas, dy=-1)
@@ -323,11 +981,18 @@ def score_candidate(
     reference_mask_normalized: Image.Image,
     reference_anchors: dict[str, tuple[int, int] | None],
     output_dir: Path,
+    canonical_target: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     image = Image.open(candidate_path).convert("RGBA")
     candidate_alpha_mask = alpha_mask(image)
-    candidate_mask_normalized, bbox = normalize_mask(candidate_alpha_mask)
-    candidate_rgba_normalized = render_final_output(image, reference_path=reference_path)
+    candidate_rgba_normalized = render_final_output(image, reference_path=reference_path, canonical_target=canonical_target)
+    scoring_mask_source = candidate_alpha_mask
+    if canonical_target is not None and str(canonical_target.get("tile_key", "")).startswith("wall_"):
+        scoring_mask_source = ImageChops.multiply(
+            alpha_mask(candidate_rgba_normalized),
+            _polygon_mask(candidate_rgba_normalized.size, canonical_target["target_polygon"]),
+        )
+    candidate_mask_normalized, bbox = normalize_mask(scoring_mask_source)
     candidate_anchors = mask_anchors(candidate_mask_normalized)
     candidate_iou = iou(reference_mask_normalized, candidate_mask_normalized)
     candidate_anchor_error = anchor_error(candidate_anchors, reference_anchors)
@@ -459,16 +1124,35 @@ def detect_score_rebound_cutoff(ordered_names: list[str], candidate_by_name: dic
 
 
 def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, Any]:
-    if variant not in FAIL_RULES_BY_VARIANT:
-        raise VariantSelectorError(f"Unsupported variant '{variant}'.")
-    fail_rules = FAIL_RULES_BY_VARIANT[variant]
     request = load_json(run_root / "request" / "request.json")
+    variant_profiles = request.get("variant_profiles", {})
+    variant_profile = variant_profiles.get(variant, {}) if isinstance(variant_profiles, dict) else {}
+    selector_profile = ""
+    if isinstance(variant_profiles, dict):
+        selector_profile = str(variant_profiles.get(variant, {}).get("selector_profile", "")).strip().lower()
+    fail_rules_key = selector_profile or variant
+    if fail_rules_key not in FAIL_RULES_BY_VARIANT:
+        raise VariantSelectorError(f"Unsupported variant '{variant}'.")
+    fail_rules = FAIL_RULES_BY_VARIANT[fail_rules_key]
     validation_path = run_root / "validation" / "validation.json"
     validation_payload = load_json(validation_path) if validation_path.exists() else {}
     preprocessing_payload = validation_payload.get("preprocessing", {}).get(variant, {})
     active_key_color = str(preprocessing_payload.get("active_key_color", request.get("background", {}).get("prompt_color", "#FF00FF")))
     reference_path = Path(request["references"][variant])
-    reference_mask_normalized, reference_bbox = normalize_mask(alpha_mask(Image.open(reference_path).convert("RGBA")))
+    canonical_target = canonical_target_for_variant(
+        variant=variant,
+        selector_profile=selector_profile,
+        variant_profile=variant_profile if isinstance(variant_profile, dict) else {},
+    )
+    reference_image = Image.open(reference_path).convert("RGBA")
+    if canonical_target is not None and str(canonical_target.get("tile_key", "")).startswith("wall_"):
+        reference_scoring_mask = _polygon_mask(
+            (int(canonical_target["canvas_width"]), int(canonical_target["canvas_height"])),
+            canonical_target["target_polygon"],
+        )
+    else:
+        reference_scoring_mask = alpha_mask(reference_image)
+    reference_mask_normalized, reference_bbox = normalize_mask(reference_scoring_mask)
     reference_anchors = mask_anchors(reference_mask_normalized)
 
     generated_dir = run_root / "generated"
@@ -482,7 +1166,14 @@ def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, A
     reference_mask_normalized.save(output_dir / "reference.normalized.png")
 
     scored = [
-        score_candidate(candidate, reference_path, reference_mask_normalized, reference_anchors, output_dir)
+        score_candidate(
+            candidate,
+            reference_path,
+            reference_mask_normalized,
+            reference_anchors,
+            output_dir,
+            canonical_target=canonical_target,
+        )
         for candidate in candidates
     ]
     candidate_by_name = {Path(candidate["path"]).stem.replace(f"generated_{variant}.", ""): candidate for candidate in scored}
@@ -564,6 +1255,21 @@ def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, A
             },
             "anchors": {key: list(value) if value is not None else None for key, value in reference_anchors.items()},
         },
+        "canonical_target": {
+            "tile_key": canonical_target.get("tile_key"),
+            "canvas_width": canonical_target.get("canvas_width"),
+            "canvas_height": canonical_target.get("canvas_height"),
+            "target_bbox": {
+                "left": canonical_target["target_bbox"].left,
+                "top": canonical_target["target_bbox"].top,
+                "right": canonical_target["target_bbox"].right,
+                "bottom": canonical_target["target_bbox"].bottom,
+                "width": canonical_target["target_bbox"].width,
+                "height": canonical_target["target_bbox"].height,
+            } if canonical_target is not None else None,
+            "target_polygon": canonical_target.get("target_polygon") if canonical_target is not None else None,
+            "contact_edge": canonical_target.get("contact_edge") if canonical_target is not None else None,
+        } if canonical_target is not None else None,
         "active_key_color": active_key_color,
         "fail_rule_thresholds": {
             "min_normalized_iou": float(fail_rules["min_normalized_iou"]),

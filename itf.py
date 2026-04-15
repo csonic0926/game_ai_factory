@@ -28,6 +28,7 @@ REPO_ROOT = Path(__file__).resolve().parent
 RENDER_SCRIPT = REPO_ROOT / "blender" / "scripts" / "render_tiles.py"
 SCENE_VALIDATE_SCRIPT = REPO_ROOT / "blender" / "scripts" / "validate_scene.py"
 CREATE_SAMPLE_SCRIPT = REPO_ROOT / "blender" / "scripts" / "create_sample_factory.py"
+REFERENCE_PAIR_EXAMPLES_ROOT = REPO_ROOT / "examples" / "reference_pair_workflow"
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -128,6 +129,33 @@ def parse_arguments() -> argparse.Namespace:
     )
     ref_generate_parser.add_argument("--spec", required=True, help="Path to reference-pair spec JSON")
 
+    wall_generate_parser = subparsers.add_parser(
+        "generate-wall-reference-pair",
+        help="Generate wall reference-pair variants with configurable height and side selection",
+    )
+    wall_generate_parser.add_argument("--height", choices=["1", "2"], default="1", help="Wall height in tile units")
+    wall_generate_parser.add_argument(
+        "--variant",
+        action="append",
+        choices=["left", "right"],
+        default=[],
+        help="Wall side to generate. Repeatable. Defaults to both left and right.",
+    )
+    wall_generate_parser.add_argument("--provider", default="mock", help="Provider name to place in the generated spec")
+    wall_generate_parser.add_argument(
+        "--run-id",
+        help="Optional run id override. Defaults to wall_<height>u_<variants>.",
+    )
+    wall_generate_parser.add_argument(
+        "--output-root",
+        default="output/reference_pair_runs",
+        help="Reference-pair run output root",
+    )
+    wall_generate_parser.add_argument(
+        "--spec-out",
+        help="Optional path to write the generated wall spec JSON for inspection/reuse",
+    )
+
     ref_validate_parser = subparsers.add_parser(
         "validate-reference-pair",
         help="Validate generated tile PNGs against the prepared reference-pair run",
@@ -135,13 +163,19 @@ def parse_arguments() -> argparse.Namespace:
     ref_validate_parser.add_argument("--run-root", required=True, help="Prepared reference-pair run root")
     ref_validate_parser.add_argument("--full-image", help="Override generated full image path")
     ref_validate_parser.add_argument("--half-image", help="Override generated half image path")
+    ref_validate_parser.add_argument(
+        "--image",
+        action="append",
+        default=[],
+        help="Override generated image path for an arbitrary variant using variant=/absolute/path.png",
+    )
 
     select_variant_parser = subparsers.add_parser(
         "select-reference-pair-variant",
         help="Score generated cleanup variants against normalized reference geometry",
     )
     select_variant_parser.add_argument("--run-root", required=True, help="Prepared reference-pair run root")
-    select_variant_parser.add_argument("--variant", default="full", choices=("full", "half"), help="Variant to score")
+    select_variant_parser.add_argument("--variant", default="full", help="Variant to score")
 
     return argument_parser.parse_args()
 
@@ -156,6 +190,67 @@ def run_step(step_name: str, command: list[str]) -> None:
     exit_code = run_subprocess(command)
     if exit_code != 0:
         raise SystemExit(exit_code)
+
+
+def build_wall_reference_pair_spec(
+    *,
+    height_units: int,
+    variants: list[str],
+    provider_name: str,
+    output_root: Path,
+    run_id: str,
+) -> dict:
+    wall_object_name = "101_wall_straight" if height_units == 1 else "102_wall_straight_2u"
+    height_label = "1u" if height_units == 1 else "2u"
+    prompt_height_text = "single-tile-high" if height_units == 1 else "two-tile-high"
+    theme = f"pixel stone wall {height_label}"
+    return {
+        "schema_version": "reference_pair_workflow_v1",
+        "theme": theme,
+        "run_id": run_id,
+        "output_root": str(output_root),
+        "variants": variants,
+        "provider": {"name": provider_name},
+        "background": {
+            "mode": "color_key",
+            "prompt_color": "#FF00FF",
+            "fallback_colors": ["#00FF00"],
+            "tolerance": 24,
+        },
+        "reference_pair": {
+            "left": f"../golden/sample_factory/images/{wall_object_name}_rot90.png",
+            "right": f"../golden/sample_factory/images/{wall_object_name}_rot0.png",
+        },
+        "variant_profiles": {
+            "left": {
+                "role_text": f"left-facing {prompt_height_text} isometric wall segment",
+                "geometry_guidance": "The visible wall face should favor the left side of the isometric view and keep the base anchored exactly to the reference silhouette",
+                "sheet_label": f"left wall {height_label}",
+                "selector_profile": "wall",
+                "wall_side": "left",
+                "height_units": height_units,
+                "reference_rotation": 90,
+            },
+            "right": {
+                "role_text": f"right-facing {prompt_height_text} isometric wall segment",
+                "geometry_guidance": "The visible wall face should favor the right side of the isometric view and keep the base anchored exactly to the reference silhouette",
+                "sheet_label": f"right wall {height_label}",
+                "selector_profile": "wall",
+                "wall_side": "right",
+                "height_units": height_units,
+                "reference_rotation": 0,
+            },
+        },
+        "prompt": f"pixel art style dungeon stone wall, {prompt_height_text}, readable block seams, restrained shading, and no extra props",
+        "negative_prompt": "no scene background, no cast shadow, no floor tile attached, no extra props, no border, no text, no watermark, no shape deformation",
+        "generator_notes": f"preserve the same {height_label} wall family between left and right variants",
+        "validation": {
+            "iou_soft_fail": 0.92,
+            "iou_hard_fail": 0.80,
+            "bbox_delta_soft_fail": 6,
+            "bbox_delta_hard_fail": 16,
+        },
+    }
 
 
 def command_validate(arguments: argparse.Namespace) -> int:
@@ -478,12 +573,67 @@ def command_generate_reference_pair(arguments: argparse.Namespace) -> int:
         return 1
 
 
+def command_generate_wall_reference_pair(arguments: argparse.Namespace) -> int:
+    try:
+        height_units = int(arguments.height)
+        variants = arguments.variant or ["left", "right"]
+        normalized_variants: list[str] = []
+        for variant in variants:
+            if variant not in normalized_variants:
+                normalized_variants.append(variant)
+        variants = normalized_variants
+        variant_label = "_".join(variants)
+        run_id = arguments.run_id or f"wall_{height_units}u_{variant_label}"
+        spec = build_wall_reference_pair_spec(
+            height_units=height_units,
+            variants=variants,
+            provider_name=str(arguments.provider).strip() or "mock",
+            output_root=Path(arguments.output_root).expanduser().resolve(),
+            run_id=run_id,
+        )
+        spec_out = (
+            Path(arguments.spec_out).expanduser().resolve()
+            if arguments.spec_out
+            else REFERENCE_PAIR_EXAMPLES_ROOT / f"{run_id}.generated.spec.json"
+        )
+        spec_out.parent.mkdir(parents=True, exist_ok=True)
+        spec_out.write_text(json.dumps(spec, indent=2) + "\n", encoding="utf-8")
+        result = generate_reference_pair(spec_out)
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "mode": "generate-wall-reference-pair",
+                    "spec_path": str(spec_out),
+                    "height": height_units,
+                    "variants": variants,
+                    "result": result,
+                },
+                indent=2,
+            )
+        )
+        return 0
+    except ReferencePairWorkflowError as error:
+        print(json.dumps({"ok": False, "mode": "generate-wall-reference-pair", "error": str(error)}, indent=2))
+        return 1
+
+
 def command_validate_reference_pair(arguments: argparse.Namespace) -> int:
     try:
+        variant_images: dict[str, Path] = {}
+        for raw_item in arguments.image:
+            if "=" not in raw_item:
+                raise ReferencePairWorkflowError(f"Invalid --image value '{raw_item}'. Expected variant=/path/to/image.png")
+            variant_name, path_value = raw_item.split("=", 1)
+            normalized_variant = variant_name.strip().lower()
+            if not normalized_variant or not path_value.strip():
+                raise ReferencePairWorkflowError(f"Invalid --image value '{raw_item}'. Expected variant=/path/to/image.png")
+            variant_images[normalized_variant] = Path(path_value).expanduser().resolve()
         result = validate_reference_pair_run(
             Path(arguments.run_root).expanduser().resolve(),
             full_image=Path(arguments.full_image).expanduser().resolve() if arguments.full_image else None,
             half_image=Path(arguments.half_image).expanduser().resolve() if arguments.half_image else None,
+            variant_images=variant_images,
         )
         print(json.dumps({"ok": result["ok"], "mode": "validate-reference-pair", "result": result}, indent=2))
         return 0 if result["ok"] else 1
@@ -513,6 +663,8 @@ def main() -> None:
         raise SystemExit(command_prepare_reference_pair(arguments))
     if arguments.command == "generate-reference-pair":
         raise SystemExit(command_generate_reference_pair(arguments))
+    if arguments.command == "generate-wall-reference-pair":
+        raise SystemExit(command_generate_wall_reference_pair(arguments))
     if arguments.command == "validate-reference-pair":
         raise SystemExit(command_validate_reference_pair(arguments))
     if arguments.command == "select-reference-pair-variant":

@@ -1,0 +1,49 @@
+{
+  "schema_version": "reference_pair_workflow_v1",
+  "theme": "pixel stone wall demo",
+  "run_id": "pixel_stone_wall_demo",
+  "output_root": "../../output/reference_pair_runs",
+  "variants": ["left", "right"],
+  "provider": {
+    "name": "mock"
+  },
+  "background": {
+    "mode": "color_key",
+    "prompt_color": "#FF00FF",
+    "fallback_colors": ["#00FF00"],
+    "tolerance": 24
+  },
+  "reference_pair": {
+    "left": "../golden/sample_factory/images/101_wall_straight_rot90.png",
+    "right": "../golden/sample_factory/images/101_wall_straight_rot0.png"
+  },
+  "variant_profiles": {
+    "left": {
+      "role_text": "left-facing isometric wall segment",
+      "geometry_guidance": "The visible wall face should favor the left side of the isometric view and keep the base anchored exactly to the reference silhouette",
+      "sheet_label": "left wall",
+      "selector_profile": "wall",
+      "wall_side": "left",
+      "height_units": 1,
+      "reference_rotation": 90
+    },
+    "right": {
+      "role_text": "right-facing isometric wall segment",
+      "geometry_guidance": "The visible wall face should favor the right side of the isometric view and keep the base anchored exactly to the reference silhouette",
+      "sheet_label": "right wall",
+      "selector_profile": "wall",
+      "wall_side": "right",
+      "height_units": 1,
+      "reference_rotation": 0
+    }
+  },
+  "prompt": "pixel art style dungeon stone wall with readable block seams, restrained shading, and no extra props",
+  "negative_prompt": "no scene background, no cast shadow, no floor tile attached, no extra props, no border, no text, no watermark, no shape deformation",
+  "generator_notes": "preserve the same wall family between left and right variants",
+  "validation": {
+    "iou_soft_fail": 0.92,
+    "iou_hard_fail": 0.80,
+    "bbox_delta_soft_fail": 6,
+    "bbox_delta_hard_fail": 16
+  }
+}

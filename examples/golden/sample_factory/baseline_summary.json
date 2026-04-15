@@ -1,17 +1,19 @@
 {
-  "atlas_png_sha256": "af517b0e107f37162d1fa4c2135f6040a951d91be3fc985f7365a6148f2458c0",
+  "atlas_png_sha256": "8a095a81210f41cb599e6078f21ff76ef96f7a1abf1d05ad3b62b2f2fac7a82f",
   "png_sha256": {
-    "001_floor_plain_rot0.png": "a3ef7bfb6d99c86e26f504b30a9db732078527aad55f2d1908966f8b1bb251b4",
-    "002_floor_half_rot0.png": "a3ef7bfb6d99c86e26f504b30a9db732078527aad55f2d1908966f8b1bb251b4",
-    "101_wall_straight_rot0.png": "a3ef7bfb6d99c86e26f504b30a9db732078527aad55f2d1908966f8b1bb251b4",
-    "101_wall_straight_rot90.png": "3bbd7a07c4a4aabbd0969b51c131e9ca92c6842d17394981018043a8a5dfffb1",
-    "201_stair_up_rot0.png": "3bbd7a07c4a4aabbd0969b51c131e9ca92c6842d17394981018043a8a5dfffb1",
-    "201_stair_up_rot90.png": "a884461e52a7a2323cb6dc00a2e23e6b86679c82bd5d68118496871e9d13214a",
-    "301_prop_switch_rot0.png": "a884461e52a7a2323cb6dc00a2e23e6b86679c82bd5d68118496871e9d13214a",
-    "301_prop_switch_rot180.png": "a884461e52a7a2323cb6dc00a2e23e6b86679c82bd5d68118496871e9d13214a",
-    "301_prop_switch_rot270.png": "a884461e52a7a2323cb6dc00a2e23e6b86679c82bd5d68118496871e9d13214a",
-    "301_prop_switch_rot90.png": "a884461e52a7a2323cb6dc00a2e23e6b86679c82bd5d68118496871e9d13214a"
+    "001_floor_plain_rot0.png": "9c97c5cace93ded4c6b84ca6c385fa25d1a9175c0bbc473506fcca920dd229c0",
+    "002_floor_half_rot0.png": "74199b2e75b0d9b8108c325ca5d2ae2a2f7c4010bbb7f6e96838cabc012d2b8a",
+    "101_wall_straight_rot0.png": "0a673768bdf5237630555a9c9802d0b4634397282e8edbd90975095d4b5bb12e",
+    "101_wall_straight_rot90.png": "561d4babfa449f16c1704b9d05b0e79acad613fd774dbd739af33b4545e0fd63",
+    "102_wall_straight_2u_rot0.png": "1f1eb1fd028476c339e58d659ebffbb5771025fa38b4798301ae5ae3a82d7a70",
+    "102_wall_straight_2u_rot90.png": "e3088a365dacace6299422291f463a7483b136b7fc70f596af6055baf5c176dc",
+    "201_stair_up_rot0.png": "6b809d94b002639cad6f928b1d766ba5235b0191f0eff85fb34d04f52563ef4b",
+    "201_stair_up_rot90.png": "064fc289cb7f580eeedc9a24b2c122e66712bc96c6daec6c2b147dfbefc6137c",
+    "301_prop_switch_rot0.png": "1317078905d59928e0a424361fcecdadde1f86d188cee51c13251e70776b002a",
+    "301_prop_switch_rot180.png": "1317078905d59928e0a424361fcecdadde1f86d188cee51c13251e70776b002a",
+    "301_prop_switch_rot270.png": "db8da858e6bb59cda410316516b29cc30dfdb5af6417cb8067a74af920e605b9",
+    "301_prop_switch_rot90.png": "db8da858e6bb59cda410316516b29cc30dfdb5af6417cb8067a74af920e605b9"
   },
-  "manifest_entry_count": 10,
+  "manifest_entry_count": 12,
   "tileset_entry_count": 10
 }

@@ -80,6 +80,20 @@ def create_camera(factory_rig: bpy.types.Collection) -> bpy.types.Object:
     return camera_object
 
 
+def apply_diagonal_scale(x: float, y: float, *, diagonal_scale: float) -> tuple[float, float]:
+    return (
+        ((diagonal_scale + 1.0) * x + (diagonal_scale - 1.0) * y) / 2.0,
+        ((diagonal_scale - 1.0) * x + (diagonal_scale + 1.0) * y) / 2.0,
+    )
+
+
+def apply_diagonal_scale_mirrored(x: float, y: float, *, diagonal_scale: float) -> tuple[float, float]:
+    return (
+        ((diagonal_scale + 1.0) * x + (1.0 - diagonal_scale) * y) / 2.0,
+        ((1.0 - diagonal_scale) * x + (diagonal_scale + 1.0) * y) / 2.0,
+    )
+
+
 def create_light(
     collection: bpy.types.Collection,
     name: str,
@@ -170,6 +184,72 @@ def build_box_mesh(
     mesh.update()
 
 
+def build_diagonal_scaled_prism_mesh(
+    mesh: bpy.types.Mesh,
+    *,
+    width: float,
+    depth: float,
+    height: float,
+    diagonal_scale: float,
+    z_min: float = 0.0,
+) -> None:
+    z_max = z_min + height
+    half_width = width / 2.0
+    half_depth = depth / 2.0
+    base_vertices = [
+        (-half_width, -half_depth),
+        (half_width, -half_depth),
+        (half_width, half_depth),
+        (-half_width, half_depth),
+    ]
+    transformed_xy = [apply_diagonal_scale(x, y, diagonal_scale=diagonal_scale) for x, y in base_vertices]
+    vertices = [(x, y, z_min) for x, y in transformed_xy] + [(x, y, z_max) for x, y in transformed_xy]
+    faces = [
+        (0, 1, 2, 3),
+        (4, 5, 6, 7),
+        (0, 1, 5, 4),
+        (1, 2, 6, 5),
+        (2, 3, 7, 6),
+        (3, 0, 4, 7),
+    ]
+    mesh.from_pydata(vertices, [], faces)
+    mesh.update()
+
+
+def build_diagonal_scaled_prism_mesh_with_handedness(
+    mesh: bpy.types.Mesh,
+    *,
+    width: float,
+    depth: float,
+    height: float,
+    diagonal_scale: float,
+    mirrored: bool,
+    z_min: float = 0.0,
+) -> None:
+    z_max = z_min + height
+    half_width = width / 2.0
+    half_depth = depth / 2.0
+    base_vertices = [
+        (-half_width, -half_depth),
+        (half_width, -half_depth),
+        (half_width, half_depth),
+        (-half_width, half_depth),
+    ]
+    transform = apply_diagonal_scale_mirrored if mirrored else apply_diagonal_scale
+    transformed_xy = [transform(x, y, diagonal_scale=diagonal_scale) for x, y in base_vertices]
+    vertices = [(x, y, z_min) for x, y in transformed_xy] + [(x, y, z_max) for x, y in transformed_xy]
+    faces = [
+        (0, 1, 2, 3),
+        (4, 5, 6, 7),
+        (0, 1, 5, 4),
+        (1, 2, 6, 5),
+        (2, 3, 7, 6),
+        (3, 0, 4, 7),
+    ]
+    mesh.from_pydata(vertices, [], faces)
+    mesh.update()
+
+
 def create_floor_tile(
     collection: bpy.types.Collection,
     *,
@@ -183,7 +263,14 @@ def create_floor_tile(
     z_height = 1.0 if normalized_height_mode == "full" else 0.5
     z_min = 0.0 if normalized_height_mode == "full" else 0.5
     mesh = bpy.data.meshes.new(object_name)
-    build_box_mesh(mesh, width=1.0, depth=1.0, height=z_height, z_min=z_min)
+    build_diagonal_scaled_prism_mesh(
+        mesh,
+        width=1.0,
+        depth=1.0,
+        height=z_height,
+        diagonal_scale=1.153,
+        z_min=z_min,
+    )
     scene_object = bpy.data.objects.new(object_name, mesh)
     scene_object.name = object_name
     assign_rotation_mode(scene_object, "none")
@@ -199,23 +286,34 @@ def create_floor_tile(
     return scene_object
 
 
-def create_wall_tile(collection: bpy.types.Collection) -> bpy.types.Object:
-    bpy.ops.mesh.primitive_cube_add(location=(0.0, 0.0, 0.5))
-    scene_object = bpy.context.active_object
-    scene_object.name = "101_wall_straight"
-    scene_object.scale = (0.5, 0.1, 0.5)
-    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-    bake_location_into_mesh_and_zero_origin(scene_object)
+def create_wall_tile(
+    collection: bpy.types.Collection,
+    *,
+    object_name: str,
+    height: float = 1.0,
+    height_class: str = "tall",
+) -> bpy.types.Object:
+    mesh = bpy.data.meshes.new(object_name)
+    build_diagonal_scaled_prism_mesh_with_handedness(
+        mesh,
+        width=1.0,
+        depth=0.2,
+        height=height,
+        diagonal_scale=1.153,
+        mirrored=False,
+        z_min=0.0,
+    )
+    scene_object = bpy.data.objects.new(object_name, mesh)
+    scene_object.name = object_name
     assign_rotation_mode(scene_object, "rotate_90")
     assign_sample_metadata(
         scene_object,
         anchor_type="wall_base",
         footprint_width=1,
         footprint_height=1,
-        height_class="tall",
+        height_class=height_class,
         tags=["sample", "wall"],
     )
-    unlink_from_scene_root(scene_object)
     link_object(scene_object, collection)
     return scene_object
 
@@ -340,7 +438,8 @@ def build_sample_scene() -> dict:
 
     create_floor_tile(export_floor_plain, object_name="001_floor_plain", height_mode="full")
     create_floor_tile(export_floor_half, object_name="002_floor_half", height_mode="half")
-    create_wall_tile(export_walls)
+    create_wall_tile(export_walls, object_name="101_wall_straight", height=1.0, height_class="tall")
+    create_wall_tile(export_walls, object_name="102_wall_straight_2u", height=2.0, height_class="taller")
     create_stair_tile(export_stairs)
     create_prop(export_props)
 
@@ -376,6 +475,7 @@ def build_sample_scene() -> dict:
             "001_floor_plain",
             "002_floor_half",
             "101_wall_straight",
+            "102_wall_straight_2u",
             "201_stair_up",
             "301_prop_switch",
         ],

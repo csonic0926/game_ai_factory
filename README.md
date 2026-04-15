@@ -49,6 +49,7 @@ Available commands:
 - `smoke-sample`
 - `prepare-reference-pair`
 - `generate-reference-pair`
+- `generate-wall-reference-pair`
 - `validate-reference-pair`
 
 ## Runtime
@@ -79,6 +80,26 @@ Current sample reference-pair specs point at manually corrected scaled reference
 - `examples/workflow_references/floor_height_pair/floor_half_k_scaled.png`
 
 This allows the Gemini-generation workflow to use artist-adjusted framing instead of the raw Blender render when needed.
+
+Canonical wall reference pair example:
+
+- `examples/golden/sample_factory/images/101_wall_straight_rot0.png`
+- `examples/golden/sample_factory/images/101_wall_straight_rot90.png`
+
+Canonical handedness mapping for 1u walls:
+
+- `left wall` -> `101_wall_straight_rot90.png`
+- `right wall` -> `101_wall_straight_rot0.png`
+
+Canonical 2-unit wall reference pair example:
+
+- `examples/golden/sample_factory/images/102_wall_straight_2u_rot0.png`
+- `examples/golden/sample_factory/images/102_wall_straight_2u_rot90.png`
+
+Canonical handedness mapping for 2u walls:
+
+- `left wall` -> `102_wall_straight_2u_rot90.png`
+- `right wall` -> `102_wall_straight_2u_rot0.png`
 
 ## Low-level Blender commands
 
@@ -116,6 +137,43 @@ Generate requested variants from the spec:
 python3 itf.py generate-reference-pair \
   --spec examples/reference_pair_workflow/pixel_grass_demo.spec.json
 ```
+
+Wall demo with arbitrary variant names:
+
+```bash
+python3 itf.py generate-reference-pair \
+  --spec examples/reference_pair_workflow/pixel_stone_wall_demo.spec.json
+```
+
+High-level wall helper for support skills / callers:
+
+```bash
+# default: generate both left + right 1u walls
+python3 itf.py generate-wall-reference-pair
+
+# both left + right 2u walls
+python3 itf.py generate-wall-reference-pair --height 2
+
+# only left 2u wall
+python3 itf.py generate-wall-reference-pair --height 2 --variant left
+
+# only right 1u wall
+python3 itf.py generate-wall-reference-pair --variant right
+```
+
+Rules:
+
+- `--height 1` = standard wall
+- `--height 2` = 2-unit-high wall
+- omit `--variant` to generate both `left` + `right`
+- pass `--variant left` or `--variant right` to generate only one side
+- the wall helper maps heights to canonical references:
+  - `1` -> `101_wall_straight`
+  - `2` -> `102_wall_straight_2u`
+- handedness is fixed canonically:
+  - `left -> rot90`
+  - `right -> rot0`
+- the helper writes a generated spec JSON under `examples/reference_pair_workflow/` and then runs the normal reference-pair workflow
 
 The sample specs demonstrate `background.mode = "color_key"` with a two-color chroma-key policy:
 
@@ -194,6 +252,8 @@ Re-run validation for an existing prepared/generated run:
 python3 itf.py validate-reference-pair \
   --run-root output/reference_pair_runs/pixel_grass_demo
 ```
+
+For non-`full`/`half` runs, override files with repeated `--image variant=/path/to/file.png`.
 
 ### 4. Select final output
 

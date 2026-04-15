@@ -7,6 +7,7 @@ import subprocess
 from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -19,7 +20,6 @@ NANO_BANANA_ROOT = (REPO_ROOT.parent / "nano_banana").resolve()
 NANO_BANANA_SCRIPT = NANO_BANANA_ROOT / "scripts" / "generate_image.js"
 SCHEMA_VERSION = "reference_pair_workflow_v1"
 SUPPORTED_PROVIDERS = {"mock", "nano_banana", "nano_banana_pro"}
-SUPPORTED_VARIANTS = {"full", "half"}
 SUPPORTED_CONVERSION_MODES = {"none", "transform"}
 PROVIDER_MODELS = {
     "nano_banana": "nano-banana-2",
@@ -30,6 +30,129 @@ ALPHA_THRESHOLD = 32
 
 class ReferencePairWorkflowError(RuntimeError):
     pass
+
+
+def _infer_wall_side(profile_raw: dict[str, Any], *, variant_name: str) -> str:
+    wall_side = str((profile_raw or {}).get("wall_side", "")).strip().lower()
+    if wall_side in {"left", "right"}:
+        return wall_side
+    if variant_name in {"left", "right"}:
+        return variant_name
+    role_text = str((profile_raw or {}).get("role_text", "")).strip().lower()
+    if "left-facing" in role_text or "left wall" in role_text:
+        return "left"
+    if "right-facing" in role_text or "right wall" in role_text:
+        return "right"
+    return ""
+
+
+def _infer_wall_height_units(profile_raw: dict[str, Any]) -> int | None:
+    raw_height = (profile_raw or {}).get("height_units")
+    if raw_height is not None and str(raw_height).strip():
+        try:
+            height_units = int(raw_height)
+        except (TypeError, ValueError) as error:
+            raise ReferencePairWorkflowError("variant_profiles wall height_units must be an integer.") from error
+        if height_units not in {1, 2}:
+            raise ReferencePairWorkflowError("variant_profiles wall height_units must be 1 or 2.")
+        return height_units
+    role_text = str((profile_raw or {}).get("role_text", "")).strip().lower()
+    if "two-tile-high" in role_text or "2u" in role_text:
+        return 2
+    if "single-tile-high" in role_text or "1u" in role_text:
+        return 1
+    return None
+
+
+def _normalize_wall_variant_profile(profile_raw: dict[str, Any], *, variant_name: str) -> dict[str, Any]:
+    wall_side = _infer_wall_side(profile_raw, variant_name=variant_name)
+    height_units = _infer_wall_height_units(profile_raw)
+    reference_rotation_raw = (profile_raw or {}).get("reference_rotation")
+    reference_rotation: int | None = None
+    if reference_rotation_raw is not None and str(reference_rotation_raw).strip():
+        try:
+            reference_rotation = int(reference_rotation_raw)
+        except (TypeError, ValueError) as error:
+            raise ReferencePairWorkflowError("variant_profiles wall reference_rotation must be an integer.") from error
+    return {
+        "wall_side": wall_side,
+        "height_units": height_units,
+        "reference_rotation": reference_rotation,
+    }
+
+
+def _expected_wall_reference_rotation(wall_side: str) -> int | None:
+    if wall_side == "left":
+        return 90
+    if wall_side == "right":
+        return 0
+    return None
+
+
+def _reference_rotation_from_path(path: Path) -> int | None:
+    stem = path.stem.lower()
+    if "_rot90" in stem:
+        return 90
+    if "_rot0" in stem:
+        return 0
+    return None
+
+
+def _file_sha256(path: Path) -> str:
+    return sha256(path.read_bytes()).hexdigest()
+
+
+def _validate_wall_reference_integrity(
+    *,
+    variants: list[str],
+    normalized_reference_pair: dict[str, str],
+    variant_profiles: dict[str, dict[str, Any]],
+) -> None:
+    wall_variants = [
+        variant_name for variant_name in variants
+        if str(variant_profiles.get(variant_name, {}).get("selector_profile", "")).strip().lower() == "wall"
+    ]
+    if not wall_variants:
+        return
+
+    for variant_name in wall_variants:
+        profile = variant_profiles.get(variant_name, {})
+        wall_meta = profile.get("wall_profile", {}) if isinstance(profile, dict) else {}
+        wall_side = str(wall_meta.get("wall_side", "")).strip().lower()
+        height_units = wall_meta.get("height_units")
+        if wall_side and wall_side != variant_name:
+            raise ReferencePairWorkflowError(
+                f"variant_profiles.{variant_name}.wall_side='{wall_side}' conflicts with variant name '{variant_name}'."
+            )
+        if wall_side not in {"left", "right"}:
+            raise ReferencePairWorkflowError(
+                f"variant_profiles.{variant_name} must declare wall_side left/right or use a left/right variant name."
+            )
+        if height_units not in {1, 2}:
+            raise ReferencePairWorkflowError(
+                f"variant_profiles.{variant_name} must preserve wall height_units as 1 or 2; prose-only height is not allowed for wall specs."
+            )
+        reference_path = Path(normalized_reference_pair[variant_name])
+        actual_rotation = _reference_rotation_from_path(reference_path)
+        declared_rotation = wall_meta.get("reference_rotation")
+        canonical_rotation = _expected_wall_reference_rotation(wall_side or variant_name)
+        if declared_rotation is not None and canonical_rotation is not None and int(declared_rotation) != int(canonical_rotation):
+            raise ReferencePairWorkflowError(
+                f"variant_profiles.{variant_name}.reference_rotation={declared_rotation} conflicts with canonical {variant_name} wall rotation rot{canonical_rotation}."
+            )
+        expected_rotation = canonical_rotation
+        if actual_rotation is not None and expected_rotation is not None and int(actual_rotation) != int(expected_rotation):
+            raise ReferencePairWorkflowError(
+                f"reference_pair.{variant_name} uses rotation rot{actual_rotation}, expected rot{expected_rotation} for the {variant_name} wall."
+            )
+
+    if {"left", "right"}.issubset(wall_variants):
+        left_path = Path(normalized_reference_pair["left"])
+        right_path = Path(normalized_reference_pair["right"])
+        if _file_sha256(left_path) == _file_sha256(right_path):
+            raise ReferencePairWorkflowError(
+                "Wall reference_pair.left and reference_pair.right resolve to the same image content; handedness would collapse."
+            )
 
 
 @dataclass
@@ -100,17 +223,22 @@ def load_and_validate_spec(spec_path: Path) -> tuple[dict[str, Any], list[str]]:
     reference_pair = raw.get("reference_pair")
     if not isinstance(reference_pair, dict):
         raise ReferencePairWorkflowError("reference_pair must be an object.")
-    full_reference = resolve_input_path(
-        require_non_empty_string(reference_pair.get("full"), "reference_pair.full"),
-        base_path=spec_path.parent,
-    )
-    half_reference = resolve_input_path(
-        require_non_empty_string(reference_pair.get("half"), "reference_pair.half"),
-        base_path=spec_path.parent,
-    )
-    for label, image_path in (("reference_pair.full", full_reference), ("reference_pair.half", half_reference)):
+    normalized_reference_pair: dict[str, str] = {}
+    for variant_name_raw, variant_path_raw in reference_pair.items():
+        variant_name = require_non_empty_string(variant_name_raw, "reference_pair key").lower()
+        if variant_name in normalized_reference_pair:
+            raise ReferencePairWorkflowError(f"Duplicate reference_pair variant '{variant_name}'.")
+        image_path = resolve_input_path(
+            require_non_empty_string(variant_path_raw, f"reference_pair.{variant_name}"),
+            base_path=spec_path.parent,
+        )
+        normalized_reference_pair[variant_name] = str(image_path)
+    if not normalized_reference_pair:
+        raise ReferencePairWorkflowError("reference_pair must define at least one variant.")
+    for label, image_path_value in normalized_reference_pair.items():
+        image_path = Path(image_path_value)
         if not image_path.exists():
-            raise ReferencePairWorkflowError(f"{label} was not found: {image_path}")
+            raise ReferencePairWorkflowError(f"reference_pair.{label} was not found: {image_path}")
 
     conversion_data = raw.get("conversion", {})
     if conversion_data is not None and not isinstance(conversion_data, dict):
@@ -145,18 +273,43 @@ def load_and_validate_spec(spec_path: Path) -> tuple[dict[str, Any], list[str]]:
     if color_key_tolerance < 0 or color_key_tolerance > 255:
         raise ReferencePairWorkflowError("background.tolerance must be between 0 and 255.")
 
-    variants_raw = raw.get("variants", ["full", "half"])
+    default_variants = ["full", "half"] if {"full", "half"}.issubset(normalized_reference_pair.keys()) else list(normalized_reference_pair.keys())
+    variants_raw = raw.get("variants", default_variants)
     if not isinstance(variants_raw, list) or not variants_raw:
         raise ReferencePairWorkflowError("variants must be a non-empty array when provided.")
     variants: list[str] = []
     for variant in variants_raw:
         variant_name = require_non_empty_string(variant, "variants[]").lower()
-        if variant_name not in SUPPORTED_VARIANTS:
-            raise ReferencePairWorkflowError(
-                f"Unsupported variant '{variant_name}'. Expected one of: {', '.join(sorted(SUPPORTED_VARIANTS))}"
-            )
+        if variant_name not in normalized_reference_pair:
+            raise ReferencePairWorkflowError(f"Variant '{variant_name}' is missing from reference_pair.")
         if variant_name not in variants:
             variants.append(variant_name)
+
+    variant_profiles_raw = raw.get("variant_profiles", {})
+    if variant_profiles_raw is not None and not isinstance(variant_profiles_raw, dict):
+        raise ReferencePairWorkflowError("variant_profiles must be an object when provided.")
+    variant_profiles: dict[str, dict[str, Any]] = {}
+    for variant_name in variants:
+        profile_raw = variant_profiles_raw.get(variant_name, {}) if isinstance(variant_profiles_raw, dict) else {}
+        if profile_raw is not None and not isinstance(profile_raw, dict):
+            raise ReferencePairWorkflowError(f"variant_profiles.{variant_name} must be an object.")
+        role_text = str((profile_raw or {}).get("role_text", "")).strip()
+        geometry_guidance = str((profile_raw or {}).get("geometry_guidance", "")).strip()
+        sheet_label = str((profile_raw or {}).get("sheet_label", "")).strip() or variant_name
+        selector_profile = str((profile_raw or {}).get("selector_profile", "")).strip().lower()
+        variant_profiles[variant_name] = {
+            "role_text": role_text,
+            "geometry_guidance": geometry_guidance,
+            "sheet_label": sheet_label,
+            "selector_profile": selector_profile,
+            "wall_profile": _normalize_wall_variant_profile(profile_raw or {}, variant_name=variant_name),
+        }
+
+    _validate_wall_reference_integrity(
+        variants=variants,
+        normalized_reference_pair=normalized_reference_pair,
+        variant_profiles=variant_profiles,
+    )
 
     conversion_source_variant: str | None = None
     conversion_source_image: Path | None = None
@@ -165,10 +318,8 @@ def load_and_validate_spec(spec_path: Path) -> tuple[dict[str, Any], list[str]]:
             conversion_data.get("source_variant"),
             "conversion.source_variant",
         ).lower()
-        if conversion_source_variant not in SUPPORTED_VARIANTS:
-            raise ReferencePairWorkflowError(
-                "conversion.source_variant must be one of: full, half"
-            )
+        if conversion_source_variant not in normalized_reference_pair:
+            raise ReferencePairWorkflowError("conversion.source_variant must match a reference_pair variant.")
         if len(variants) != 1:
             raise ReferencePairWorkflowError(
                 "conversion.mode=transform requires exactly one target variant in variants."
@@ -195,7 +346,8 @@ def load_and_validate_spec(spec_path: Path) -> tuple[dict[str, Any], list[str]]:
         "output_root": str(output_root),
         "variants": variants,
         "provider": {"name": provider_name},
-        "reference_pair": {"full": str(full_reference), "half": str(half_reference)},
+        "reference_pair": normalized_reference_pair,
+        "variant_profiles": variant_profiles,
         "conversion": {
             "mode": conversion_mode,
             "source_variant": conversion_source_variant,
@@ -250,17 +402,27 @@ def build_run_directories(run_root: Path) -> dict[str, Path]:
     return directories
 
 
-def compose_reference_sheet(full_image_path: Path, half_image_path: Path, output_path: Path) -> Path:
-    full_image = Image.open(full_image_path).convert("RGBA")
-    half_image = Image.open(half_image_path).convert("RGBA")
+def compose_reference_sheet(
+    reference_image_paths: Sequence[Path],
+    *,
+    labels: Sequence[str] | None = None,
+    output_path: Path,
+) -> Path:
+    if len(reference_image_paths) != 2:
+        raise ReferencePairWorkflowError("compose_reference_sheet currently requires exactly two reference images.")
+    first_image = Image.open(reference_image_paths[0]).convert("RGBA")
+    second_image = Image.open(reference_image_paths[1]).convert("RGBA")
     canvas = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
-    full_resized = full_image.resize((384, 384), Image.LANCZOS)
-    half_resized = half_image.resize((384, 384), Image.LANCZOS)
-    canvas.alpha_composite(full_resized, ((1024 - 384) // 2, 96))
-    canvas.alpha_composite(half_resized, ((1024 - 384) // 2, 544))
+    first_resized = first_image.resize((384, 384), Image.LANCZOS)
+    second_resized = second_image.resize((384, 384), Image.LANCZOS)
+    canvas.alpha_composite(first_resized, ((1024 - 384) // 2, 96))
+    canvas.alpha_composite(second_resized, ((1024 - 384) // 2, 544))
     draw = ImageDraw.Draw(canvas)
     draw.rounded_rectangle((300, 72, 724, 504), radius=24, outline=(255, 255, 255, 96), width=3)
     draw.rounded_rectangle((300, 520, 724, 952), radius=24, outline=(255, 255, 255, 96), width=3)
+    if labels and len(labels) == 2:
+        draw.text((320, 82), str(labels[0]), fill=(255, 255, 255, 180))
+        draw.text((320, 530), str(labels[1]), fill=(255, 255, 255, 180))
     output_path.parent.mkdir(parents=True, exist_ok=True)
     canvas.save(output_path)
     return output_path
@@ -269,22 +431,72 @@ def compose_reference_sheet(full_image_path: Path, half_image_path: Path, output
 def build_generation_prompt(
     spec: dict[str, Any],
     *,
-    height: str,
+    variant: str,
     use_reference_sheet: bool,
     conversion_mode: str = "none",
     conversion_source_variant: str | None = None,
 ) -> str:
-    role_text = "full-height cube tile" if height == "full" else "half-height cube tile"
-    height_sentence = (
-        "Full-height means a normal tall cube tile with the expected full vertical side depth. "
-        "Do not compress the side faces or turn it into a shallow slab. "
-        if height == "full"
-        else "Half-height means a shallow half-block slab: the visible side faces must be short, and the total visible tile height "
-        "should be clearly about half of a full-height cube with the same footprint. Do not generate a full-height cube, "
-        "do not use tall vertical side faces, and do not fake half-height by only changing texture."
-    )
+    variant_profiles = spec.get("variant_profiles", {})
+    variant_profile = variant_profiles.get(variant, {}) if isinstance(variant_profiles, dict) else {}
+    if variant == "full":
+        role_text = "full-height cube tile"
+        geometry_sentence = (
+            "Full-height means a normal tall cube tile with the expected full vertical side depth. "
+            "Do not compress the side faces or turn it into a shallow slab. "
+        )
+    elif variant == "half":
+        role_text = "half-height cube tile"
+        geometry_sentence = (
+            "Half-height means a shallow half-block slab: the visible side faces must be short, and the total visible tile height "
+            "should be clearly about half of a full-height cube with the same footprint. Do not generate a full-height cube, "
+            "do not use tall vertical side faces, and do not fake half-height by only changing texture."
+        )
+    else:
+        role_text = str(variant_profile.get("role_text", "")).strip() or f"{variant} isometric asset"
+        geometry_sentence = str(variant_profile.get("geometry_guidance", "")).strip()
+        selector_profile = str(variant_profile.get("selector_profile", "")).strip().lower()
+        wall_profile = variant_profile.get("wall_profile", {}) if isinstance(variant_profile, dict) else {}
+        if selector_profile == "wall" and isinstance(wall_profile, dict):
+            wall_side = str(wall_profile.get("wall_side", "")).strip().lower() or variant
+            height_units = wall_profile.get("height_units")
+            if not role_text:
+                if wall_side in {"left", "right"} and height_units in {1, 2}:
+                    height_text = "two-tile-high" if int(height_units) == 2 else "single-tile-high"
+                    role_text = f"{wall_side}-facing {height_text} isometric wall segment"
+            handedness_sentence = ""
+            if wall_side == "left":
+                handedness_sentence = (
+                    "This is the left wall variant: keep the visible wall body on the left half of the tile, "
+                    "attach it to the floor tile's top-left edge, and leave the opposite half empty. "
+                    "Do not mirror it into a right wall. "
+                )
+            elif wall_side == "right":
+                handedness_sentence = (
+                    "This is the right wall variant: keep the visible wall body on the right half of the tile, "
+                    "attach it to the floor tile's top-right edge, and leave the opposite half empty. "
+                    "Do not mirror it into a left wall. "
+                )
+            height_sentence = ""
+            if height_units == 2:
+                height_sentence = (
+                    "Height is 2u: extend the wall upward by a full extra tile unit while preserving the same lower footprint and contact edge. "
+                    "Do not compress it back into a 1u wall. "
+                )
+            elif height_units == 1:
+                height_sentence = "Height is 1u: keep it to the normal single-tile wall height. "
+            geometry_sentence = f"{handedness_sentence}{height_sentence}{geometry_sentence}".strip()
+        if geometry_sentence and not geometry_sentence.endswith((" ", ".", "!", "?")):
+            geometry_sentence += "."
+        if geometry_sentence:
+            geometry_sentence += " "
     if conversion_mode == "transform":
-        source_role_text = "full-height cube tile" if conversion_source_variant == "full" else "half-height cube tile"
+        if conversion_source_variant == "full":
+            source_role_text = "full-height cube tile"
+        elif conversion_source_variant == "half":
+            source_role_text = "half-height cube tile"
+        else:
+            source_profile = variant_profiles.get(conversion_source_variant or "", {}) if isinstance(variant_profiles, dict) else {}
+            source_role_text = str(source_profile.get("role_text", "")).strip() or f"{conversion_source_variant} isometric asset"
         reference_rule = (
             f"Two separate reference images are provided. The first image is the source {source_role_text} that must be transformed. "
             f"The second image is the target {role_text} geometry reference that defines the required height and silhouette. "
@@ -292,8 +504,9 @@ def build_generation_prompt(
             "Do not redesign, re-theme, invent a different tile, or replace the source surface treatment with unrelated new content. "
         )
     else:
+        sheet_labels = [spec["variant_profiles"][name]["sheet_label"] for name in spec.get("variants", []) if name in spec.get("variant_profiles", {})]
         reference_rule = (
-            "Use the supplied reference sheet for structure only (upper reference = full-height; lower reference = half-height). "
+            f"Use the supplied reference sheet for structure only (upper reference = {sheet_labels[0]}; lower reference = {sheet_labels[1]}). "
             if use_reference_sheet
             else f"Use the supplied {role_text} reference image for structure only. "
         )
@@ -328,7 +541,7 @@ def build_generation_prompt(
     return (
         f"{'Edit' if conversion_mode == 'transform' else 'Create'} one isometric game tile PNG as a {role_text}. "
         f"{reference_rule}"
-        f"{height_sentence}"
+        f"{geometry_sentence}"
         f"For this output, match the {role_text} geometry exactly: keep camera angle, silhouette, perspective, "
         f"face visibility, footprint width, and overall proportions aligned to the corresponding reference. "
         "Do not add a scene, ground shadow, border, glow, extra objects, text, or watermark. "
@@ -369,17 +582,20 @@ def prepare_reference_pair_run(spec_path: Path) -> dict[str, Any]:
     directories = build_run_directories(run_root)
     variants = spec["variants"]
 
-    full_reference_src = Path(spec["reference_pair"]["full"])
-    half_reference_src = Path(spec["reference_pair"]["half"])
-    full_reference_dst = directories["refs"] / "floor_full.png"
-    half_reference_dst = directories["refs"] / "floor_half.png"
-    shutil.copy2(full_reference_src, full_reference_dst)
-    shutil.copy2(half_reference_src, half_reference_dst)
-    reference_sheet_path = compose_reference_sheet(
-        full_reference_dst,
-        half_reference_dst,
-        directories["refs"] / "reference_pair_sheet.png",
-    )
+    copied_references: dict[str, str] = {}
+    for variant in variants:
+        source_path = Path(spec["reference_pair"][variant])
+        destination_path = directories["refs"] / f"{variant}.png"
+        shutil.copy2(source_path, destination_path)
+        copied_references[variant] = str(destination_path)
+
+    reference_sheet_path: Path | None = None
+    if len(variants) == 2:
+        reference_sheet_path = compose_reference_sheet(
+            [Path(copied_references[variant]) for variant in variants],
+            labels=[spec["variant_profiles"][variant]["sheet_label"] for variant in variants],
+            output_path=directories["refs"] / "reference_pair_sheet.png",
+        )
 
     prompts: dict[str, str] = {}
     prompt_paths: dict[str, str] = {}
@@ -396,15 +612,15 @@ def prepare_reference_pair_run(spec_path: Path) -> dict[str, Any]:
             shutil.copy2(source_image_src, source_image_dst)
             generation_input_paths = [
                 source_image_dst,
-                directories["refs"] / f"floor_{variant}.png",
+                Path(copied_references[variant]),
             ]
         else:
             generation_input_paths = [
-                reference_sheet_path if len(variants) == 2 else directories["refs"] / f"floor_{variant}.png"
+                reference_sheet_path if use_reference_sheet and reference_sheet_path is not None else Path(copied_references[variant])
             ]
         prompt_text = build_generation_prompt(
             spec,
-            height=variant,
+            variant=variant,
             use_reference_sheet=use_reference_sheet,
             conversion_mode=conversion_mode,
             conversion_source_variant=conversion.get("source_variant"),
@@ -429,15 +645,15 @@ def prepare_reference_pair_run(spec_path: Path) -> dict[str, Any]:
         "provider": spec["provider"],
         "conversion": spec["conversion"],
         "references": {
-            "full": str(full_reference_dst),
-            "half": str(half_reference_dst),
-            "pair_sheet": str(reference_sheet_path),
+            **copied_references,
+            "pair_sheet": str(reference_sheet_path) if reference_sheet_path is not None else "",
         },
         "generation_inputs": generation_inputs,
         "expected_outputs": expected_outputs,
         "prompts": prompts,
         "background": spec["background"],
         "validation": spec["validation"],
+        "variant_profiles": spec.get("variant_profiles", {}),
         "warnings": warnings,
     }
     write_json(directories["request"] / "request.json", request_payload)
@@ -446,7 +662,7 @@ def prepare_reference_pair_run(spec_path: Path) -> dict[str, Any]:
         "run_root": str(run_root),
         "variants": variants,
         "request_path": str(directories["request"] / "request.json"),
-        "reference_sheet": str(reference_sheet_path),
+        "reference_sheet": str(reference_sheet_path) if reference_sheet_path is not None else None,
         "prompt_paths": prompt_paths,
         "warnings": warnings,
     }
@@ -1102,6 +1318,122 @@ def align_generated_to_reference_canvas(reference: Image.Image, generated: Image
     )
 
 
+WALL_NORMALIZED_VALIDATION = {
+    "target_size": 128,
+    "min_normalized_iou": 0.90,
+    "max_anchor_error": 10.0,
+}
+WALL_RAW_OVERRIDE = {
+    "max_bbox_delta_hard_fail": 56,
+    "max_bbox_delta_soft_fail": 24,
+}
+
+
+def _effective_bbox(mask: Image.Image) -> tuple[int, int, int, int]:
+    bbox = mask.getbbox()
+    if bbox is None:
+        raise ReferencePairWorkflowError("Mask has no opaque pixels.")
+    left, top, right, bottom = bbox
+    return left, top, right - 1, bottom - 1
+
+
+def _normalize_mask(mask: Image.Image, *, target_size: int = 128) -> tuple[Image.Image, tuple[int, int, int, int]]:
+    left, top, right, bottom = _effective_bbox(mask)
+    cropped = mask.crop((left, top, right + 1, bottom + 1))
+    normalized = cropped.resize((target_size, target_size), Image.NEAREST)
+    return normalized, (left, top, right, bottom)
+
+
+def _find_anchor(mask: Image.Image, target_y: int, side: str) -> tuple[int, int] | None:
+    search_order = [0]
+    for delta in range(1, mask.height):
+        search_order.extend((delta, -delta))
+    pixels = mask.load()
+    for delta in search_order:
+        y = target_y + delta
+        if y < 0 or y >= mask.height:
+            continue
+        xs = [x for x in range(mask.width) if pixels[x, y] >= 128]
+        if not xs:
+            continue
+        if side == "left":
+            return min(xs), y
+        if side == "right":
+            return max(xs), y
+    return None
+
+
+def _mask_anchors(mask: Image.Image) -> dict[str, tuple[int, int] | None]:
+    bbox = mask.getbbox()
+    if bbox is None:
+        return {"left_shoulder": None, "right_shoulder": None, "left_mid": None, "right_mid": None, "bottom_tip": None}
+    left, top, right, bottom = bbox
+    height = bottom - top
+    shoulder_y = top + max(1, int(round(height * 0.18)))
+    mid_y = top + max(1, int(round(height * 0.56)))
+    pixels = mask.load()
+    bottom_points = [(x, bottom - 1) for x in range(mask.width) if pixels[x, bottom - 1] >= 128]
+    bottom_tip = None
+    if bottom_points:
+        bottom_tip = bottom_points[len(bottom_points) // 2]
+    return {
+        "left_shoulder": _find_anchor(mask, shoulder_y, "left"),
+        "right_shoulder": _find_anchor(mask, shoulder_y, "right"),
+        "left_mid": _find_anchor(mask, mid_y, "left"),
+        "right_mid": _find_anchor(mask, mid_y, "right"),
+        "bottom_tip": bottom_tip,
+    }
+
+
+def _anchor_error(candidate: dict[str, tuple[int, int] | None], reference: dict[str, tuple[int, int] | None]) -> float:
+    total = 0.0
+    count = 0
+    for key, ref_value in reference.items():
+        cand_value = candidate.get(key)
+        if ref_value is None or cand_value is None:
+            total += 128.0
+            count += 1
+            continue
+        total += abs(cand_value[0] - ref_value[0]) + abs(cand_value[1] - ref_value[1])
+        count += 1
+    return total / count if count else 999.0
+
+
+def wall_normalized_diagnostics(reference_image: Image.Image, generated_image: Image.Image) -> dict[str, Any]:
+    reference_mask = alpha_mask(reference_image)
+    generated_mask = alpha_mask(generated_image)
+    normalized_reference_mask, reference_bbox = _normalize_mask(
+        reference_mask, target_size=int(WALL_NORMALIZED_VALIDATION["target_size"])
+    )
+    normalized_generated_mask, generated_bbox = _normalize_mask(
+        generated_mask, target_size=int(WALL_NORMALIZED_VALIDATION["target_size"])
+    )
+    reference_anchors = _mask_anchors(normalized_reference_mask)
+    generated_anchors = _mask_anchors(normalized_generated_mask)
+    return {
+        "normalized_iou": intersection_over_union(normalized_reference_mask, normalized_generated_mask),
+        "anchor_error": _anchor_error(generated_anchors, reference_anchors),
+        "reference_effective_bbox": {
+            "left": reference_bbox[0],
+            "top": reference_bbox[1],
+            "right": reference_bbox[2],
+            "bottom": reference_bbox[3],
+            "width": reference_bbox[2] - reference_bbox[0] + 1,
+            "height": reference_bbox[3] - reference_bbox[1] + 1,
+        },
+        "generated_effective_bbox": {
+            "left": generated_bbox[0],
+            "top": generated_bbox[1],
+            "right": generated_bbox[2],
+            "bottom": generated_bbox[3],
+            "width": generated_bbox[2] - generated_bbox[0] + 1,
+            "height": generated_bbox[3] - generated_bbox[1] + 1,
+        },
+        "reference_anchors": {key: list(value) if value is not None else None for key, value in reference_anchors.items()},
+        "generated_anchors": {key: list(value) if value is not None else None for key, value in generated_anchors.items()},
+    }
+
+
 def create_overlay(reference_path: Path, generated_path: Path, output_path: Path) -> None:
     reference = Image.open(reference_path).convert("RGBA")
     generated = Image.open(generated_path).convert("RGBA")
@@ -1133,7 +1465,13 @@ def create_diff_mask(reference_path: Path, generated_path: Path, output_path: Pa
     canvas.save(output_path)
 
 
-def validate_single_pair(reference_path: Path, generated_path: Path, thresholds: dict[str, Any]) -> dict[str, Any]:
+def validate_single_pair(
+    reference_path: Path,
+    generated_path: Path,
+    thresholds: dict[str, Any],
+    *,
+    selector_profile: str = "",
+) -> dict[str, Any]:
     reference_image = Image.open(reference_path).convert("RGBA")
     generated_image = Image.open(generated_path).convert("RGBA")
     generated_image, canvas_alignment = align_generated_to_reference_canvas(reference_image, generated_image)
@@ -1145,6 +1483,7 @@ def validate_single_pair(reference_path: Path, generated_path: Path, thresholds:
     iou = intersection_over_union(reference_mask, generated_mask)
     deltas = bbox_deltas(reference_metrics.bbox, generated_metrics.bbox)
     non_transparent_canvas = generated_metrics.bbox == (0, 0, generated_image.width, generated_image.height)
+    wall_diagnostics: dict[str, Any] | None = None
 
     failures: list[str] = []
     severity = "pass"
@@ -1169,6 +1508,41 @@ def validate_single_pair(reference_path: Path, generated_path: Path, thresholds:
             failures.append(f"bbox delta drift: {deltas}")
             severity = "soft_fail"
 
+    if selector_profile == "wall" and generated_metrics.bbox is not None and not non_transparent_canvas:
+        wall_diagnostics = wall_normalized_diagnostics(reference_image, generated_image)
+        normalized_iou = float(wall_diagnostics["normalized_iou"])
+        anchor_error = float(wall_diagnostics["anchor_error"])
+        max_bbox_delta = max(abs(value) for value in deltas.values()) if deltas is not None else 0
+        normalized_gate_passed = (
+            normalized_iou >= float(WALL_NORMALIZED_VALIDATION["min_normalized_iou"])
+            and anchor_error <= float(WALL_NORMALIZED_VALIDATION["max_anchor_error"])
+        )
+        if normalized_gate_passed and severity == "hard_fail":
+            retained_failures: list[str] = []
+            for failure in failures:
+                if failure.startswith("silhouette IOU too low:"):
+                    continue
+                if failure.startswith("bbox delta too large:") and max_bbox_delta <= int(WALL_RAW_OVERRIDE["max_bbox_delta_hard_fail"]):
+                    continue
+                retained_failures.append(failure)
+            failures = retained_failures
+            if not failures:
+                severity = "pass"
+            elif any(
+                failure.startswith("generated image has no opaque tile silhouette")
+                or failure.startswith("generated image appears to fill the whole canvas")
+                for failure in failures
+            ):
+                severity = "hard_fail"
+            else:
+                severity = "soft_fail"
+        if severity == "pass" and deltas is not None and max_bbox_delta > int(WALL_RAW_OVERRIDE["max_bbox_delta_soft_fail"]):
+            wall_diagnostics["raw_bbox_drift_tolerated"] = {
+                "bbox_deltas": deltas,
+                "soft_fail_threshold": int(WALL_RAW_OVERRIDE["max_bbox_delta_soft_fail"]),
+                "hard_fail_threshold": int(WALL_RAW_OVERRIDE["max_bbox_delta_hard_fail"]),
+            }
+
     return {
         "status": severity,
         "failures": failures,
@@ -1177,62 +1551,67 @@ def validate_single_pair(reference_path: Path, generated_path: Path, thresholds:
         "canvas_alignment": canvas_alignment,
         "iou": iou,
         "bbox_deltas": deltas,
+        "selector_profile": selector_profile,
+        "normalized_diagnostics": wall_diagnostics,
     }
 
 
-def validate_reference_pair_run(run_root: Path, *, full_image: Path | None = None, half_image: Path | None = None) -> dict[str, Any]:
+def validate_reference_pair_run(
+    run_root: Path,
+    *,
+    full_image: Path | None = None,
+    half_image: Path | None = None,
+    variant_images: dict[str, Path] | None = None,
+) -> dict[str, Any]:
     request_payload = load_json(run_root / "request" / "request.json")
     thresholds = request_payload["validation"]
     variants: list[str] = request_payload.get("variants", ["full", "half"])
+    variant_profiles = request_payload.get("variant_profiles", {})
     background = request_payload.get("background", {"mode": "transparent"})
-    full_reference = Path(request_payload["references"]["full"])
-    half_reference = Path(request_payload["references"]["half"])
-    full_raw_default = run_root / "generated" / "generated_full.raw.png"
-    half_raw_default = run_root / "generated" / "generated_half.raw.png"
-    full_generated_input = full_image or (
-        full_raw_default if background.get("mode") == "color_key" and full_raw_default.exists() else run_root / "generated" / "generated_full.png"
-    )
-    half_generated_input = half_image or (
-        half_raw_default if background.get("mode") == "color_key" and half_raw_default.exists() else run_root / "generated" / "generated_half.png"
-    )
-    full_generated = full_generated_input
-    half_generated = half_generated_input
+    override_images = dict(variant_images or {})
+    if full_image is not None:
+        override_images["full"] = full_image
+    if half_image is not None:
+        override_images["half"] = half_image
+    references = {variant: Path(request_payload["references"][variant]) for variant in variants}
+    generated_inputs: dict[str, Path] = {}
+    generated_outputs: dict[str, Path] = {}
+    for variant in variants:
+        raw_default = run_root / "generated" / f"generated_{variant}.raw.png"
+        generated_inputs[variant] = override_images.get(variant) or (
+            raw_default if background.get("mode") == "color_key" and raw_default.exists() else run_root / "generated" / f"generated_{variant}.png"
+        )
+        generated_outputs[variant] = generated_inputs[variant]
     preprocessing: dict[str, Any] = {}
     if background.get("mode") == "color_key":
-        if "full" in variants:
-            full_generated = run_root / "processed" / "generated_full.keyed.png"
-            preprocessing["full"] = apply_color_key_to_image(
-                full_generated_input,
-                full_generated,
+        for variant in variants:
+            generated_outputs[variant] = run_root / "processed" / f"generated_{variant}.keyed.png"
+            preprocessing[variant] = apply_color_key_to_image(
+                generated_inputs[variant],
+                generated_outputs[variant],
                 prompt_color=str(background.get("prompt_color", "#FF00FF")),
                 fallback_colors=list(background.get("fallback_colors", ["#00FF00"])),
                 tolerance=int(background.get("tolerance", 24)),
                 emit_variant_pool=True,
             )
-            mirror_variant_pool_to_generated(run_root, variant="full", preprocessing_payload=preprocessing["full"])
-        if "half" in variants:
-            half_generated = run_root / "processed" / "generated_half.keyed.png"
-            preprocessing["half"] = apply_color_key_to_image(
-                half_generated_input,
-                half_generated,
-                prompt_color=str(background.get("prompt_color", "#FF00FF")),
-                fallback_colors=list(background.get("fallback_colors", ["#00FF00"])),
-                tolerance=int(background.get("tolerance", 24)),
-                emit_variant_pool=True,
-            )
-            mirror_variant_pool_to_generated(run_root, variant="half", preprocessing_payload=preprocessing["half"])
-    if "full" in variants and not full_generated.exists():
-        raise ReferencePairWorkflowError(f"Missing generated full image: {full_generated}")
-    if "half" in variants and not half_generated.exists():
-        raise ReferencePairWorkflowError(f"Missing generated half image: {half_generated}")
+            mirror_variant_pool_to_generated(run_root, variant=variant, preprocessing_payload=preprocessing[variant])
+    for variant in variants:
+        if not generated_outputs[variant].exists():
+            raise ReferencePairWorkflowError(f"Missing generated {variant} image: {generated_outputs[variant]}")
 
-    full_result = validate_single_pair(full_reference, full_generated, thresholds) if "full" in variants else None
-    half_result = validate_single_pair(half_reference, half_generated, thresholds) if "half" in variants else None
-
-    full_ref_metrics = pair_metrics(full_reference)
-    half_ref_metrics = pair_metrics(half_reference)
-    full_gen_metrics = pair_metrics(full_generated) if "full" in variants else None
-    half_gen_metrics = pair_metrics(half_generated) if "half" in variants else None
+    per_variant_results = {
+        variant: validate_single_pair(
+            references[variant],
+            generated_outputs[variant],
+            thresholds,
+            selector_profile=str(variant_profiles.get(variant, {}).get("selector_profile", "")).strip().lower()
+            if isinstance(variant_profiles, dict)
+            else "",
+        )
+        for variant in variants
+    }
+    ref_metrics = {variant: pair_metrics(references[variant]) for variant in variants}
+    gen_metrics = {variant: pair_metrics(generated_outputs[variant]) for variant in variants}
 
     def bbox_height(metrics: PairMetrics) -> int | None:
         if metrics.bbox is None:
@@ -1245,11 +1624,10 @@ def validate_reference_pair_run(run_root: Path, *, full_image: Path | None = Non
     pair_failures: list[str] = []
     if "full" in variants and "half" in variants:
         pair_status = "pass"
-        if bbox_height(full_ref_metrics) and bbox_height(half_ref_metrics):
-            ref_ratio = bbox_height(half_ref_metrics) / bbox_height(full_ref_metrics)
-        if full_gen_metrics is not None and half_gen_metrics is not None:
-            if bbox_height(full_gen_metrics) and bbox_height(half_gen_metrics):
-                gen_ratio = bbox_height(half_gen_metrics) / bbox_height(full_gen_metrics)
+        if bbox_height(ref_metrics["full"]) and bbox_height(ref_metrics["half"]):
+            ref_ratio = bbox_height(ref_metrics["half"]) / bbox_height(ref_metrics["full"])
+        if bbox_height(gen_metrics["full"]) and bbox_height(gen_metrics["half"]):
+            gen_ratio = bbox_height(gen_metrics["half"]) / bbox_height(gen_metrics["full"])
 
         if ref_ratio is not None and gen_ratio is not None:
             ratio_delta = abs(gen_ratio - ref_ratio)
@@ -1267,22 +1645,17 @@ def validate_reference_pair_run(run_root: Path, *, full_image: Path | None = Non
             pair_status = "hard_fail"
             pair_failures.append("could not compute full/half bbox heights")
     else:
-        pair_failures.append("pair relationship validation skipped because only one variant was requested")
+        pair_failures.append("pair relationship validation skipped because this run does not use the special full/half floor pair")
 
     validation_dir = run_root / "validation"
     artifacts: dict[str, str] = {"validation_json": str(validation_dir / "validation.json")}
-    if "full" in variants:
-        create_overlay(full_reference, full_generated, validation_dir / "overlay_full.png")
-        create_diff_mask(full_reference, full_generated, validation_dir / "diff_full.png")
-        artifacts["overlay_full"] = str(validation_dir / "overlay_full.png")
-        artifacts["diff_full"] = str(validation_dir / "diff_full.png")
-    if "half" in variants:
-        create_overlay(half_reference, half_generated, validation_dir / "overlay_half.png")
-        create_diff_mask(half_reference, half_generated, validation_dir / "diff_half.png")
-        artifacts["overlay_half"] = str(validation_dir / "overlay_half.png")
-        artifacts["diff_half"] = str(validation_dir / "diff_half.png")
+    for variant in variants:
+        create_overlay(references[variant], generated_outputs[variant], validation_dir / f"overlay_{variant}.png")
+        create_diff_mask(references[variant], generated_outputs[variant], validation_dir / f"diff_{variant}.png")
+        artifacts[f"overlay_{variant}"] = str(validation_dir / f"overlay_{variant}.png")
+        artifacts[f"diff_{variant}"] = str(validation_dir / f"diff_{variant}.png")
 
-    statuses = [result["status"] for result in (full_result, half_result) if result is not None]
+    statuses = [result["status"] for result in per_variant_results.values()]
     if pair_status != "skipped":
         statuses.append(pair_status)
     if "hard_fail" in statuses:
@@ -1308,10 +1681,8 @@ def validate_reference_pair_run(run_root: Path, *, full_image: Path | None = Non
         },
         "artifacts": artifacts,
     }
-    if full_result is not None:
-        result["full"] = full_result
-    if half_result is not None:
-        result["half"] = half_result
+    for variant, variant_result in per_variant_results.items():
+        result[variant] = variant_result
     write_json(validation_dir / "validation.json", result)
     write_json(run_root / "logs" / "validate.json", {"ok": True, "validated_at": now_iso(), "status": final_status})
     return result

@@ -43,6 +43,7 @@ These reference helpers must not render.
 - `001_floor_plain`
 - `002_floor_half`
 - `101_wall_straight`
+- `102_wall_straight_2u`
 - `201_stair_up`
 - `301_prop_switch`
 

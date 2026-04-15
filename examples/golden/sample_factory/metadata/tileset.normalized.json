@@ -27,7 +27,7 @@
         "floor",
         "full"
       ],
-      "source_collection": "Export_Floor",
+      "source_collection": "Export_Floor_Plain",
       "material_variant": "default",
       "render_preset": "default",
       "rotation": 0,
@@ -58,7 +58,7 @@
         "floor",
         "half"
       ],
-      "source_collection": "Export_Floor",
+      "source_collection": "Export_Floor_Half",
       "material_variant": "default",
       "render_preset": "default",
       "rotation": 0,

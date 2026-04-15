@@ -1,0 +1,124 @@
+# REPO_MEMORY.md
+
+## Render visibility gotcha
+
+- In Blender, **collection `hide_render` can effectively override object-level renderability** for this pipeline.
+- So if an object has `hide_render = false` but its parent collection has `hide_render = true`, the object still will not show up in render/export.
+- When debugging "object exists but did not render", check **collection render flags first**, then object flags.
+
+## Floor reference PNG memory
+
+- For floor reference PNG work, distinguish clearly between:
+  - `floor_full_k.png` = raw Blender rendering result
+  - `floor_full_k_scaled.png` = manually scaled version that actually fits in-game iso framing
+- Current known issue: **raw Blender render framing is not automatically “game iso correct.”**
+- So a render being geometrically valid in Blender does **not** mean it is ready to become the final workflow reference PNG.
+
+## Floor framing rule
+
+- When discussing floor full vs half, remember: **the meaningful difference is only Z/height**.
+  - Do not let the workflow get distracted by treating full and half as separate framing problems.
+  - First lock the correct **full-height framing / occupancy / game-iso fit**.
+  - Then derive half-height from the same camera/framing logic.
+- Current working interpretation:
+  - `floor_full_k.png` is a render of a too-regular cube-like base.
+  - `floor_full_k_scaled.png` is closer to the intended game-iso footprint.
+  - The correction is not just “make it bigger”; it behaves like widening the tile along the **screen-horizontal top-face diagonal** so the base becomes a **rhombic prism**, not a perfect cube.
+- Current working number:
+  - the manual correction was about **+15.3% widening** along that diagonal
+  - use this as a starting geometry target, then verify by render
+- Approved current direction:
+  - widening the **other** top-face diagonal produced the correct visual direction
+  - keep full / half floor on that same diagonal rule
+  - walls should inherit the same game-iso floor-plane basis
+- Preferred fix direction:
+  - change the **3D base mesh** so Blender renders closer to the desired game-iso footprint directly
+  - do not rely on 2D post-scale as the long-term canonical solution
+
+## Reference PNG rules
+
+- When creating reference PNGs, optimize for **game-facing silhouette fit**, not for “neutral Blender render.”
+- For final export placement, prefer **game-facing 2D canonical tile rules** over raw render bbox matching.
+- Treat reference PNG creation as a **two-stage problem**:
+  1. render stable geometry from Blender
+  2. verify that the result matches **game iso occupancy/framing**
+- If a raw render looks too small, too centered, or otherwise unlike the in-game iso footprint, do **not** assume it is acceptable just because the camera is technically isometric.
+- For floors, use `floor_full_k_scaled.png` as proof that **post-render scaling/fitting may be required**.
+- Better long-term goal for floors:
+  - make the Blender floor base itself produce a render close to `floor_full_k_scaled.png`
+  - then reuse that fitted base logic for walls
+- Wall note:
+  - after adopting the game-iso floor-plane basis, wall left/right variants should be treated as **mirror counterparts**, not as the same biased mesh rotated 90 degrees
+- Wall height variants should reuse the same floor-plane basis and handedness rule.
+  - adding a 2-unit-high wall should only change wall height/Z
+  - do not change the approved wall footprint logic when creating taller variants
+- For walls and future references, target the same principle:
+  - the object should occupy the canvas at a game-appropriate scale
+  - the silhouette should read like in-game iso art, not like a distant Blender preview
+  - “reference correctness” includes **screen occupancy**, not only angle and proportions
+- If there is a disagreement between:
+  - raw Blender render fidelity
+  - downstream game iso fit
+  choose **game iso fit** for the workflow reference PNG.
+
+## Canonical target rule
+
+- Treat raw Blender renders as upstream inputs, not final placement truth.
+- Final tile fitting should target a **2D canonical placement spec** (canvas, contact edge, occupied side/polygon), especially for walls.
+- Wall left/right naming should be preserved as a factory-facing handedness rule and should not be inferred from visual centering.
+
+## Wall pipeline gotchas
+
+- For wall jobs, **height and handedness must exist as structured fields all the way through the pipeline**.
+  - If a direct/generated spec keeps height only in the run name or prose prompt, downstream selection can silently fall back to `1u`.
+  - Wall specs should carry `variant_profiles.<side>.height_units` and `wall_side`; request payloads preserve these inside `wall_profile`.
+  - Selector inference should use structured wall metadata first and only use prose as legacy fallback.
+- **Reference-pair correctness is a hard dependency for wall validation.**
+  - If left/right reference PNGs are swapped or duplicated, the generator will learn the wrong handedness and the validator may still pass because it is comparing against the wrong reference.
+  - A passing wall validation is only meaningful if the request's `references.left/right` mapping was first verified.
+  - Current sample-factory convention is:
+    - `left wall -> rot90`
+    - `right wall -> rot0`
+  - Wall spec loading should reject opposite rotation mapping and reject left/right references that resolve to the same image content.
+- The current wall fitter can make output alpha look canonically placed even when the source generation geometry is wrong, because the final alpha is replaced by the canonical polygon/half mask.
+  - Therefore, for wall debugging, inspect both:
+    1. raw/generated geometry
+    2. final fitted output
+  - Do not treat a plausible final silhouette alone as proof that generation semantics were correct.
+- For **wall selection**, score against the **canonical fitted wall mask**, not the raw reference silhouette.
+  - Raw wall references contain thickness / bevel / side-face silhouette details that are useful for generation guidance but too unstable as selector truth.
+  - If selection compares final wall output against the raw reference silhouette, a geometrically acceptable 2u wall can be rejected with false `normalized_iou` / `anchor_error` failures.
+  - Wall validation can still inspect raw-vs-reference drift, but wall selection should compare canonicalized reference vs canonicalized candidate.
+- Wall final export should **preserve Gemini-painted thickness**.
+  - Do not overwrite wall alpha with the canonical polygon mask; that creates fake opaque black fill where the model never painted content.
+  - Do not use seam-prone piecewise triangle warps for final wall export; they can introduce colored stitching artifacts.
+  - A working wall strategy is to warp source pixels through a **derived six-point wall hexagon** and then apply the canonical polygon + half rules afterward.
+  - This lets the final placement use game-iso geometry directly without requiring a green fill or any other temporary painted backing.
+  - Current wall deform contract uses a **derived six-point wall hexagon** for both source and target.
+    - source extraction uses the wall-side edge, top-tip apex, outer top edge, outer bottom edge, and a lower inner point.
+    - the same semantic ordering is used for the canonical target so selection and final output stay aligned.
+  - The implementation currently uses **mean value coordinates** over that 6-point polygon so the deform stays continuous and preserves thickness without triangle seam lines.
+  - After deform, score wall geometry on the **canonical fitted wall mask** rather than the raw source silhouette.
+
+## Why this matters
+
+- Split `.blend` files made debugging harder because collection visibility state became part of the failure mode.
+- A single sample scene is easier to validate, easier to diff mentally, and less likely to drift.
+- The floor workflow already showed that manual post-scale was needed to match the actual game look.
+- This means the repo must preserve the distinction between:
+  - raw canonical render input
+  - corrected reference PNG actually used by downstream generation
+
+## Debug checklist
+
+1. Check requested export collections in config.
+2. Check collection `hide_render` on the target collection.
+3. Check object `hide_render` on the mesh object.
+4. Check object name matches `export_objects` filter.
+5. Re-run validation/render against `examples/sample_factory.blend` before assuming geometry is wrong.
+6. If the render exists but feels wrong, ask:
+   - is this just a raw render?
+   - or is this supposed to be the final workflow reference PNG?
+7. For floor references, compare against the known corrected asset:
+   - `examples/workflow_references/floor_height_pair/floor_full_k_scaled.png`
+8. Do not collapse “render succeeded” and “reference is game-ready” into the same conclusion.

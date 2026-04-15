@@ -258,6 +258,7 @@ def render_object_variants(config: dict) -> dict:
     )
 
     original_rotations: dict[str, tuple[float, float, float]] = {}
+    original_scales: dict[str, tuple[float, float, float]] = {}
     original_hide_render: dict[str, bool] = {}
     original_collection_hide_render: dict[str, bool] = {
         collection.name: bool(collection.hide_render) for collection in bpy.data.collections
@@ -265,6 +266,7 @@ def render_object_variants(config: dict) -> dict:
     for export_record in export_object_records:
         export_object = export_record["object"]
         original_rotations[export_object.name] = tuple(export_object.rotation_euler)
+        original_scales[export_object.name] = tuple(export_object.scale)
         original_hide_render[export_object.name] = bool(export_object.hide_render)
 
     manifest_entries: list[dict] = []
@@ -287,6 +289,14 @@ def render_object_variants(config: dict) -> dict:
 
         for rotation_degrees in rotation_degrees_list:
             export_object.rotation_euler[2] = math.radians(rotation_degrees)
+            category = str(entry_metadata.get("category", "")).strip().lower()
+            original_scale = original_scales[export_object.name]
+            if category == "wall":
+                mirror_x = -abs(original_scale[0]) if rotation_degrees == 90 else abs(original_scale[0])
+                export_object.scale = (mirror_x, original_scale[1], original_scale[2])
+            else:
+                export_object.scale = original_scale
+            bpy.context.view_layer.update()
 
             output_name = f"{export_object.name}_rot{rotation_degrees}.png"
             output_path = png_output_directory / output_name
@@ -310,6 +320,7 @@ def render_object_variants(config: dict) -> dict:
         export_object = export_record["object"]
         original_rotation = original_rotations[export_object.name]
         export_object.rotation_euler = original_rotation
+        export_object.scale = original_scales[export_object.name]
         export_object.hide_render = original_hide_render[export_object.name]
     for collection in bpy.data.collections:
         if collection.name in original_collection_hide_render:
