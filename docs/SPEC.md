@@ -8,6 +8,12 @@ Provide a Blender-backed factory for canonical isometric tile references and ref
 
 The repo's primary product is a validated reference-driven tile generation workflow.
 
+Workflow docs are split by tile family:
+
+- `docs/FLOOR_REFERENCE_PAIR_WORKFLOW.md`
+- `docs/WALL_REFERENCE_PAIR_WORKFLOW.md`
+- `docs/REFERENCE_PAIR_WORKFLOW.md` is now the shared router / index
+
 ### Inputs
 
 - a canonical Blender scene

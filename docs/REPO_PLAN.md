@@ -38,3 +38,9 @@
 ## Planning rule
 
 When adding or removing code, prefer the option that makes the reference-pair workflow simpler, more legible, and easier to verify.
+
+When changing documentation, keep floor and wall workflow guidance separate:
+
+- floor details belong in `docs/FLOOR_REFERENCE_PAIR_WORKFLOW.md`
+- wall details belong in `docs/WALL_REFERENCE_PAIR_WORKFLOW.md`
+- `docs/REFERENCE_PAIR_WORKFLOW.md` should stay as the shared router / index

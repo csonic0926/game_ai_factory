@@ -47,7 +47,11 @@ These reference helpers must not render.
 - `201_stair_up`
 - `301_prop_switch`
 
-The two floor objects are especially important because they define the canonical full/half pair used by the Gemini reference workflow.
+The two floor objects are especially important because they define the canonical full/half pair used by the floor reference-pair workflow.
+
+See:
+
+- `docs/FLOOR_REFERENCE_PAIR_WORKFLOW.md`
 
 ## Validation command
 
