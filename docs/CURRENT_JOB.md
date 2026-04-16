@@ -151,6 +151,20 @@ Shift the tile factory from raw-render-driven final placement toward **game-faci
   - right run: `classic_dungeon_stone_wall_candlelight_2u_20260411`
   - both remain selectable and produce final outputs successfully.
 
+## Newly completed for retry closed loop
+
+- `generate_reference_pair()` now supports a bounded end-to-end retry loop (`max_attempts`, default 3).
+- The loop now treats **wall + floor** jobs as selector-capable closed-loop runs when their variants are supported by `variant_selector`.
+- Per attempt, the workflow now does:
+  1. provider generation
+  2. raw validation
+  3. selector/finalization when needed
+  4. final validation on delivered outputs
+  5. retry if the delivery still fails
+- Successful raw validation now still writes deliverable outputs to `final/selected_<variant>.png`, so even already-good runs produce a final handoff artifact.
+- Attempt snapshots are preserved under `run_root/attempts/attempt_XX/` with generated / processed / validation / selection / final artifacts for debugging.
+- CLI now exposes `--max-attempts` on both `generate-reference-pair` and `generate-wall-reference-pair`, and returns non-zero when the closed loop still fails after exhausting attempts.
+
 ## Next implementation focus
 
 - Refactor the canonical spec wording/fields to be explicitly 2D-factory-oriented.
@@ -196,3 +210,281 @@ Shift the tile factory from raw-render-driven final placement toward **game-faci
   - Left wall: top slope −0.505, bottom slope −0.528 (target −0.500). IoU 0.941 vs reference.
   - Right wall: renders correctly; low IoU is Gemini generation quality, not the transform.
 - Also fixed the polygon mask: the old 6-point `_wall_canonical_polygon` hexagon was broken for right walls. Now uses the 4-point body polygon directly for masking.
+
+## April 15 — wall prompt builder correction
+
+- Confirmed the Gemini prompt problem for wall runs was in the **factory prompt builder**, not in the external skill/spec alone.
+- Previous wall prompt assembly over-explained geometry in prose (`attach to top-left edge`, `leave opposite half empty`, `do not mirror`) even though the wall reference image/sheet already carried that structure.
+- Updated `pipeline/reference_pair_workflow.py` so wall prompts now:
+  - treat the supplied wall reference as the **exact geometry lock**
+  - explicitly freeze silhouette / handedness / occupied side / contact edge / proportions to the reference
+  - move prose emphasis toward **height preservation + surface/style direction**
+  - reduce tile-system-style geometric narration that was acting as model noise
+- Floor prompt behavior remains unchanged; the prompt-builder correction is wall-specific.
+
+## April 15 — structured external prompt parts
+
+- Tightened the external prompt contract so callers can pass:
+  - `prompt_parts.style`
+  - `prompt_parts.material`
+  - `prompt_parts.decoration`
+  - `prompt_parts.negative_constraints[]`
+- Goal:
+  - keep external inputs short and concrete
+  - let the factory add the longer prompt scaffolding
+  - reduce overfit / contradictory geometry prose from external repos or skills
+- For wall variants:
+  - `variant_profiles.<variant>.geometry_guidance` is now ignored by prompt assembly
+  - geometry is taken from the reference lock plus structured wall metadata (`wall_side`, `height_units`, `reference_rotation`)
+- Legacy `prompt` and `negative_prompt` are still accepted and normalized into `prompt_parts` for backward compatibility, but README now documents `prompt_parts` as the preferred contract.
+
+## April 15 — wall reference input correction
+
+- Confirmed a remaining factory mistake: wall pair runs were still sending the shared `reference_pair_sheet.png` to Gemini for both left and right variants.
+- This is wrong for walls because left/right are not a height pair; each wall variant must receive its own canonical reference image:
+  - left task -> `rot90`
+  - right task -> `rot0`
+- Updated `prepare_reference_pair_run()` so:
+  - floor dual-variant runs can still use the shared pair sheet
+  - wall variants now always use their own per-variant reference image as the generation input, even when both variants are requested in one run
+- The pair sheet can still be created as a debug artifact, but wall generation no longer depends on it.
+
+## April 15 — preprocessing gate before wall mapping
+
+- Confirmed another workflow bug from the failed rerun: a wall image could fail to produce any usable keyed silhouette after chroma-key preprocessing, but the pipeline still continued into geometry mapping / selector scoring.
+- Added a wall-specific preprocessing gate in `validate_reference_pair_run()`:
+  - inspect the keyed default output plus all emitted color-key variants
+  - require at least one candidate that:
+    - has an opaque silhouette bbox
+    - does not still fill the whole canvas
+    - does not fail top-boundary key-color contamination
+- If no usable keyed silhouette variant exists:
+  - mark that wall variant as `hard_fail`
+  - replace the failure reason with a preprocessing-gate failure
+  - skip selector/mapping in the closed-loop retry path for that attempt
+- This makes the retry loop distinguish:
+  - **workflow/preprocessing failure** (no clean退地 result)
+  - vs **generation geometry failure** after a usable silhouette exists
+
+## April 15 — wall selector green-fringe fix
+
+- Confirmed another downstream workflow bug while inspecting `selection/.../*.final.png`:
+  - wall selector finals could still show opaque green fringe / fill even when the processed keyed candidates no longer had visible green background
+  - root cause was the wall perspective warp sampling straight RGBA during `Image.PERSPECTIVE`, which let chroma-key edge RGB bleed back into opaque pixels
+- Fixed `pipeline/variant_selector.py` so wall perspective warp now:
+  - premultiplies RGBA before the perspective transform
+  - un-premultiplies after the transform
+- Result:
+  - selector `final.png` artifacts are no longer expected to show large opaque `#00FF00` carry-through when the processed keyed inputs are already clean
+
+## April 15 — selector semantics split into source vs final
+
+- Continued the workflow cleanup by making selector/debug semantics explicitly two-stage:
+  - `source_*` = source eligibility problems before trusting the candidate as a clean wall source
+  - `final_*` = post-map game-iso fit problems after canonical wall mapping
+- Updated `pipeline/variant_selector.py` fail-reason naming accordingly.
+- Updated README + the wall workflow documentation so the documented wall workflow now reads:
+  - preprocessing gate
+  - source eligibility
+  - map back to canonical game iso
+  - final-fit selector
+
+## April 15 — selector implementation workflow refactor
+
+- Brought selector implementation closer to the documented staged workflow instead of only renaming fail reasons.
+- `select_variant_pool()` now evaluates wall candidates in explicit stages:
+  1. source eligibility
+  2. mapped game-iso candidate generation
+  3. final-fit validation
+  4. winner selection
+- Source-stage failures no longer conceptually mix with final-fit failures in one undifferentiated bucket.
+- Score rebound / cutoff logic now operates on source-pass candidates only, so obviously invalid source candidates do not distort later final-fit selection behavior.
+
+## Next section plan — wall canonical game-iso mapper redesign
+
+### Goal
+
+Replace the current wall **4-point perspective body warp** with a wall-specific **backbone-first 6-point game-iso mapping** that can align both:
+
+- the wall back / face plane
+- the wall body thickness / outer extension
+
+The key reason is that wall sources do **not** fill the full canonical iso wall body the way floors fill their base. Some structurally important target points live in:
+
+- transparent image space
+- or even outside the source PNG bounds
+
+So a direct visible-corners-only warp is not a reliable contract for walls.
+
+### Newly clarified mapping requirement before implementation
+
+The 6-point wall mapper must transform the **entire RGBA image plane**, including transparent pixels.
+
+This must **not** be implemented as:
+
+- moving only non-transparent / colored pixels
+- stretching the visible painted silhouette to reach the 6 target points
+- treating transparent space as ignorable empty area
+
+Instead, wall mapping must be treated as:
+
+- a continuous image-space warp over the full source canvas
+- with RGBA sampled consistently from the source plane
+- where derived structure points may legitimately lie in transparent space or outside the source bounds
+
+This clarification matters because several wall target structure points are geometric support points, not guaranteed visible painted corners.
+
+### Current limitation to replace
+
+Current live implementation in `pipeline/variant_selector.py`:
+
+- detects 4 visible wall-body corners from the source alpha
+- maps those 4 corners directly to the canonical wall body
+- clips to the canonical wall polygon / opaque half
+
+Observed weakness:
+
+- can roughly align the visible face plane
+- does **not** sufficiently constrain wall thickness / wall-body extension
+- likely causes final-fit failures such as:
+  - width too small
+  - anchor drift
+  - shoulder alignment mismatch
+
+### Proposed new mapping contract
+
+#### Stage 1 — detect 3 backbone points from the source
+
+Use only points that are structurally stable and visually present in the source:
+
+- `face_top`
+- `face_bottom`
+- `apex` / top ridge pivot
+
+Purpose:
+
+- establish the wall back / face backbone in game-iso space first
+- avoid trusting weakly observed thickness corners too early
+
+#### Stage 2 — perform backbone alignment
+
+Use those 3 backbone points to align the wall back to canonical game-iso orientation.
+
+This is not yet the final wall-body mapping; it is the calibration step that defines the wall’s local game-iso frame.
+
+#### Stage 3 — derive the additional 3 structure points
+
+After backbone alignment, derive the remaining wall-body points by extension rules rather than by raw visible-corner detection.
+
+Expected examples:
+
+- upper outer thickness point
+- lower outer thickness point
+- lower inner / contact-side extension point
+
+Important:
+
+- these points may lie in transparent source space
+- they may lie outside the source PNG bounds
+- that is acceptable because they are geometric structure points, not necessarily visible painted pixels
+
+#### Stage 4 — build a 6-point source/target correspondence
+
+Form the full wall mapping from:
+
+- 3 detected backbone points
+- 3 derived extension points
+
+and map them to the canonical 6-point wall game-iso target.
+
+#### Stage 5 — warp and finalize
+
+After 6-point mapping:
+
+- warp source pixels into canonical game-iso wall geometry
+- then apply:
+  - canonical polygon rule
+  - opaque-half rule
+  - contact-edge expectations
+
+### Intended outcome
+
+After this redesign, selector final-fit validation should judge a wall candidate that has:
+
+- correct wall back alignment
+- correct wall thickness / extension placement
+- more faithful canonical game-iso body occupancy
+
+rather than only a roughly aligned face plane.
+
+### Implementation targets for the next section
+
+- `pipeline/variant_selector.py`
+  - replace or branch from `_render_wall_output(...)`
+  - add explicit backbone-point detection helper(s)
+  - add derived extension-point construction helper(s)
+  - replace direct 4-corner body warp with 6-point wall mapping
+- keep selector staging as already refactored:
+  - preprocessing gate
+  - source eligibility
+  - map to canonical game iso
+  - final-fit validation
+  - winner selection
+
+### Validation checklist for the next section
+
+For the existing problematic left-wall candidates, verify whether the new mapper improves:
+
+- final effective width
+- final anchor error
+- shoulder placement
+- bottom-tip placement
+- overall visual agreement with canonical wall body
+
+Primary regression target:
+
+- `output/reference_pair_runs/classic_dungeon_stone_wall_match_floor_2u_rerun_20260415_1`
+
+## April 15 — backbone-first 6-point mapper implementation
+
+- Replaced the wall finalizer’s **4-point perspective body warp** with a **backbone-first 6-point wall mapper** in `pipeline/variant_selector.py`.
+- New implementation shape:
+  1. detect 3 visible backbone points from the source wall:
+     - `face_bottom`
+     - `face_top`
+     - `apex`
+  2. solve a backbone affine between source and canonical target
+  3. derive the remaining 3 source structure points by mapping the canonical outer/contact points back through that affine
+  4. run a full-plane **RGBA inverse warp** over the source canvas using the 6-point wall polygon
+  5. finalize with canonical polygon + opaque-half masking
+- Important contract now enforced in code:
+  - the wall warp samples the **full RGBA plane**, including transparent source pixels
+  - derived source points are allowed to land outside the source PNG bounds
+  - output is produced by continuous warp + RGBA resampling, not by relocating only opaque pixels
+
+## April 16 — artifact naming / step diagnostics pass
+
+- Started a repo-side artifact contract pass **without changing step 5 / step 6 algorithms**.
+- Goal was limited to:
+  1. make PNG / JSON names self-describing by step
+  2. make it faster to see which step failed
+- New step-oriented output folders now exist under each run root:
+  - `step_1_raw/`
+  - `step_2_keyed_default/`
+  - `step_3_cleanup_pool/`
+  - `step_4_gate/`
+  - `step_5_source/`
+  - `step_6_mapping/`
+  - `step_7_selection/`
+  - `deliverables/`
+- New canonical artifact names follow the `s<step>_<kind>.<variant>[.vXX_*].png/json` pattern.
+  - examples:
+    - `s1_raw.left.png`
+    - `s2_keyed_default.left.png`
+    - `s3_cleanup.left.v01_conservative.png`
+    - `s4_gate.left.json`
+    - `s6_mapped.left.v01_conservative.png`
+    - `s7_selected.left.png`
+    - `deliverable.left.png`
+- Added run-level `artifact_status.json` so a reviewer can quickly scan per-variant step status without opening every folder first.
+- Legacy folders (`generated/`, `processed/`, `selection/`, `final/`) are still written for compatibility; the new step folders are diagnostic aliases, not algorithm changes.

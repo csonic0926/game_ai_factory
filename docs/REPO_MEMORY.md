@@ -67,6 +67,18 @@
 - Final tile fitting should target a **2D canonical placement spec** (canvas, contact edge, occupied side/polygon), especially for walls.
 - Wall left/right naming should be preserved as a factory-facing handedness rule and should not be inferred from visual centering.
 
+## Reference-pair retry loop
+
+- For wall and floor reference-pair jobs, treat generation as a **closed loop**, not a single provider call.
+- The intended delivery contract is:
+  1. generate raw output
+  2. validate
+  3. produce `final/selected_<variant>.png` deliverables
+  4. validate the delivered outputs
+  5. retry generation if delivery still fails
+- Preserve per-attempt artifacts under `run_root/attempts/attempt_XX/` so failed retries remain debuggable instead of being overwritten in place.
+- A raw validation pass is not enough by itself; the run should still leave a concrete final handoff artifact for each variant.
+
 ## Wall pipeline gotchas
 
 - For wall jobs, **height and handedness must exist as structured fields all the way through the pipeline**.
@@ -94,11 +106,29 @@
   - Do not use seam-prone piecewise triangle warps for final wall export; they can introduce colored stitching artifacts.
   - A working wall strategy is to warp source pixels through a **derived six-point wall hexagon** and then apply the canonical polygon + half rules afterward.
   - This lets the final placement use game-iso geometry directly without requiring a green fill or any other temporary painted backing.
+  - The wall warp must act on the **full RGBA image plane**, not only on opaque/colored pixels.
+    - Transparent pixels are part of the source coordinate domain.
+    - Derived wall structure points may legitimately land in transparent space or outside the painted silhouette.
+    - Final output should come from continuous image warping + RGBA resampling, not from dragging only visible pixels toward wall endpoints.
   - Current wall deform contract uses a **derived six-point wall hexagon** for both source and target.
     - source extraction uses the wall-side edge, top-tip apex, outer top edge, outer bottom edge, and a lower inner point.
     - the same semantic ordering is used for the canonical target so selection and final output stay aligned.
   - The implementation currently uses **mean value coordinates** over that 6-point polygon so the deform stays continuous and preserves thickness without triangle seam lines.
   - After deform, score wall geometry on the **canonical fitted wall mask** rather than the raw source silhouette.
+
+## Artifact naming / diagnostics rule
+
+- Keep legacy runtime folders for compatibility, but treat the **step-oriented folders** as the primary diagnostic interface for wall workflow review:
+  - `step_1_raw/`
+  - `step_2_keyed_default/`
+  - `step_3_cleanup_pool/`
+  - `step_4_gate/`
+  - `step_5_source/`
+  - `step_6_mapping/`
+  - `step_7_selection/`
+  - `deliverables/`
+- Prefer reviewing `artifact_status.json` first when triaging a run.
+- Prefer `s<step>_<kind>...` artifact names over ambiguous names like bare `final` when adding new diagnostic outputs.
 
 ## Why this matters
 

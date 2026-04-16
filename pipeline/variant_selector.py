@@ -7,7 +7,15 @@ from pathlib import Path
 from typing import Any
 
 from PIL import Image, ImageChops, ImageDraw
-from pipeline.reference_pair_workflow import color_key_similarity, parse_hex_color
+from pipeline.reference_pair_workflow import (
+    _cleanup_artifact_token,
+    _copy_artifact,
+    _update_deliverable_manifest,
+    color_key_similarity,
+    parse_hex_color,
+    update_step_status_summary,
+    write_json,
+)
 
 
 TARGET_SIZE = 128
@@ -98,6 +106,39 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 def alpha_mask(image: Image.Image) -> Image.Image:
     alpha = image.convert("RGBA").getchannel("A")
     return alpha.point(lambda value: 255 if value >= 32 else 0, mode="L")
+
+
+def _premultiply_rgba(image: Image.Image) -> Image.Image:
+    rgba = image.convert("RGBA")
+    premultiplied = []
+    for r, g, b, a in rgba.getdata():
+        premultiplied.append((
+            (r * a + 127) // 255,
+            (g * a + 127) // 255,
+            (b * a + 127) // 255,
+            a,
+        ))
+    result = Image.new("RGBA", rgba.size)
+    result.putdata(premultiplied)
+    return result
+
+
+def _unpremultiply_rgba(image: Image.Image) -> Image.Image:
+    rgba = image.convert("RGBA")
+    restored = []
+    for r, g, b, a in rgba.getdata():
+        if a <= 0:
+            restored.append((0, 0, 0, 0))
+            continue
+        restored.append((
+            min(255, (r * 255 + a // 2) // a),
+            min(255, (g * 255 + a // 2) // a),
+            min(255, (b * 255 + a // 2) // a),
+            a,
+        ))
+    result = Image.new("RGBA", rgba.size)
+    result.putdata(restored)
+    return result
 
 
 def polygon_bbox(points: list[list[int]]) -> EffectiveBBox:
@@ -323,46 +364,29 @@ def _wall_canonical_polygon(
     wall_side: str,
     target_tile: dict[str, Any],
 ) -> list[tuple[float, float]]:
-    placement = target_tile.get("placement", {})
-    anchors = target_tile.get("anchors", {})
-    if not isinstance(placement, dict):
-        placement = {}
-    if not isinstance(anchors, dict):
-        anchors = {}
+    body = target_tile.get("body")
+    if not isinstance(body, list) or len(body) != 4:
+        raise VariantSelectorError("Canonical wall tile is missing a 4-point body polygon.")
 
-    side_x = 0.0 if wall_side == "left" else float(max(0, canvas_width - 1))
-    outer_x = float(max(0, canvas_width - 1)) if wall_side == "left" else 0.0
+    body_points = [
+        _clamp_point_to_canvas((float(point[0]), float(point[1])), width=canvas_width, height=canvas_height)
+        for point in body
+    ]
 
-    contact_edge = target_tile.get("contact_edge")
-    if isinstance(contact_edge, list) and len(contact_edge) >= 2:
-        side_bottom = _clamp_point_to_canvas(tuple(contact_edge[0]), width=canvas_width, height=canvas_height)
-        inner_bottom = _clamp_point_to_canvas(tuple(contact_edge[1]), width=canvas_width, height=canvas_height)
+    if wall_side == "left":
+        side_bottom = body_points[0]
+        side_top_point = body_points[1]
+        top_tip_point = body_points[2]
+        inner_bottom_point = body_points[3]
     else:
-        bottom_y = float(anchors.get("bottom_left", [0, 0])[1]) if isinstance(anchors.get("bottom_left"), list) else float(canvas_height - 1)
-        side_bottom = (side_x, bottom_y)
-        inner_bottom = (float(canvas_width) / 2.0, bottom_y)
+        inner_bottom_point = body_points[0]
+        top_tip_point = body_points[1]
+        side_top_point = body_points[2]
+        side_bottom = body_points[3]
 
-    side_top = anchors.get("top_left")
-    if isinstance(side_top, list) and len(side_top) == 2:
-        side_top_point = _clamp_point_to_canvas((float(side_top[0]), float(side_top[1])), width=canvas_width, height=canvas_height)
-    else:
-        side_top_point = (side_x, float(inner_bottom[1]) if inner_bottom else 0.0)
-
-    top_tip = anchors.get("top_tip")
-    if isinstance(top_tip, list) and len(top_tip) == 2:
-        top_tip_point = _clamp_point_to_canvas((float(top_tip[0]), float(top_tip[1])), width=canvas_width, height=canvas_height)
-    else:
-        top_tip_point = (float(canvas_width) / 2.0, 0.0)
-
-    top_y = float(side_top_point[1])
-    bottom_y = float(side_bottom[1])
-    outer_top = _clamp_point_to_canvas((outer_x, top_y), width=canvas_width, height=canvas_height)
-    outer_bottom = _clamp_point_to_canvas((outer_x, bottom_y), width=canvas_width, height=canvas_height)
-
-    if isinstance(inner_bottom, tuple):
-        inner_bottom_point = _clamp_point_to_canvas((float(inner_bottom[0]), float(inner_bottom[1])), width=canvas_width, height=canvas_height)
-    else:
-        inner_bottom_point = (float(canvas_width) / 2.0, min(bottom_y, float(canvas_height - 1)))
+    outer_x = 0.0 if wall_side == "right" else float(max(0, canvas_width - 1))
+    outer_top = _clamp_point_to_canvas((outer_x, float(side_top_point[1])), width=canvas_width, height=canvas_height)
+    outer_bottom = _clamp_point_to_canvas((outer_x, float(side_bottom[1])), width=canvas_width, height=canvas_height)
     return [side_bottom, side_top_point, top_tip_point, outer_top, outer_bottom, inner_bottom_point]
 
 
@@ -422,17 +446,13 @@ def _wall_source_deform_anchors(mask: Image.Image, *, wall_side: str) -> dict[st
     bbox = mask.getbbox()
     if bbox is None:
         raise VariantSelectorError("Wall source image has no opaque pixels.")
-    pixels = mask.load()
-    edge_x = 0 if wall_side == "left" else mask.width - 1
-    edge_ys = [y for y in range(mask.height) if pixels[edge_x, y] >= 128]
-    if not edge_ys:
-        raise VariantSelectorError("Wall source edge did not contain opaque pixels for deform anchors.")
-    top_y = min(edge_ys)
-    bottom_y = max(edge_ys)
+    top_y = bbox[1]
+    bottom_y = bbox[3] - 1
 
     apex_row_y = top_y
     apex_span = _row_span_or_error(mask, top_y, label="top row span")
     search_limit = min(bottom_y, top_y + 24)
+    face_top_span = apex_span
     for y in range(top_y, search_limit + 1):
         span = row_span(mask, y)
         if span is None:
@@ -440,24 +460,25 @@ def _wall_source_deform_anchors(mask: Image.Image, *, wall_side: str) -> dict[st
         if (span[1] - span[0]) >= 2:
             apex_row_y = y
             apex_span = span
+            face_top_span = span
             break
 
     bottom_span = _row_span_or_error(mask, bottom_y, label="bottom row span")
     apex_x = (apex_span[0] + apex_span[1]) / 2.0
     if wall_side == "left":
         return {
-            "face_top": (0.0, float(top_y)),
-            "apex": (float(apex_x), float(apex_row_y)),
+            "face_top": (float(face_top_span[0]), float(apex_row_y)),
+            "apex": (float(apex_x), float(top_y)),
             "top_outer": (float(apex_span[1]), float(apex_row_y)),
             "bottom_outer": (float(bottom_span[1]), float(bottom_y)),
-            "face_bottom": (0.0, float(bottom_y)),
+            "face_bottom": (float(bottom_span[0]), float(bottom_y)),
         }
     return {
-        "face_top": (float(mask.width - 1), float(top_y)),
-        "apex": (float(apex_x), float(apex_row_y)),
+        "face_top": (float(face_top_span[1]), float(apex_row_y)),
+        "apex": (float(apex_x), float(top_y)),
         "top_outer": (float(apex_span[0]), float(apex_row_y)),
         "bottom_outer": (float(bottom_span[0]), float(bottom_y)),
-        "face_bottom": (float(mask.width - 1), float(bottom_y)),
+        "face_bottom": (float(bottom_span[1]), float(bottom_y)),
     }
 
 
@@ -659,6 +680,31 @@ def _solve_linear_system(
     return [rows[i][size] for i in range(size)]
 
 
+def _solve_affine_coefficients(
+    src_points: list[tuple[float, float]],
+    dst_points: list[tuple[float, float]],
+) -> list[float]:
+    """Solve 2D affine transform coefficients."""
+    if len(src_points) != 3 or len(dst_points) != 3:
+        raise VariantSelectorError("Affine solve requires exactly 3 point pairs.")
+    matrix: list[list[float]] = []
+    rhs: list[float] = []
+    for (sx, sy), (dx, dy) in zip(src_points, dst_points):
+        matrix.append([sx, sy, 1.0, 0.0, 0.0, 0.0])
+        rhs.append(dx)
+        matrix.append([0.0, 0.0, 0.0, sx, sy, 1.0])
+        rhs.append(dy)
+    return _solve_linear_system(matrix, rhs)
+
+
+def _apply_affine_point(coeffs: list[float], point: tuple[float, float]) -> tuple[float, float]:
+    if len(coeffs) != 6:
+        raise VariantSelectorError("Affine coefficients must have length 6.")
+    a, b, c, d, e, f = coeffs
+    x, y = point
+    return (a * x + b * y + c, d * x + e * y + f)
+
+
 def _solve_perspective_coefficients(
     src_points: list[tuple[float, float]],
     dst_points: list[tuple[float, float]],
@@ -701,12 +747,12 @@ def _perspective_warp(
     # Pad source so line-extension corners outside the image are handled.
     pad = 128
     padded = Image.new("RGBA", (image.width + 2 * pad, image.height + 2 * pad), (0, 0, 0, 0))
-    padded.alpha_composite(image, (pad, pad))
+    padded.alpha_composite(_premultiply_rgba(image), (pad, pad))
     padded_src = [(x + pad, y + pad) for x, y in source_corners]
 
     coeffs = _solve_perspective_coefficients(padded_src, target_corners)
     result = padded.transform(output_size, Image.PERSPECTIVE, coeffs, Image.BICUBIC)
-    return result
+    return _unpremultiply_rgba(result)
 
 
 def _canonical_wall_body(canonical_target: dict[str, Any]) -> list[tuple[float, float]]:
@@ -729,40 +775,272 @@ def _canonical_wall_body(canonical_target: dict[str, Any]) -> list[tuple[float, 
 
 
 
+def _wall_source_backbone_points(mask: Image.Image, *, wall_side: str) -> list[tuple[float, float]]:
+    bbox = mask.getbbox()
+    if bbox is None:
+        raise VariantSelectorError("Wall source image has no opaque pixels.")
+    top_y = bbox[1]
+    bottom_y = bbox[3] - 1
+
+    apex_span = row_span(mask, top_y)
+    if apex_span is None:
+        raise VariantSelectorError("Wall source top row did not contain opaque pixels for backbone extraction.")
+    apex = ((apex_span[0] + apex_span[1]) / 2.0, float(top_y))
+
+    search_limit = min(bottom_y, top_y + max(12, int(round(mask.height * 0.18))))
+    face_top: tuple[float, float] | None = None
+    for y in range(top_y, search_limit + 1):
+        span = row_span(mask, y)
+        if span is None:
+            continue
+        if (span[1] - span[0]) >= 2:
+            face_top = (float(span[0] if wall_side == "left" else span[1]), float(y))
+            break
+    if face_top is None:
+        face_top = (float(apex_span[0] if wall_side == "left" else apex_span[1]), float(top_y))
+
+    bottom_span = row_span(mask, bottom_y)
+    if bottom_span is None:
+        raise VariantSelectorError("Wall source bottom row did not contain opaque pixels for backbone extraction.")
+    face_bottom = (
+        float(bottom_span[0] if wall_side == "left" else bottom_span[1]),
+        float(bottom_y),
+    )
+    return [face_bottom, face_top, apex]
+
+
+
+def _derive_wall_source_polygon(
+    image: Image.Image,
+    *,
+    canonical_target: dict[str, Any],
+    wall_side: str,
+) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
+    mask = alpha_mask(image)
+    bbox = mask.getbbox()
+    if bbox is None:
+        raise VariantSelectorError("Wall source image has no opaque pixels.")
+
+    target_polygon = [tuple(float(value) for value in point) for point in canonical_target["target_polygon"]]
+    target_backbone = [target_polygon[0], target_polygon[1], target_polygon[2]]
+
+    top_y = bbox[1]
+    bottom_y = bbox[3] - 1
+    apex_span = _row_span_or_error(mask, top_y, label="top row span")
+    bottom_span = _row_span_or_error(mask, bottom_y, label="bottom row span")
+
+    target_face_top_ratio_den = target_polygon[0][1] - target_polygon[2][1]
+    if abs(target_face_top_ratio_den) < 1e-6:
+        raise VariantSelectorError("Canonical wall backbone is degenerate.")
+    target_face_top_ratio = (target_polygon[1][1] - target_polygon[2][1]) / target_face_top_ratio_den
+    desired_face_top_y = int(round(top_y + (bottom_y - top_y) * target_face_top_ratio))
+    desired_face_top_y = min(max(desired_face_top_y, top_y), bottom_y)
+
+    face_top_y = desired_face_top_y
+    face_top_span = row_span(mask, face_top_y)
+    if face_top_span is None or (face_top_span[1] - face_top_span[0]) < 2:
+        max_radius = max(8, int(round(mask.height * 0.05)))
+        face_top_span = None
+        for radius in range(1, max_radius + 1):
+            for probe_y in (desired_face_top_y - radius, desired_face_top_y + radius):
+                if probe_y < top_y or probe_y > bottom_y:
+                    continue
+                span = row_span(mask, probe_y)
+                if span is None or (span[1] - span[0]) < 2:
+                    continue
+                face_top_y = probe_y
+                face_top_span = span
+                break
+            if face_top_span is not None:
+                break
+    if face_top_span is None:
+        raise VariantSelectorError("Could not find a stable wall shoulder row for 6-point mapping.")
+
+    apex = ((apex_span[0] + apex_span[1]) / 2.0, float(top_y))
+    face_bottom = (float(bottom_span[0] if wall_side == "left" else bottom_span[1]), float(bottom_y))
+    face_top = (float(face_top_span[0] if wall_side == "left" else face_top_span[1]), float(face_top_y))
+    top_outer = (float(face_top_span[1] if wall_side == "left" else face_top_span[0]), float(face_top_y))
+    bottom_outer = (float(bottom_span[1] if wall_side == "left" else bottom_span[0]), float(bottom_y))
+
+    source_backbone = [face_bottom, face_top, apex]
+    target_to_source = _solve_affine_coefficients(target_backbone, source_backbone)
+    source_polygon = [
+        face_bottom,
+        face_top,
+        apex,
+        top_outer,
+        bottom_outer,
+        _apply_affine_point(target_to_source, target_polygon[5]),
+    ]
+    return source_polygon, target_polygon
+
+
+
+def _point_in_polygon(point: tuple[float, float], polygon: list[tuple[float, float]]) -> bool:
+    x, y = point
+    inside = False
+    count = len(polygon)
+    for index in range(count):
+        x1, y1 = polygon[index]
+        x2, y2 = polygon[(index + 1) % count]
+        if (y1 > y) == (y2 > y):
+            continue
+        x_hit = (x2 - x1) * (y - y1) / ((y2 - y1) or 1e-12) + x1
+        if x < x_hit:
+            inside = not inside
+    return inside
+
+
+
+def _mean_value_coordinates(
+    point: tuple[float, float],
+    polygon: list[tuple[float, float]],
+) -> list[float]:
+    eps = 1e-6
+    px, py = point
+    count = len(polygon)
+    if count < 3:
+        raise VariantSelectorError("Mean value coordinates require a polygon with at least 3 points.")
+
+    vectors: list[tuple[float, float]] = []
+    distances: list[float] = []
+    for index, (vx, vy) in enumerate(polygon):
+        dx = vx - px
+        dy = vy - py
+        dist = math.hypot(dx, dy)
+        if dist <= eps:
+            weights = [0.0] * count
+            weights[index] = 1.0
+            return weights
+        vectors.append((dx, dy))
+        distances.append(dist)
+
+    for index in range(count):
+        next_index = (index + 1) % count
+        x1, y1 = polygon[index]
+        x2, y2 = polygon[next_index]
+        edge_x = x2 - x1
+        edge_y = y2 - y1
+        rel_x = px - x1
+        rel_y = py - y1
+        cross = edge_x * rel_y - edge_y * rel_x
+        if abs(cross) > 1e-5:
+            continue
+        dot = rel_x * (px - x2) + rel_y * (py - y2)
+        if dot > eps:
+            continue
+        edge_len = math.hypot(edge_x, edge_y)
+        if edge_len <= eps:
+            break
+        t = ((px - x1) * edge_x + (py - y1) * edge_y) / (edge_len * edge_len)
+        t = min(max(t, 0.0), 1.0)
+        weights = [0.0] * count
+        weights[index] = 1.0 - t
+        weights[next_index] = t
+        return weights
+
+    angles: list[float] = []
+    for index in range(count):
+        vx1, vy1 = vectors[index]
+        vx2, vy2 = vectors[(index + 1) % count]
+        cross = vx1 * vy2 - vy1 * vx2
+        dot = vx1 * vx2 + vy1 * vy2
+        angles.append(math.atan2(cross, dot))
+
+    weights = [0.0] * count
+    total = 0.0
+    for index in range(count):
+        prev_angle = angles[(index - 1) % count]
+        next_angle = angles[index]
+        weight = (math.tan(prev_angle / 2.0) + math.tan(next_angle / 2.0)) / distances[index]
+        weights[index] = weight
+        total += weight
+    if abs(total) <= eps:
+        raise VariantSelectorError("Mean value coordinate weights became degenerate.")
+    return [weight / total for weight in weights]
+
+
+
+def _sample_premultiplied_rgba(image: Image.Image, x: float, y: float) -> tuple[int, int, int, int]:
+    width, height = image.size
+    if x < 0.0 or y < 0.0 or x > width - 1 or y > height - 1:
+        return (0, 0, 0, 0)
+
+    x0 = int(math.floor(x))
+    y0 = int(math.floor(y))
+    x1 = min(x0 + 1, width - 1)
+    y1 = min(y0 + 1, height - 1)
+    tx = x - x0
+    ty = y - y0
+
+    p00 = image.getpixel((x0, y0))
+    p10 = image.getpixel((x1, y0))
+    p01 = image.getpixel((x0, y1))
+    p11 = image.getpixel((x1, y1))
+
+    def blend(c00: int, c10: int, c01: int, c11: int) -> int:
+        top = c00 * (1.0 - tx) + c10 * tx
+        bottom = c01 * (1.0 - tx) + c11 * tx
+        return int(round(top * (1.0 - ty) + bottom * ty))
+
+    return tuple(blend(p00[index], p10[index], p01[index], p11[index]) for index in range(4))
+
+
+
+def _warp_rgba_polygon(
+    image: Image.Image,
+    *,
+    source_polygon: list[tuple[float, float]],
+    target_polygon: list[tuple[float, float]],
+    output_size: tuple[int, int],
+) -> Image.Image:
+    if len(source_polygon) != len(target_polygon):
+        raise VariantSelectorError("Source/target wall polygons must have the same point count.")
+    premultiplied = _premultiply_rgba(image)
+    result = Image.new("RGBA", output_size, (0, 0, 0, 0))
+    target_mask = _polygon_mask(output_size, [list(point) for point in target_polygon])
+    mask_pixels = target_mask.load()
+
+    xs = [point[0] for point in target_polygon]
+    ys = [point[1] for point in target_polygon]
+    x_min = max(0, int(math.floor(min(xs))))
+    x_max = min(output_size[0] - 1, int(math.ceil(max(xs))))
+    y_min = max(0, int(math.floor(min(ys))))
+    y_max = min(output_size[1] - 1, int(math.ceil(max(ys))))
+
+    for y in range(y_min, y_max + 1):
+        for x in range(x_min, x_max + 1):
+            if mask_pixels[x, y] < 128 and not _point_in_polygon((x + 0.5, y + 0.5), target_polygon):
+                continue
+            weights = _mean_value_coordinates((x + 0.5, y + 0.5), target_polygon)
+            source_x = sum(weight * point[0] for weight, point in zip(weights, source_polygon))
+            source_y = sum(weight * point[1] for weight, point in zip(weights, source_polygon))
+            result.putpixel((x, y), _sample_premultiplied_rgba(premultiplied, source_x, source_y))
+    return _unpremultiply_rgba(result)
+
+
+
 def _render_wall_output(
     image: Image.Image,
     *,
     canonical_target: dict[str, Any],
 ) -> Image.Image:
-    """Fit a wall image to canonical game-iso geometry via perspective warp.
-
-    1. Detect four body-corner lines from the source alpha mask.
-    2. Intersect those lines to find the four source corners (works even
-       when a corner falls outside the canvas).
-    3. Perspective-transform the source so the four corners land on the
-       canonical body polygon.
-    4. Clip to the canonical polygon + opaque-half rule.
-    """
+    """Fit a wall image to canonical game-iso geometry via backbone-first 6-point warp."""
     canvas_width = int(canonical_target["canvas_width"])
     canvas_height = int(canonical_target["canvas_height"])
     wall_side = _wall_side_from_target(canonical_target)
-
-    # Detect source corners from the full (uncropped) image.
-    source_corners = _detect_wall_corners(image, wall_side=wall_side)
-
-    # Target corners from canonical spec body polygon.
-    target_corners = _canonical_wall_body(canonical_target)
-
-    # Perspective warp: source corners → target corners.
-    warped = _perspective_warp(
+    source_polygon, target_polygon = _derive_wall_source_polygon(
         image,
-        source_corners=source_corners,
-        target_corners=target_corners,
+        canonical_target=canonical_target,
+        wall_side=wall_side,
+    )
+    warped = _warp_rgba_polygon(
+        image,
+        source_polygon=source_polygon,
+        target_polygon=target_polygon,
         output_size=(canvas_width, canvas_height),
     )
-
-    # Clip to the 4-point body polygon + opaque-half rule.
-    warped = _apply_polygon_mask(warped, [list(p) for p in target_corners])
+    warped = _apply_polygon_mask(warped, [list(p) for p in _canonical_wall_body(canonical_target)])
     placement = canonical_target.get("placement", {})
     if isinstance(placement, dict):
         warped = _apply_opaque_half_rule(warped, str(placement.get("opaque_half", "")).strip().lower())
@@ -990,13 +1268,20 @@ def score_candidate(
     if canonical_target is not None and str(canonical_target.get("tile_key", "")).startswith("wall_"):
         scoring_mask_source = ImageChops.multiply(
             alpha_mask(candidate_rgba_normalized),
-            _polygon_mask(candidate_rgba_normalized.size, canonical_target["target_polygon"]),
+            _polygon_mask(candidate_rgba_normalized.size, [list(point) for point in _canonical_wall_body(canonical_target)]),
         )
     candidate_mask_normalized, bbox = normalize_mask(scoring_mask_source)
     candidate_anchors = mask_anchors(candidate_mask_normalized)
     candidate_iou = iou(reference_mask_normalized, candidate_mask_normalized)
     candidate_anchor_error = anchor_error(candidate_anchors, reference_anchors)
     candidate_raw_area = mask_area(candidate_alpha_mask)
+    source_bbox = effective_bbox(candidate_alpha_mask)
+    source_nontransparent_canvas = (
+        source_bbox.left == 0
+        and source_bbox.top == 0
+        and source_bbox.right == image.width - 1
+        and source_bbox.bottom == image.height - 1
+    )
     score = (candidate_iou * 1000.0) - (candidate_anchor_error * 4.0)
     overlay_path = output_dir / f"{candidate_path.stem}.overlay.png"
     normalized_path = output_dir / f"{candidate_path.stem}.normalized.png"
@@ -1022,35 +1307,238 @@ def score_candidate(
         "raw_mask_area": candidate_raw_area,
         "score": score,
         "anchors": {key: list(value) if value is not None else None for key, value in candidate_anchors.items()},
+        "source_effective_bbox": {
+            "left": source_bbox.left,
+            "top": source_bbox.top,
+            "right": source_bbox.right,
+            "bottom": source_bbox.bottom,
+            "width": source_bbox.width,
+            "height": source_bbox.height,
+        },
+        "source_nontransparent_canvas": source_nontransparent_canvas,
     }
 
 
-def evaluate_fail_rules(
+def _candidate_cleanup_id(candidate_path: str, *, variant: str) -> str:
+    raw_name = Path(candidate_path).stem.replace(f"generated_{variant}.", "")
+    return _cleanup_artifact_token(raw_name)
+
+
+def _export_selector_stage_artifacts(run_root: Path, *, variant: str, result: dict[str, Any]) -> None:
+    step_5_dir = run_root / "step_5_source"
+    step_6_dir = run_root / "step_6_mapping"
+    step_7_dir = run_root / "step_7_selection"
+    for directory in (step_5_dir, step_6_dir, step_7_dir):
+        directory.mkdir(parents=True, exist_ok=True)
+
+    reference = result.get("reference", {}) if isinstance(result, dict) else {}
+    reference_path_raw = reference.get("normalized_path") if isinstance(reference, dict) else None
+    if reference_path_raw:
+        _copy_artifact(Path(str(reference_path_raw)), step_7_dir / f"s7_reference_normalized.{variant}.png")
+
+    pass_candidates = result.get("pass_candidates", []) if isinstance(result.get("pass_candidates", []), list) else []
+    failed_candidates = result.get("failed_candidates", []) if isinstance(result.get("failed_candidates", []), list) else []
+    all_candidates = pass_candidates + failed_candidates
+
+    source_candidates: list[dict[str, Any]] = []
+    mapping_candidates: list[dict[str, Any]] = []
+    selection_pass_candidates: list[dict[str, Any]] = []
+    selection_failed_candidates: list[dict[str, Any]] = []
+    source_pass_example: str | None = None
+    source_fail_example: str | None = None
+
+    for candidate in all_candidates:
+        candidate_path = str(candidate.get("path", ""))
+        cleanup_id = _candidate_cleanup_id(candidate_path, variant=variant)
+        source_src = Path(candidate_path) if candidate_path else None
+        source_copy = _copy_artifact(source_src, step_5_dir / f"s5_source.{variant}.{cleanup_id}.png") if source_src else None
+        mapped_src = Path(str(candidate.get("final_path", ""))) if candidate.get("final_path") else None
+        mapped_copy = _copy_artifact(mapped_src, step_6_dir / f"s6_mapped.{variant}.{cleanup_id}.png") if mapped_src else None
+        normalized_src = Path(str(candidate.get("normalized_path", ""))) if candidate.get("normalized_path") else None
+        normalized_copy = _copy_artifact(normalized_src, step_7_dir / f"s7_normalized.{variant}.{cleanup_id}.png") if normalized_src else None
+        overlay_src = Path(str(candidate.get("overlay_path", ""))) if candidate.get("overlay_path") else None
+        overlay_copy = _copy_artifact(overlay_src, step_7_dir / f"s7_overlay.{variant}.{cleanup_id}.png") if overlay_src else None
+
+        source_stage = candidate.get("source_stage", {}) if isinstance(candidate.get("source_stage", {}), dict) else {}
+        final_stage = candidate.get("final_stage", {}) if isinstance(candidate.get("final_stage", {}), dict) else {}
+
+        source_entry = {
+            "cleanup_id": cleanup_id,
+            "source_input_path": source_copy or candidate.get("path"),
+            "source_effective_bbox": candidate.get("source_effective_bbox"),
+            "source_metrics": {
+                "raw_mask_area": candidate.get("raw_mask_area"),
+                "top_boundary_contamination": candidate.get("top_boundary_contamination"),
+                "source_nontransparent_canvas": candidate.get("source_nontransparent_canvas"),
+            },
+            "source_passed": bool(source_stage.get("passed", candidate.get("passed"))),
+            "source_fail_reasons": source_stage.get("fail_reasons", []),
+        }
+        if source_entry["source_passed"] and source_pass_example is None and source_copy is not None:
+            source_pass_example = source_copy
+        if (not source_entry["source_passed"]) and source_fail_example is None and source_copy is not None:
+            source_fail_example = source_copy
+        source_candidates.append(source_entry)
+
+        mapping_candidates.append(
+            {
+                "cleanup_id": cleanup_id,
+                "source_input_path": source_copy or candidate.get("path"),
+                "mapped_output_path": mapped_copy or candidate.get("final_path"),
+                "canvas_size": result.get("canonical_target", {}),
+                "effective_bbox": candidate.get("effective_bbox"),
+                "mapping_status": "ok" if mapped_copy or candidate.get("final_path") else "missing_mapped_output",
+                "mapping_fail_reasons": final_stage.get("fail_reasons", []) if not final_stage.get("passed", False) else [],
+                "mapping_diagnostics": {
+                    "normalized_iou": candidate.get("normalized_iou"),
+                    "anchor_error": candidate.get("anchor_error"),
+                    "anchors": candidate.get("anchors"),
+                },
+            }
+        )
+
+        selection_entry = {
+            "cleanup_id": cleanup_id,
+            "source_path": source_copy or candidate.get("path"),
+            "mapped_path": mapped_copy or candidate.get("final_path"),
+            "overlay_path": overlay_copy or candidate.get("overlay_path"),
+            "normalized_path": normalized_copy or candidate.get("normalized_path"),
+            "score": candidate.get("score"),
+            "source_stage": source_stage,
+            "final_stage": final_stage,
+            "fail_reasons": candidate.get("fail_reasons", []),
+            "blocked_by": next((reason for reason in candidate.get("fail_reasons", []) if str(reason).startswith("blocked_by_")), None),
+        }
+        if candidate.get("passed"):
+            selection_pass_candidates.append(selection_entry)
+        else:
+            selection_failed_candidates.append(selection_entry)
+
+    write_json(
+        step_5_dir / f"s5_source.{variant}.json",
+        {
+            "variant": variant,
+            "passed_candidate_ids": [item["cleanup_id"] for item in source_candidates if item["source_passed"]],
+            "failed_candidate_ids": [item["cleanup_id"] for item in source_candidates if not item["source_passed"]],
+            "primary_pass_example": source_pass_example,
+            "primary_fail_example": source_fail_example,
+            "candidates": source_candidates,
+        },
+    )
+    update_step_status_summary(
+        run_root,
+        variant=variant,
+        step_key="step_5_source",
+        status="pass" if any(item["source_passed"] for item in source_candidates) else "fail",
+        summary=f"{sum(1 for item in source_candidates if item['source_passed'])}/{len(source_candidates)} source candidates passed",
+        primary_artifact=source_pass_example or source_fail_example,
+        details_path=str(step_5_dir / f"s5_source.{variant}.json"),
+    )
+    write_json(
+        step_6_dir / f"s6_mapping.{variant}.json",
+        {
+            "variant": variant,
+            "mapping_method": "existing_selector_mapping_no_algorithm_change",
+            "candidates": mapping_candidates,
+        },
+    )
+    update_step_status_summary(
+        run_root,
+        variant=variant,
+        step_key="step_6_mapping",
+        status="pass" if any(item["mapping_status"] == "ok" for item in mapping_candidates) else "fail",
+        summary=f"{sum(1 for item in mapping_candidates if item['mapping_status'] == 'ok')}/{len(mapping_candidates)} mapped outputs written",
+        primary_artifact=mapping_candidates[0]["mapped_output_path"] if mapping_candidates else None,
+        details_path=str(step_6_dir / f"s6_mapping.{variant}.json"),
+    )
+
+    selected = result.get("selected") if isinstance(result.get("selected"), dict) else None
+    selected_cleanup_id = _candidate_cleanup_id(str(selected.get("path", "")), variant=variant) if selected else None
+    selected_output_path = None
+    if result.get("selected_final_output"):
+        selected_output_path = _copy_artifact(
+            Path(str(result["selected_final_output"])),
+            step_7_dir / f"s7_selected.{variant}.png",
+        )
+
+    write_json(
+        step_7_dir / f"s7_selection.{variant}.json",
+        {
+            "variant": variant,
+            "ok": bool(result.get("ok")),
+            "selected_candidate_id": selected_cleanup_id,
+            "selected_output_path": selected_output_path or result.get("selected_final_output"),
+            "rebound_cutoff": result.get("rebound_cutoff"),
+            "pass_candidates": selection_pass_candidates,
+            "failed_candidates": selection_failed_candidates,
+        },
+    )
+    update_step_status_summary(
+        run_root,
+        variant=variant,
+        step_key="step_7_selection",
+        status="pass" if selected_output_path else "fail",
+        summary="selector chose a candidate" if selected_output_path else "selector did not choose a candidate",
+        primary_artifact=selected_output_path,
+        details_path=str(step_7_dir / f"s7_selection.{variant}.json"),
+    )
+    if selected_output_path:
+        _update_deliverable_manifest(
+            run_root,
+            selected_outputs={variant: selected_output_path},
+            workflow_status="selector_selected",
+            selected_from_step="step_7_selection",
+        )
+
+
+def evaluate_source_eligibility(
+    candidate: dict[str, Any],
+    *,
+    active_key_color: str,
+    fail_rules: dict[str, float | int],
+) -> tuple[list[str], dict[str, Any]]:
+    fail_reasons: list[str] = []
+    if candidate.get("source_nontransparent_canvas"):
+        fail_reasons.append("source_full_canvas_foreground")
+    contamination = top_boundary_key_contamination(Path(candidate["path"]), active_key_color=active_key_color, fail_rules=fail_rules)
+    if contamination["fail"]:
+        fail_reasons.append("source_top_boundary_key_contamination")
+    return fail_reasons, {
+        "passed": len(fail_reasons) == 0,
+        "fail_reasons": fail_reasons,
+        "top_boundary_contamination": contamination,
+        "source_effective_bbox": candidate.get("source_effective_bbox"),
+        "source_nontransparent_canvas": bool(candidate.get("source_nontransparent_canvas")),
+        "raw_mask_area": candidate.get("raw_mask_area"),
+    }
+
+
+def evaluate_final_fit(
     candidate: dict[str, Any],
     *,
     reference_effective_bbox: EffectiveBBox,
     reference_anchors: dict[str, tuple[int, int] | None],
-    active_key_color: str,
     fail_rules: dict[str, float | int],
-) -> list[str]:
+) -> tuple[list[str], dict[str, Any]]:
     fail_reasons: list[str] = []
+
     if candidate["normalized_iou"] < float(fail_rules["min_normalized_iou"]):
-        fail_reasons.append("normalized_iou_too_low")
+        fail_reasons.append("final_normalized_iou_too_low")
     if candidate["anchor_error"] > float(fail_rules["max_anchor_error"]):
-        fail_reasons.append("anchor_error_too_high")
+        fail_reasons.append("final_anchor_error_too_high")
 
     bbox = candidate["effective_bbox"]
     width_ratio = bbox["width"] / reference_effective_bbox.width
     height_ratio = bbox["height"] / reference_effective_bbox.height
     if width_ratio < float(fail_rules["min_effective_scale_ratio"]):
-        fail_reasons.append("effective_width_too_small")
+        fail_reasons.append("final_effective_width_too_small")
     if height_ratio < float(fail_rules["min_effective_scale_ratio"]):
-        fail_reasons.append("effective_height_too_small")
+        fail_reasons.append("final_effective_height_too_small")
 
     anchors = candidate["anchors"]
     for anchor_name in ("left_shoulder", "right_shoulder", "left_mid", "right_mid", "bottom_tip"):
         if anchors.get(anchor_name) is None:
-            fail_reasons.append(f"missing_{anchor_name}")
+            fail_reasons.append(f"final_missing_{anchor_name}")
 
     def anchor_tuple(name: str) -> tuple[int, int] | None:
         value = anchors.get(name)
@@ -1069,42 +1557,43 @@ def evaluate_fail_rules(
     ref_bottom_tip = reference_anchors["bottom_tip"]
 
     if left_shoulder is not None and ref_left_shoulder is not None and left_shoulder[0] - ref_left_shoulder[0] > int(fail_rules["max_shoulder_inset"]):
-        fail_reasons.append("left_shoulder_inset_too_large")
+        fail_reasons.append("final_left_shoulder_inset_too_large")
     if right_shoulder is not None and ref_right_shoulder is not None and ref_right_shoulder[0] - right_shoulder[0] > int(fail_rules["max_shoulder_inset"]):
-        fail_reasons.append("right_shoulder_inset_too_large")
+        fail_reasons.append("final_right_shoulder_inset_too_large")
     if left_mid is not None and ref_left_mid is not None and left_mid[0] - ref_left_mid[0] > int(fail_rules["max_mid_inset"]):
-        fail_reasons.append("left_mid_inset_too_large")
+        fail_reasons.append("final_left_mid_inset_too_large")
     if right_mid is not None and ref_right_mid is not None and ref_right_mid[0] - right_mid[0] > int(fail_rules["max_mid_inset"]):
-        fail_reasons.append("right_mid_inset_too_large")
+        fail_reasons.append("final_right_mid_inset_too_large")
     if bottom_tip is not None and ref_bottom_tip is not None and abs(bottom_tip[1] - ref_bottom_tip[1]) > int(fail_rules["max_bottom_tip_drift"]):
-        fail_reasons.append("bottom_tip_drift_too_large")
-
-    contamination = top_boundary_key_contamination(Path(candidate["path"]), active_key_color=active_key_color, fail_rules=fail_rules)
-    candidate["top_boundary_contamination"] = contamination
-    if contamination["fail"]:
-        fail_reasons.append("top_boundary_key_contamination")
-
-    return fail_reasons
+        fail_reasons.append("final_bottom_tip_drift_too_large")
+    return fail_reasons, {
+        "passed": len(fail_reasons) == 0,
+        "fail_reasons": fail_reasons,
+        "normalized_iou": candidate["normalized_iou"],
+        "anchor_error": candidate["anchor_error"],
+        "effective_bbox": candidate["effective_bbox"],
+        "anchors": candidate["anchors"],
+    }
 
 
 def fail_reason_cutoff_direction(fail_reasons: list[str]) -> str | None:
-    if "top_boundary_key_contamination" in fail_reasons:
+    if "source_top_boundary_key_contamination" in fail_reasons or "source_full_canvas_foreground" in fail_reasons:
         return "more_conservative"
     geometry_fail_reasons = {
-        "normalized_iou_too_low",
-        "anchor_error_too_high",
-        "effective_width_too_small",
-        "effective_height_too_small",
-        "missing_left_shoulder",
-        "missing_right_shoulder",
-        "missing_left_mid",
-        "missing_right_mid",
-        "missing_bottom_tip",
-        "left_shoulder_inset_too_large",
-        "right_shoulder_inset_too_large",
-        "left_mid_inset_too_large",
-        "right_mid_inset_too_large",
-        "bottom_tip_drift_too_large",
+        "final_normalized_iou_too_low",
+        "final_anchor_error_too_high",
+        "final_effective_width_too_small",
+        "final_effective_height_too_small",
+        "final_missing_left_shoulder",
+        "final_missing_right_shoulder",
+        "final_missing_left_mid",
+        "final_missing_right_mid",
+        "final_missing_bottom_tip",
+        "final_left_shoulder_inset_too_large",
+        "final_right_shoulder_inset_too_large",
+        "final_left_mid_inset_too_large",
+        "final_right_mid_inset_too_large",
+        "final_bottom_tip_drift_too_large",
     }
     if any(reason in geometry_fail_reasons for reason in fail_reasons):
         return "more_aggressive"
@@ -1148,7 +1637,7 @@ def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, A
     if canonical_target is not None and str(canonical_target.get("tile_key", "")).startswith("wall_"):
         reference_scoring_mask = _polygon_mask(
             (int(canonical_target["canvas_width"]), int(canonical_target["canvas_height"])),
-            canonical_target["target_polygon"],
+            [list(point) for point in _canonical_wall_body(canonical_target)],
         )
     else:
         reference_scoring_mask = alpha_mask(reference_image)
@@ -1165,18 +1654,42 @@ def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, A
     output_dir.mkdir(parents=True, exist_ok=True)
     reference_mask_normalized.save(output_dir / "reference.normalized.png")
 
-    scored = [
-        score_candidate(
-            candidate,
+    staged_candidates: list[dict[str, Any]] = []
+    for candidate_path in candidates:
+        scored_candidate = score_candidate(
+            candidate_path,
             reference_path,
             reference_mask_normalized,
             reference_anchors,
             output_dir,
             canonical_target=canonical_target,
         )
-        for candidate in candidates
-    ]
-    candidate_by_name = {Path(candidate["path"]).stem.replace(f"generated_{variant}.", ""): candidate for candidate in scored}
+        source_fail_reasons, source_stage = evaluate_source_eligibility(
+            scored_candidate,
+            active_key_color=active_key_color,
+            fail_rules=fail_rules,
+        )
+        scored_candidate["source_stage"] = source_stage
+        scored_candidate["top_boundary_contamination"] = source_stage["top_boundary_contamination"]
+        if source_stage["passed"]:
+            final_fail_reasons, final_stage = evaluate_final_fit(
+                scored_candidate,
+                reference_effective_bbox=reference_bbox,
+                reference_anchors=reference_anchors,
+                fail_rules=fail_rules,
+            )
+        else:
+            final_fail_reasons = []
+            final_stage = {
+                "passed": False,
+                "skipped": True,
+                "fail_reasons": [],
+            }
+        scored_candidate["final_stage"] = final_stage
+        scored_candidate["base_fail_reasons"] = source_fail_reasons + final_fail_reasons
+        staged_candidates.append(scored_candidate)
+
+    candidate_by_name = {Path(candidate["path"]).stem.replace(f"generated_{variant}.", ""): candidate for candidate in staged_candidates}
     ordered_names = [name for name in KNOWN_VARIANTS if name in candidate_by_name]
     ordered_candidates = [candidate_by_name[name] for name in ordered_names]
 
@@ -1185,19 +1698,17 @@ def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, A
     base_fail_reasons_by_name: dict[str, list[str]] = {}
     base_cutoff_by_name: dict[str, str | None] = {}
     for candidate in ordered_candidates:
-        fail_reasons = evaluate_fail_rules(
-            candidate,
-            reference_effective_bbox=reference_bbox,
-            reference_anchors=reference_anchors,
-            active_key_color=active_key_color,
-            fail_rules=fail_rules,
-        )
         candidate_name = Path(candidate["path"]).stem.replace(f"generated_{variant}.", "")
+        fail_reasons = list(candidate.get("base_fail_reasons", []))
         base_fail_reasons_by_name[candidate_name] = fail_reasons
         base_cutoff_by_name[candidate_name] = fail_reason_cutoff_direction(fail_reasons)
 
     blocked_names: dict[str, str] = {}
-    rebound_cutoff = detect_score_rebound_cutoff(ordered_names, candidate_by_name)
+    ordered_names_for_rebound = [
+        name for name in ordered_names
+        if bool(candidate_by_name[name].get("source_stage", {}).get("passed"))
+    ]
+    rebound_cutoff = detect_score_rebound_cutoff(ordered_names_for_rebound, candidate_by_name)
     if rebound_cutoff is not None:
         rebound_name, rebound_amount = rebound_cutoff
         rebound_index = ordered_names.index(rebound_name)
@@ -1271,6 +1782,19 @@ def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, A
             "contact_edge": canonical_target.get("contact_edge") if canonical_target is not None else None,
         } if canonical_target is not None else None,
         "active_key_color": active_key_color,
+        "selector_workflow": {
+            "stages": [
+                "source_eligibility",
+                "map_to_canonical_game_iso",
+                "final_fit_validation",
+                "winner_selection",
+            ]
+        },
+        "rebound_cutoff": {
+            "triggered_at": rebound_cutoff[0],
+            "rebound_amount": rebound_cutoff[1],
+            "threshold": MAX_SCORE_REBOUND,
+        } if rebound_cutoff is not None else None,
         "fail_rule_thresholds": {
             "min_normalized_iou": float(fail_rules["min_normalized_iou"]),
             "max_anchor_error": float(fail_rules["max_anchor_error"]),
@@ -1295,7 +1819,10 @@ def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, A
         final_output_path = final_dir / f"selected_{variant}.png"
         Image.open(selected_path).save(final_output_path)
         result["selected_final_output"] = str(final_output_path)
+        result["selected_candidate_id"] = _candidate_cleanup_id(str(result["selected"]["path"]), variant=variant)
     else:
         result["selected_final_output"] = None
+        result["selected_candidate_id"] = None
     write_json(run_root / "selection" / f"{variant}.selection.json", result)
+    _export_selector_stage_artifacts(run_root, variant=variant, result=result)
     return result
