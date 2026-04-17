@@ -20,6 +20,9 @@
 - When the current task plan, assumptions, or partial progress changes, update:
   - `docs/CURRENT_JOB.md`
 - If a new note conflicts with an old one, resolve the conflict by **rewriting the memory file coherently** instead of stacking contradictory bullets.
+- Before ending a session with unfinished workflow review / implementation, write the latest decisions and next-step state into:
+  - `docs/REPO_MEMORY.md`
+  - `docs/CURRENT_JOB.md`
 - Keep memory notes practical and repo-specific:
   - known failure modes
   - framing / occupancy rules

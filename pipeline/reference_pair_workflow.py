@@ -19,7 +19,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 NANO_BANANA_ROOT = (REPO_ROOT.parent / "nano_banana").resolve()
 NANO_BANANA_SCRIPT = NANO_BANANA_ROOT / "scripts" / "generate_image.js"
 SCHEMA_VERSION = "reference_pair_workflow_v1"
-SUPPORTED_PROVIDERS = {"mock", "nano_banana", "nano_banana_pro"}
+SUPPORTED_DIRECT_PROVIDERS = {"mock", "nano_banana", "nano_banana_pro"}
+SUPPORTED_AGENT_HANDOFF_PROVIDERS = {"imagegen"}
+SUPPORTED_PROVIDER_MODES = {"direct", "agent_handoff"}
 SUPPORTED_CONVERSION_MODES = {"none", "transform"}
 PROVIDER_MODELS = {
     "nano_banana": "nano-banana-2",
@@ -292,10 +294,31 @@ def load_and_validate_spec(spec_path: Path) -> tuple[dict[str, Any], list[str]]:
     if not isinstance(provider_data, dict):
         raise ReferencePairWorkflowError("provider must be an object.")
     provider_name = require_non_empty_string(provider_data.get("name", "mock"), "provider.name").lower()
-    if provider_name not in SUPPORTED_PROVIDERS:
+    provider_mode = str(provider_data.get("mode", "direct")).strip().lower() or "direct"
+    if provider_mode not in SUPPORTED_PROVIDER_MODES:
         raise ReferencePairWorkflowError(
-            f"Unsupported provider.name '{provider_name}'. Expected one of: {', '.join(sorted(SUPPORTED_PROVIDERS))}"
+            f"Unsupported provider.mode '{provider_mode}'. Expected one of: {', '.join(sorted(SUPPORTED_PROVIDER_MODES))}"
         )
+    provider_agent_tool = str(provider_data.get("agent_tool", "")).strip().lower()
+    if provider_mode == "direct":
+        if provider_name not in SUPPORTED_DIRECT_PROVIDERS:
+            raise ReferencePairWorkflowError(
+                f"Unsupported direct provider.name '{provider_name}'. Expected one of: {', '.join(sorted(SUPPORTED_DIRECT_PROVIDERS))}"
+            )
+        if provider_agent_tool:
+            warnings = [f"provider.agent_tool='{provider_agent_tool}' was ignored because provider.mode=direct."]
+        else:
+            warnings = []
+    else:
+        if provider_name not in SUPPORTED_AGENT_HANDOFF_PROVIDERS:
+            raise ReferencePairWorkflowError(
+                f"Unsupported agent_handoff provider.name '{provider_name}'. Expected one of: {', '.join(sorted(SUPPORTED_AGENT_HANDOFF_PROVIDERS))}"
+            )
+        normalized_agent_tool = provider_agent_tool or provider_name
+        if normalized_agent_tool != "imagegen":
+            raise ReferencePairWorkflowError("provider.agent_tool must be 'imagegen' for provider.mode=agent_handoff.")
+        provider_agent_tool = normalized_agent_tool
+        warnings = []
 
     reference_pair = raw.get("reference_pair")
     if not isinstance(reference_pair, dict):
@@ -366,7 +389,7 @@ def load_and_validate_spec(spec_path: Path) -> tuple[dict[str, Any], list[str]]:
     if variant_profiles_raw is not None and not isinstance(variant_profiles_raw, dict):
         raise ReferencePairWorkflowError("variant_profiles must be an object when provided.")
     variant_profiles: dict[str, dict[str, Any]] = {}
-    warnings: list[str] = []
+    spec_warnings: list[str] = list(warnings)
     for variant_name in variants:
         profile_raw = variant_profiles_raw.get(variant_name, {}) if isinstance(variant_profiles_raw, dict) else {}
         if profile_raw is not None and not isinstance(profile_raw, dict):
@@ -376,7 +399,7 @@ def load_and_validate_spec(spec_path: Path) -> tuple[dict[str, Any], list[str]]:
         sheet_label = str((profile_raw or {}).get("sheet_label", "")).strip() or variant_name
         selector_profile = str((profile_raw or {}).get("selector_profile", "")).strip().lower()
         if selector_profile == "wall" and geometry_guidance:
-            warnings.append(
+            spec_warnings.append(
                 f"variant_profiles.{variant_name}.geometry_guidance was ignored for wall prompts; wall geometry now comes from reference lock + structured wall metadata."
             )
             geometry_guidance = ""
@@ -422,7 +445,7 @@ def load_and_validate_spec(spec_path: Path) -> tuple[dict[str, Any], list[str]]:
     theme = require_non_empty_string(raw.get("theme"), "theme")
     run_id = str(raw.get("run_id", "")).strip() or slugify(theme)
     prompt_parts, prompt_part_warnings = _normalize_prompt_parts(raw)
-    warnings.extend(prompt_part_warnings)
+    spec_warnings.extend(prompt_part_warnings)
 
     normalized = {
         "schema_version": SCHEMA_VERSION,
@@ -430,7 +453,11 @@ def load_and_validate_spec(spec_path: Path) -> tuple[dict[str, Any], list[str]]:
         "run_id": run_id,
         "output_root": str(output_root),
         "variants": variants,
-        "provider": {"name": provider_name},
+        "provider": {
+            "name": provider_name,
+            "mode": provider_mode,
+            "agent_tool": provider_agent_tool if provider_mode == "agent_handoff" else "",
+        },
         "reference_pair": normalized_reference_pair,
         "variant_profiles": variant_profiles,
         "conversion": {
@@ -462,9 +489,13 @@ def load_and_validate_spec(spec_path: Path) -> tuple[dict[str, Any], list[str]]:
             "pair_height_ratio_hard_fail": float(validation_data.get("pair_height_ratio_hard_fail", 0.16)),
         },
     }
-    if provider_name != "mock":
-        warnings.append("Provider execution requires GEMINI_API_KEY in process env or repo .env.")
-    return normalized, warnings
+    if provider_mode == "direct" and provider_name != "mock":
+        spec_warnings.append("Provider execution requires GEMINI_API_KEY in process env or repo .env.")
+    if provider_mode == "agent_handoff":
+        spec_warnings.append(
+            "agent_handoff mode does not call a provider itself; an external Codex agent must write Step 1 raw PNGs into the declared handoff paths before generate-reference-pair can continue."
+        )
+    return normalized, spec_warnings
 
 
 def run_root_for_spec(spec: dict[str, Any]) -> Path:
@@ -472,19 +503,25 @@ def run_root_for_spec(spec: dict[str, Any]) -> Path:
 
 
 def build_run_directories(run_root: Path) -> dict[str, Path]:
+    legacy_removed_paths = [
+        run_root / "step_2_keyed_default",
+        run_root / "step_5_source",
+    ]
+    for legacy_path in legacy_removed_paths:
+        if legacy_path.exists():
+            shutil.rmtree(legacy_path)
     directories = {
         "run_root": run_root,
         "refs": run_root / "refs",
         "request": run_root / "request",
+        "agent_handoff": run_root / "agent_handoff",
         "generated": run_root / "generated",
         "processed": run_root / "processed",
         "validation": run_root / "validation",
         "logs": run_root / "logs",
         "step_1_raw": run_root / "step_1_raw",
-        "step_2_keyed_default": run_root / "step_2_keyed_default",
         "step_3_cleanup_pool": run_root / "step_3_cleanup_pool",
         "step_4_gate": run_root / "step_4_gate",
-        "step_5_source": run_root / "step_5_source",
         "step_6_mapping": run_root / "step_6_mapping",
         "step_7_selection": run_root / "step_7_selection",
         "deliverables": run_root / "deliverables",
@@ -492,6 +529,66 @@ def build_run_directories(run_root: Path) -> dict[str, Path]:
     for directory in directories.values():
         directory.mkdir(parents=True, exist_ok=True)
     return directories
+
+
+def _remove_step_status_keys(run_root: Path, *, step_keys: Sequence[str]) -> None:
+    summary_path = run_root / "artifact_status.json"
+    if not summary_path.exists():
+        return
+    payload = load_json(summary_path)
+    variants_payload = payload.get("variants", {})
+    if not isinstance(variants_payload, dict):
+        return
+    changed = False
+    for variant_payload in variants_payload.values():
+        if not isinstance(variant_payload, dict):
+            continue
+        for step_key in step_keys:
+            if step_key in variant_payload:
+                variant_payload.pop(step_key, None)
+                changed = True
+    if changed:
+        write_json(summary_path, payload)
+
+
+def _agent_handoff_raw_output_path(run_root: Path, *, variant: str) -> Path:
+    return run_root / "agent_handoff" / "step_1_raw" / f"{variant}.png"
+
+
+def _build_imagegen_handoff_task(
+    *,
+    run_root: Path,
+    request_payload: dict[str, Any],
+) -> dict[str, Any]:
+    variants = request_payload.get("variants", [])
+    tasks: dict[str, Any] = {}
+    for variant in variants:
+        tasks[str(variant)] = {
+            "prompt_text": request_payload["prompts"][variant],
+            "reference_images": list(request_payload["generation_inputs"][variant]),
+            "output_path": str(_agent_handoff_raw_output_path(run_root, variant=str(variant))),
+        }
+    return {
+        "mode": "agent_handoff",
+        "agent_tool": "imagegen",
+        "run_root": str(run_root),
+        "background": request_payload.get("background", {}),
+        "variants": variants,
+        "tasks": tasks,
+        "contract": {
+            "purpose": "External Codex imagegen execution for Step 1 raw generation.",
+            "write_step": "step_1_raw only",
+            "do_not_modify": [
+                "step_3_cleanup_pool semantics",
+                "selector/finalizer behavior",
+            ],
+            "requirements": [
+                "Write exactly one PNG per variant to the declared output_path.",
+                "Use the supplied reference image(s) as the geometry lock.",
+                "After staging raw PNGs, hand control back to the factory for Step 3+.",
+            ],
+        },
+    }
 
 
 def compose_reference_sheet(
@@ -533,6 +630,47 @@ def build_generation_prompt(
     prompt_parts = spec.get("prompt_parts", {}) if isinstance(spec.get("prompt_parts", {}), dict) else {}
     selector_profile = str(variant_profile.get("selector_profile", "")).strip().lower()
     wall_profile = variant_profile.get("wall_profile", {}) if isinstance(variant_profile, dict) else {}
+    if selector_profile == "wall" and conversion_mode != "transform":
+        wall_side = str(wall_profile.get("wall_side", "")).strip().lower() or str(variant).strip().lower()
+        if wall_side in {"left", "right"}:
+            role_text = f"{wall_side}-facing isometric wall segment"
+        else:
+            role_text = str(variant_profile.get("role_text", "")).strip() or f"{variant} isometric wall segment"
+        reference_rule = (
+            f"Use the supplied {role_text} reference image as the exact geometry lock for this wall tile. "
+            "Keep the reference tile's structure unchanged: preserve the same camera angle, silhouette, handedness, occupied side, "
+            "perspective, contact edge, and overall proportions. "
+        )
+        style_text = str(prompt_parts.get("style", "")).strip()
+        negative_constraints = _normalize_text_list(
+            prompt_parts.get("negative_constraints", []),
+            field_name="prompt_parts.negative_constraints",
+        )
+        style_sentence = f" Style direction: {style_text}." if style_text else ""
+        extra_negative = f" Negative constraints: {'; '.join(negative_constraints)}." if negative_constraints else ""
+        background = spec.get("background", {})
+        if background.get("mode") == "color_key":
+            allowed_colors = [background["prompt_color"], *background.get("fallback_colors", [])]
+            allowed_colors_text = ", ".join(allowed_colors)
+            background_sentence = (
+                f" Use a single flat solid background color chosen from this allowed set: {allowed_colors_text}. "
+                "Estimate the RGB colors that will appear on the visible outer boundary of the generated tile silhouette, "
+                "choose the allowed chroma-key color with the largest color-distance from those top-surface and upper-edge RGB values. "
+                "Prefer the chroma key that is maximally separated from the top-surface colors and least likely to contaminate the tile edges. "
+                "After choosing one of the allowed colors, use that one single chosen color consistently behind the tile "
+                "for the entire canvas. This background is a temporary chroma-key mask only: no transparency, no gradient, "
+                "no lighting variation, no shadow, no vignette, and no extra colored backdrop elements. "
+            )
+        else:
+            background_sentence = " Keep the tile centered in frame with transparent background. "
+        return (
+            f"{'Edit' if conversion_mode == 'transform' else 'Create'} one isometric game tile PNG as a {role_text}. "
+            f"{reference_rule}"
+            "Do not add a scene, ground shadow, border, glow, extra objects, text, or watermark. "
+            f"{background_sentence}"
+            f"{style_sentence}"
+            f"{extra_negative}"
+        )
     if variant == "full":
         role_text = "full-height cube tile"
         geometry_sentence = (
@@ -701,7 +839,10 @@ def prepare_reference_pair_run(spec_path: Path) -> dict[str, Any]:
     spec, warnings = load_and_validate_spec(spec_path)
     run_root = run_root_for_spec(spec)
     directories = build_run_directories(run_root)
+    _remove_step_status_keys(run_root, step_keys=["step_2_keyed_default", "step_5_source"])
     variants = spec["variants"]
+    provider = spec.get("provider", {})
+    provider_mode = str(provider.get("mode", "direct")).strip().lower() or "direct"
 
     copied_references: dict[str, str] = {}
     for variant in variants:
@@ -710,13 +851,21 @@ def prepare_reference_pair_run(spec_path: Path) -> dict[str, Any]:
         shutil.copy2(source_path, destination_path)
         copied_references[variant] = str(destination_path)
 
+    all_wall_variants = all(
+        str(spec.get("variant_profiles", {}).get(variant, {}).get("selector_profile", "")).strip().lower() == "wall"
+        for variant in variants
+    )
+
+    reference_sheet_output_path = directories["refs"] / "reference_pair_sheet.png"
     reference_sheet_path: Path | None = None
-    if len(variants) == 2:
+    if len(variants) == 2 and not all_wall_variants:
         reference_sheet_path = compose_reference_sheet(
             [Path(copied_references[variant]) for variant in variants],
             labels=[spec["variant_profiles"][variant]["sheet_label"] for variant in variants],
-            output_path=directories["refs"] / "reference_pair_sheet.png",
+            output_path=reference_sheet_output_path,
         )
+    elif reference_sheet_output_path.exists():
+        reference_sheet_output_path.unlink()
 
     prompts: dict[str, str] = {}
     prompt_paths: dict[str, str] = {}
@@ -781,12 +930,25 @@ def prepare_reference_pair_run(spec_path: Path) -> dict[str, Any]:
         "variant_profiles": spec.get("variant_profiles", {}),
         "warnings": warnings,
     }
+    if provider_mode == "agent_handoff":
+        request_payload["agent_handoff"] = {
+            "enabled": True,
+            "agent_tool": str(provider.get("agent_tool", "imagegen")).strip().lower() or "imagegen",
+            "raw_output_paths": {variant: str(_agent_handoff_raw_output_path(run_root, variant=variant)) for variant in variants},
+            "task_packet": str(directories["request"] / "imagegen_handoff.json"),
+        }
     write_json(directories["request"] / "request.json", request_payload)
+    if provider_mode == "agent_handoff":
+        write_json(
+            directories["request"] / "imagegen_handoff.json",
+            _build_imagegen_handoff_task(run_root=run_root, request_payload=request_payload),
+        )
     write_json(directories["logs"] / "prepare.json", {"ok": True, "prepared_at": now_iso(), "warnings": warnings})
     return {
         "run_root": str(run_root),
         "variants": variants,
         "request_path": str(directories["request"] / "request.json"),
+        "agent_handoff_path": str(directories["request"] / "imagegen_handoff.json") if provider_mode == "agent_handoff" else None,
         "reference_sheet": str(reference_sheet_path) if reference_sheet_path is not None else None,
         "prompt_paths": prompt_paths,
         "warnings": warnings,
@@ -865,6 +1027,39 @@ def generate_with_provider(
         "provider": provider_name,
         "model": PROVIDER_MODELS[provider_name],
         "stdout": completed.stdout.strip(),
+    }
+
+
+def _ingest_agent_handoff_output(
+    *,
+    run_root: Path,
+    variant: str,
+    request_payload: dict[str, Any],
+    background: dict[str, Any],
+    output_path: Path,
+    raw_output_path: Path,
+) -> dict[str, Any]:
+    handoff_payload = request_payload.get("agent_handoff", {})
+    if not isinstance(handoff_payload, dict) or not handoff_payload.get("enabled"):
+        raise ReferencePairWorkflowError("agent_handoff provider mode requires request.agent_handoff metadata.")
+    raw_output_map = handoff_payload.get("raw_output_paths", {})
+    if not isinstance(raw_output_map, dict) or variant not in raw_output_map:
+        raise ReferencePairWorkflowError(f"agent_handoff raw_output_paths is missing variant '{variant}'.")
+    source_path = Path(str(raw_output_map[variant]))
+    if not source_path.exists():
+        task_packet = handoff_payload.get("task_packet", "")
+        raise ReferencePairWorkflowError(
+            f"agent_handoff output for variant '{variant}' is missing: {source_path}. "
+            f"Stage the Step 1 raw PNG first using {task_packet or 'request/imagegen_handoff.json'}."
+        )
+    destination_path = raw_output_path if background.get("mode") == "color_key" else output_path
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source_path, destination_path)
+    return {
+        "provider": "imagegen",
+        "mode": "agent_handoff",
+        "copied_from": str(source_path),
+        "copied_to": str(destination_path),
     }
 
 
@@ -1026,7 +1221,7 @@ def _run_selector_closed_loop(run_root: Path, *, request_payload: dict[str, Any]
             if selected_output:
                 selected_outputs[variant] = Path(str(selected_output))
             else:
-                errors[variant] = "no selector candidate passed fail rules"
+                errors[variant] = "mapped candidate failed verification"
         except VariantSelectorError as error:
             errors[variant] = str(error)
 
@@ -1040,6 +1235,8 @@ def _run_selector_closed_loop(run_root: Path, *, request_payload: dict[str, Any]
 
     return {
         "ok": not errors and len(selected_outputs) == len(variants),
+        "mode": "mapping_verified",
+        "selected_from_step": "step_7_selection",
         "results": selection_results,
         "selected_outputs": {variant: str(path) for variant, path in selected_outputs.items()},
         "errors": errors,
@@ -1070,11 +1267,12 @@ def _copy_validated_outputs_to_final(run_root: Path, *, raw_validation: dict[str
             run_root,
             selected_outputs=selected_outputs,
             workflow_status="raw_validation_fallback",
-            selected_from_step="step_2_keyed_default",
+            selected_from_step="step_3_cleanup_pool",
         )
     return {
         "ok": not errors and len(selected_outputs) == len(variants),
         "mode": "raw_validation_fallback",
+        "selected_from_step": "step_3_cleanup_pool",
         "results": {},
         "selected_outputs": selected_outputs,
         "errors": errors,
@@ -1099,8 +1297,19 @@ def _selector_blocked_by_preprocessing_gate(raw_validation: dict[str, Any], *, v
         variant_payload = raw_validation.get(variant, {})
         preprocessing_gate = variant_payload.get("preprocessing_gate", {}) if isinstance(variant_payload, dict) else {}
         if isinstance(preprocessing_gate, dict) and preprocessing_gate.get("usable") is False:
-            errors[variant] = "selector skipped because wall preprocessing produced no usable keyed silhouette variant"
+            errors[variant] = "mapping skipped because wall preprocessing produced no usable cleanup candidate"
     return errors
+
+
+def _requires_mapping_selection(request_payload: dict[str, Any], *, variants: list[str]) -> bool:
+    variant_profiles = request_payload.get("variant_profiles", {})
+    if not isinstance(variant_profiles, dict):
+        return False
+    for variant in variants:
+        selector_profile = str(variant_profiles.get(variant, {}).get("selector_profile", "")).strip().lower()
+        if selector_profile == "wall":
+            return True
+    return False
 
 
 def generate_reference_pair(spec_path: Path, *, max_attempts: int = 3) -> dict[str, Any]:
@@ -1109,11 +1318,14 @@ def generate_reference_pair(spec_path: Path, *, max_attempts: int = 3) -> dict[s
     prepare_result = prepare_reference_pair_run(spec_path)
     run_root = Path(prepare_result["run_root"])
     request_payload = load_json(run_root / "request" / "request.json")
-    provider_name = request_payload["provider"]["name"]
+    provider_payload = request_payload["provider"]
+    provider_name = provider_payload["name"]
+    provider_mode = str(provider_payload.get("mode", "direct")).strip().lower() or "direct"
     variants: list[str] = request_payload.get("variants", ["full", "half"])
     background = request_payload.get("background", {"mode": "transparent"})
     variant_profiles = request_payload.get("variant_profiles", {})
     selector_closed_loop_enabled, closed_loop_variants = _supports_selector_closed_loop(request_payload)
+    requires_mapping_selection = _requires_mapping_selection(request_payload, variants=variants)
 
     attempts_payload: list[dict[str, Any]] = []
     previous_raw_validation: dict[str, Any] | None = None
@@ -1151,7 +1363,16 @@ def generate_reference_pair(spec_path: Path, *, max_attempts: int = 3) -> dict[s
                 )
             prompt_attempt_path = run_root / "request" / f"prompt_{variant}.attempt_{attempt_index:02d}.txt"
             prompt_attempt_path.write_text(prompt_text + "\n", encoding="utf-8")
-            if provider_name == "mock":
+            if provider_mode == "agent_handoff":
+                generation_logs[variant] = _ingest_agent_handoff_output(
+                    run_root=run_root,
+                    variant=variant,
+                    request_payload=request_payload,
+                    background=background,
+                    output_path=output_path,
+                    raw_output_path=raw_output_path,
+                )
+            elif provider_name == "mock":
                 mock_source = Path(request_payload["references"][variant])
                 shutil.copy2(mock_source, raw_output_path if background.get("mode") == "color_key" else output_path)
                 generation_logs[variant] = {
@@ -1173,15 +1394,6 @@ def generate_reference_pair(spec_path: Path, *, max_attempts: int = 3) -> dict[s
             )
             generation_logs[variant]["attempt"] = attempt_index
             generation_logs[variant]["prompt_path"] = str(prompt_attempt_path)
-            if background.get("mode") == "color_key":
-                generation_logs[variant]["color_key"] = apply_color_key_to_image(
-                    raw_output_path,
-                    output_path,
-                    prompt_color=str(background.get("prompt_color", "#FF00FF")),
-                    fallback_colors=list(background.get("fallback_colors", ["#00FF00"])),
-                    tolerance=int(background.get("tolerance", 24)),
-                    emit_variant_pool=False,
-                )
 
         raw_validation = validate_reference_pair_run(run_root)
         selector_summary: dict[str, Any] | None = None
@@ -1189,30 +1401,29 @@ def generate_reference_pair(spec_path: Path, *, max_attempts: int = 3) -> dict[s
         success = raw_validation["status"] == "pass"
 
         if selector_closed_loop_enabled:
-            if raw_validation["status"] == "pass":
+            blocked_by_preprocessing = _selector_blocked_by_preprocessing_gate(raw_validation, variants=variants)
+            if blocked_by_preprocessing:
+                selector_summary = {
+                    "ok": False,
+                    "results": {},
+                    "selected_outputs": {},
+                    "errors": blocked_by_preprocessing,
+                    "skipped_due_to_preprocessing_gate": True,
+                }
+            elif raw_validation["status"] == "pass" and not requires_mapping_selection:
                 selector_summary = _copy_validated_outputs_to_final(run_root, raw_validation=raw_validation, variants=variants)
             else:
-                blocked_by_preprocessing = _selector_blocked_by_preprocessing_gate(raw_validation, variants=variants)
-                if blocked_by_preprocessing:
-                    selector_summary = {
-                        "ok": False,
-                        "results": {},
-                        "selected_outputs": {},
-                        "errors": blocked_by_preprocessing,
-                        "skipped_due_to_preprocessing_gate": True,
-                    }
-                else:
-                    selector_summary = _run_selector_closed_loop(
-                        run_root,
-                        request_payload=request_payload,
-                        variants=variants,
-                    )
+                selector_summary = _run_selector_closed_loop(
+                    run_root,
+                    request_payload=request_payload,
+                    variants=variants,
+                )
             if selector_summary["ok"]:
                 _update_deliverable_manifest(
                     run_root,
                     selected_outputs=selector_summary["selected_outputs"],
-                    workflow_status="selector_selected",
-                    selected_from_step="step_7_selection",
+                    workflow_status=str(selector_summary.get("mode", "selector_selected")),
+                    selected_from_step=str(selector_summary.get("selected_from_step", "step_7_selection")),
                 )
                 final_validation = validate_reference_pair_run(
                     run_root,
@@ -1626,6 +1837,13 @@ COLOR_KEY_VARIANT_SPECS = [
 ]
 
 
+def default_cleanup_variant_name() -> str:
+    for variant_spec in COLOR_KEY_VARIANT_SPECS:
+        if bool(variant_spec.get("is_default")):
+            return str(variant_spec["name"])
+    raise ReferencePairWorkflowError("No default cleanup variant was configured.")
+
+
 def write_preview_variants(image: Image.Image, output_path: Path, variant_name: str) -> dict[str, str]:
     preview_paths: dict[str, str] = {}
     for background_rgba, suffix in (((240, 240, 240, 255), "light"), ((32, 32, 32, 255), "dark")):
@@ -1676,10 +1894,11 @@ def apply_color_key_to_image(
         result, despill_stats = despill_key_fringe(masked_result, key_colors=[active_key_color])
         result.save(output_path)
         variants_payload = {}
-        selected_variant_name = "03_balanced"
+        selected_variant_name = default_cleanup_variant_name()
     else:
         variants_payload = {}
-        selected_variant_name = "03_balanced"
+        selected_variant_name = default_cleanup_variant_name()
+        despill_stats = None
         for variant_spec in COLOR_KEY_VARIANT_SPECS:
             variant_image, variant_stats = despill_key_fringe(
                 masked_result.copy(),
@@ -1699,26 +1918,31 @@ def apply_color_key_to_image(
                 "previews": preview_paths,
                 "despill": variant_stats,
             }
-            if bool(variant_spec.get("is_default")):
-                selected_variant_name = str(variant_spec["name"])
-                variant_image.save(output_path)
-                despill_stats = variant_stats
         if selected_variant_name not in variants_payload:
             raise ReferencePairWorkflowError("No default color-key variant was configured.")
 
     return {
         "input": str(image_path),
-        "output": str(output_path),
         "prompt_color": prompt_color,
         "fallback_colors": fallback_colors,
         "tolerance": tolerance,
         "removed_background_pixels": mask_area(background_mask),
         "active_key_color": detection_stats["detected_active_key_color"],
         "key_color_detection": detection_stats,
-        "selected_variant": selected_variant_name,
         "variants": variants_payload,
         "despill": despill_stats,
     }
+
+
+def default_cleanup_candidate_path(preprocessing_payload: dict[str, Any]) -> Path:
+    variants_payload = preprocessing_payload.get("variants", {})
+    if not isinstance(variants_payload, dict):
+        raise ReferencePairWorkflowError("Cleanup preprocessing payload is missing variant outputs.")
+    default_name = default_cleanup_variant_name()
+    default_payload = variants_payload.get(default_name, {})
+    if not isinstance(default_payload, dict) or not default_payload.get("output"):
+        raise ReferencePairWorkflowError(f"Cleanup preprocessing payload is missing the default candidate '{default_name}'.")
+    return Path(str(default_payload["output"]))
 
 
 def _write_step1_raw_artifact(run_root: Path, *, variant: str, raw_image_path: Path) -> None:
@@ -1734,34 +1958,27 @@ def _write_step1_raw_artifact(run_root: Path, *, variant: str, raw_image_path: P
     )
 
 
-def _write_step2_keyed_artifacts(run_root: Path, *, variant: str, preprocessing_payload: dict[str, Any]) -> None:
-    output_path = Path(str(preprocessing_payload.get("output", ""))) if preprocessing_payload.get("output") else None
-    keyed_copy = None
-    if output_path is not None:
-        keyed_copy = _copy_artifact(output_path, run_root / "step_2_keyed_default" / f"s2_keyed_default.{variant}{output_path.suffix}")
-    write_json(
-        run_root / "step_2_keyed_default" / f"s2_keyed_default.{variant}.json",
-        {
-            "variant": variant,
-            "input_path": preprocessing_payload.get("input"),
-            "output_path": keyed_copy or preprocessing_payload.get("output"),
-            "active_key_color": preprocessing_payload.get("active_key_color"),
-            "removed_background_pixels": preprocessing_payload.get("removed_background_pixels"),
-            "selected_variant": preprocessing_payload.get("selected_variant"),
-            "status": "ok" if output_path is not None and output_path.exists() else "missing_output",
-            "key_color_detection": preprocessing_payload.get("key_color_detection"),
-            "despill": preprocessing_payload.get("despill"),
-        },
+def run_cleanup_variant_pool(
+    run_root: Path,
+    *,
+    variant: str,
+    raw_image_path: Path,
+    background: dict[str, Any],
+) -> dict[str, Any]:
+    keyed_output_path = run_root / "processed" / f"generated_{variant}.keyed.png"
+    if keyed_output_path.exists():
+        keyed_output_path.unlink()
+    preprocessing_payload = apply_color_key_to_image(
+        raw_image_path,
+        keyed_output_path,
+        prompt_color=str(background.get("prompt_color", "#FF00FF")),
+        fallback_colors=list(background.get("fallback_colors", ["#00FF00"])),
+        tolerance=int(background.get("tolerance", 24)),
+        emit_variant_pool=True,
     )
-    update_step_status_summary(
-        run_root,
-        variant=variant,
-        step_key="step_2_keyed_default",
-        status="ok" if keyed_copy else "missing_output",
-        summary="default keyed output written" if keyed_copy else "default keyed output missing",
-        primary_artifact=keyed_copy,
-        details_path=str(run_root / "step_2_keyed_default" / f"s2_keyed_default.{variant}.json"),
-    )
+    mirror_variant_pool_to_generated(run_root, variant=variant, preprocessing_payload=preprocessing_payload)
+    _write_step3_cleanup_artifacts(run_root, variant=variant, preprocessing_payload=preprocessing_payload)
+    return preprocessing_payload
 
 
 def _write_step3_cleanup_artifacts(run_root: Path, *, variant: str, preprocessing_payload: dict[str, Any]) -> None:
@@ -1793,7 +2010,6 @@ def _write_step3_cleanup_artifacts(run_root: Path, *, variant: str, preprocessin
         run_root / "step_3_cleanup_pool" / f"s3_cleanup.{variant}.json",
         {
             "variant": variant,
-            "selected_variant": _cleanup_artifact_token(str(preprocessing_payload.get("selected_variant", ""))),
             "active_key_color": preprocessing_payload.get("active_key_color"),
             "candidates": candidates,
         },
@@ -1829,6 +2045,7 @@ def _write_step4_gate_artifacts(run_root: Path, *, variant: str, preprocessing_g
         {
             "variant": variant,
             "usable": bool(preprocessing_gate.get("usable")),
+            "chosen_candidate": preprocessing_gate.get("chosen_candidate"),
             "active_key_color": preprocessing_gate.get("active_key_color"),
             "removed_background_pixels": preprocessing_gate.get("removed_background_pixels"),
             "primary_pass_example": pass_example,
@@ -1844,7 +2061,7 @@ def _write_step4_gate_artifacts(run_root: Path, *, variant: str, preprocessing_g
         variant=variant,
         step_key="step_4_gate",
         status="pass" if bool(preprocessing_gate.get("usable")) else "fail",
-        summary="at least one usable keyed silhouette candidate" if bool(preprocessing_gate.get("usable")) else "no usable keyed silhouette candidate",
+        summary="usable cleanup candidate found and chosen" if bool(preprocessing_gate.get("usable")) else "no usable cleanup candidate",
         primary_artifact=pass_example or fail_example,
         details_path=str(run_root / "step_4_gate" / f"s4_gate.{variant}.json"),
     )
@@ -1967,54 +2184,81 @@ def _wall_preprocessing_gate(
     reference_path: Path,
     preprocessing_payload: dict[str, Any],
 ) -> dict[str, Any]:
-    from pipeline.variant_selector import FAIL_RULES_BY_VARIANT, top_boundary_key_contamination
+    from pipeline.variant_selector import FAIL_RULES_BY_VARIANT, exterior_background_residue_check
 
     active_key_color = str(preprocessing_payload.get("active_key_color", "")).strip().upper()
     variant_entries = preprocessing_payload.get("variants", {})
-    candidate_paths: list[Path] = []
-    output_path_raw = preprocessing_payload.get("output")
-    if output_path_raw:
-        candidate_paths.append(Path(str(output_path_raw)))
-    if isinstance(variant_entries, dict):
-        for payload in variant_entries.values():
-            if isinstance(payload, dict) and payload.get("output"):
-                candidate_paths.append(Path(str(payload["output"])))
-
     seen: set[str] = set()
     reference_metrics = pair_metrics(reference_path)
     usable_candidates: list[dict[str, Any]] = []
     rejected_candidates: list[dict[str, Any]] = []
     fail_rules = FAIL_RULES_BY_VARIANT["wall"]
-    for candidate_path in candidate_paths:
+    for variant_spec in COLOR_KEY_VARIANT_SPECS:
+        cleanup_name = str(variant_spec["name"])
+        variant_payload = variant_entries.get(cleanup_name, {}) if isinstance(variant_entries, dict) else {}
+        candidate_output = variant_payload.get("output") if isinstance(variant_payload, dict) else None
+        if not candidate_output:
+            rejected_candidates.append(
+                {
+                    "cleanup_name": cleanup_name,
+                    "cleanup_id": _cleanup_artifact_token(cleanup_name),
+                    "label": variant_spec.get("label"),
+                    "path": None,
+                    "reject_reasons": ["missing_candidate_output"],
+                }
+            )
+            continue
+        candidate_path = Path(str(candidate_output))
         candidate_key = str(candidate_path)
         if candidate_key in seen or not candidate_path.exists():
+            rejected_candidates.append(
+                {
+                    "cleanup_name": cleanup_name,
+                    "cleanup_id": _cleanup_artifact_token(cleanup_name),
+                    "label": variant_spec.get("label"),
+                    "path": str(candidate_path),
+                    "reject_reasons": ["missing_candidate_file"],
+                }
+            )
             continue
         seen.add(candidate_key)
         metrics = pair_metrics(candidate_path)
         bbox = metrics.bbox
         non_transparent_canvas = bbox == (0, 0, metrics.size[0], metrics.size[1])
         contamination = (
-            top_boundary_key_contamination(candidate_path, active_key_color=active_key_color, fail_rules=fail_rules)
+            exterior_background_residue_check(candidate_path, active_key_color=active_key_color, fail_rules=fail_rules)
             if active_key_color
             else {"fail": True, "reason": "missing_active_key_color"}
         )
         candidate_info = {
+            "cleanup_name": cleanup_name,
+            "cleanup_id": _cleanup_artifact_token(cleanup_name),
+            "label": variant_spec.get("label"),
             "path": str(candidate_path),
             "bbox": list(bbox) if bbox is not None else None,
             "area_pixels": metrics.area_pixels,
             "non_transparent_canvas": non_transparent_canvas,
-            "top_boundary_contamination": contamination,
+            "background_residue_check": contamination,
         }
-        if bbox is None or non_transparent_canvas or contamination.get("fail", False):
-            rejected_candidates.append(candidate_info)
-            continue
+        reject_reasons: list[str] = []
+        if bbox is None:
+            reject_reasons.append("missing_opaque_bbox")
+        if non_transparent_canvas:
+            reject_reasons.append("full_canvas_foreground")
+        if contamination.get("fail", False):
+            reject_reasons.append("background_residue_detected")
         if reference_metrics.area_pixels > 0 and metrics.area_pixels <= 0:
+            reject_reasons.append("zero_effective_area")
+        if reject_reasons:
+            candidate_info["reject_reasons"] = reject_reasons
             rejected_candidates.append(candidate_info)
             continue
         usable_candidates.append(candidate_info)
 
+    chosen_candidate = usable_candidates[0] if usable_candidates else None
     return {
-        "usable": len(usable_candidates) > 0,
+        "usable": chosen_candidate is not None,
+        "chosen_candidate": chosen_candidate,
         "active_key_color": active_key_color,
         "removed_background_pixels": int(preprocessing_payload.get("removed_background_pixels", 0)),
         "usable_candidates": usable_candidates,
@@ -2336,18 +2580,13 @@ def validate_reference_pair_run(
     preprocessing: dict[str, Any] = {}
     if background.get("mode") == "color_key" and not skip_preprocessing:
         for variant in variants:
-            generated_outputs[variant] = run_root / "processed" / f"generated_{variant}.keyed.png"
-            preprocessing[variant] = apply_color_key_to_image(
-                generated_inputs[variant],
-                generated_outputs[variant],
-                prompt_color=str(background.get("prompt_color", "#FF00FF")),
-                fallback_colors=list(background.get("fallback_colors", ["#00FF00"])),
-                tolerance=int(background.get("tolerance", 24)),
-                emit_variant_pool=True,
+            preprocessing[variant] = run_cleanup_variant_pool(
+                run_root,
+                variant=variant,
+                raw_image_path=generated_inputs[variant],
+                background=background,
             )
-            mirror_variant_pool_to_generated(run_root, variant=variant, preprocessing_payload=preprocessing[variant])
-            _write_step2_keyed_artifacts(run_root, variant=variant, preprocessing_payload=preprocessing[variant])
-            _write_step3_cleanup_artifacts(run_root, variant=variant, preprocessing_payload=preprocessing[variant])
+            generated_outputs[variant] = default_cleanup_candidate_path(preprocessing[variant])
     for variant in variants:
         if not generated_outputs[variant].exists():
             raise ReferencePairWorkflowError(f"Missing generated {variant} image: {generated_outputs[variant]}")
@@ -2359,19 +2598,25 @@ def validate_reference_pair_run(
             if isinstance(variant_profiles, dict)
             else ""
         )
-        variant_result = validate_single_pair(
-            references[variant],
-            generated_outputs[variant],
-            thresholds,
-            selector_profile=selector_profile,
-        )
+        candidate_for_validation = generated_outputs[variant]
+        preprocessing_gate = None
         if selector_profile == "wall" and variant in preprocessing:
             preprocessing_gate = _wall_preprocessing_gate(
                 reference_path=references[variant],
                 preprocessing_payload=preprocessing[variant],
             )
-            variant_result["preprocessing_gate"] = preprocessing_gate
             _write_step4_gate_artifacts(run_root, variant=variant, preprocessing_gate=preprocessing_gate)
+            if preprocessing_gate.get("chosen_candidate", {}).get("path"):
+                candidate_for_validation = Path(str(preprocessing_gate["chosen_candidate"]["path"]))
+                generated_outputs[variant] = candidate_for_validation
+        variant_result = validate_single_pair(
+            references[variant],
+            candidate_for_validation,
+            thresholds,
+            selector_profile=selector_profile,
+        )
+        if preprocessing_gate is not None:
+            variant_result["preprocessing_gate"] = preprocessing_gate
             if not preprocessing_gate["usable"]:
                 variant_result["failures"] = [
                     "wall preprocessing produced no usable keyed silhouette variant; skip geometry mapping and retry generation"

@@ -46,10 +46,8 @@ Reference-pair runs now keep both:
   - `final/`
 - step-oriented diagnostic folders for review:
   - `step_1_raw/`
-  - `step_2_keyed_default/`
   - `step_3_cleanup_pool/`
   - `step_4_gate/`
-  - `step_5_source/`
   - `step_6_mapping/`
   - `step_7_selection/`
   - `deliverables/`
@@ -67,7 +65,6 @@ Preferred artifact naming:
 Examples:
 
 - `s1_raw.left.png`
-- `s2_keyed_default.left.png`
 - `s3_cleanup.left.v01_conservative.png`
 - `s4_gate.left.json`
 - `s6_mapped.left.v01_conservative.png`
@@ -173,8 +170,7 @@ Use:
 - `docs/WALL_REFERENCE_PAIR_WORKFLOW.md` for:
   - `left` / `right` wall runs
   - wall preprocessing gate
-  - wall source eligibility
-  - wall mapping / selection
+  - wall mapping / verification
 
 Keep `docs/REFERENCE_PAIR_WORKFLOW.md` as the shared router / index only.
 
@@ -219,6 +215,14 @@ For a real Gemini/Nano Banana run:
 
 If this factory is called from another repo, export the caller repo's key into the current process env before invoking `itf.py`.
 
+For a Codex-side imagegen run:
+
+1. set `provider.mode` to `agent_handoff`
+2. set `provider.name` to `imagegen`
+3. run `prepare-reference-pair` first
+4. let the external Codex/imagegen step write raw PNGs into `agent_handoff/step_1_raw/<variant>.png`
+5. run `generate-reference-pair` to resume Step 3+
+
 ### Shared diagnostics
 
 Use `artifact_status.json` first, then inspect the matching `step_*` folder.
@@ -226,10 +230,8 @@ Use `artifact_status.json` first, then inspect the matching `step_*` folder.
 Primary step-oriented folders:
 
 - `step_1_raw/`
-- `step_2_keyed_default/`
 - `step_3_cleanup_pool/`
 - `step_4_gate/` when the workflow has that step
-- `step_5_source/` when the workflow has that step
 - `step_6_mapping/` when the workflow has that step
 - `step_7_selection/`
 - `deliverables/`

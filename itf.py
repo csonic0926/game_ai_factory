@@ -125,7 +125,7 @@ def parse_arguments() -> argparse.Namespace:
 
     ref_generate_parser = subparsers.add_parser(
         "generate-reference-pair",
-        help="Prepare, generate, and validate requested variant(s) from the reference-pair workflow",
+        help="Prepare, generate/ingest Step 1 output, and validate requested variant(s) from the reference-pair workflow",
     )
     ref_generate_parser.add_argument("--spec", required=True, help="Path to reference-pair spec JSON")
 
@@ -141,7 +141,11 @@ def parse_arguments() -> argparse.Namespace:
         default=[],
         help="Wall side to generate. Repeatable. Defaults to both left and right.",
     )
-    wall_generate_parser.add_argument("--provider", default="mock", help="Provider name to place in the generated spec")
+    wall_generate_parser.add_argument(
+        "--provider",
+        default="mock",
+        help="Provider name to place in the generated spec (mock, nano_banana, nano_banana_pro, or imagegen for agent handoff)",
+    )
     wall_generate_parser.add_argument(
         "--run-id",
         help="Optional run id override. Defaults to wall_<height>u_<variants>.",
@@ -202,15 +206,18 @@ def build_wall_reference_pair_spec(
 ) -> dict:
     wall_object_name = "101_wall_straight" if height_units == 1 else "102_wall_straight_2u"
     height_label = "1u" if height_units == 1 else "2u"
-    prompt_height_text = "single-tile-high" if height_units == 1 else "two-tile-high"
     theme = f"pixel stone wall {height_label}"
+    provider_payload = {"name": provider_name}
+    if provider_name == "imagegen":
+        provider_payload["mode"] = "agent_handoff"
+        provider_payload["agent_tool"] = "imagegen"
     return {
         "schema_version": "reference_pair_workflow_v1",
         "theme": theme,
         "run_id": run_id,
         "output_root": str(output_root),
         "variants": variants,
-        "provider": {"name": provider_name},
+        "provider": provider_payload,
         "background": {
             "mode": "color_key",
             "prompt_color": "#FF00FF",
@@ -223,7 +230,7 @@ def build_wall_reference_pair_spec(
         },
         "variant_profiles": {
             "left": {
-                "role_text": f"left-facing {prompt_height_text} isometric wall segment",
+                "role_text": "left-facing isometric wall segment",
                 "geometry_guidance": "The visible wall face should favor the left side of the isometric view and keep the base anchored exactly to the reference silhouette",
                 "sheet_label": f"left wall {height_label}",
                 "selector_profile": "wall",
@@ -232,7 +239,7 @@ def build_wall_reference_pair_spec(
                 "reference_rotation": 90,
             },
             "right": {
-                "role_text": f"right-facing {prompt_height_text} isometric wall segment",
+                "role_text": "right-facing isometric wall segment",
                 "geometry_guidance": "The visible wall face should favor the right side of the isometric view and keep the base anchored exactly to the reference silhouette",
                 "sheet_label": f"right wall {height_label}",
                 "selector_profile": "wall",
@@ -241,7 +248,7 @@ def build_wall_reference_pair_spec(
                 "reference_rotation": 0,
             },
         },
-        "prompt": f"pixel art style dungeon stone wall, {prompt_height_text}, readable block seams, restrained shading, and no extra props",
+        "prompt": "pixel art style dungeon stone wall with readable block seams, restrained shading, and no extra props",
         "negative_prompt": "no scene background, no cast shadow, no floor tile attached, no extra props, no border, no text, no watermark, no shape deformation",
         "generator_notes": f"preserve the same {height_label} wall family between left and right variants",
         "validation": {
@@ -598,12 +605,18 @@ def command_generate_wall_reference_pair(arguments: argparse.Namespace) -> int:
         )
         spec_out.parent.mkdir(parents=True, exist_ok=True)
         spec_out.write_text(json.dumps(spec, indent=2) + "\n", encoding="utf-8")
-        result = generate_reference_pair(spec_out)
+        provider_name = str(arguments.provider).strip().lower() or "mock"
+        if provider_name == "imagegen":
+            result = prepare_reference_pair_run(spec_out)
+            mode = "generate-wall-reference-pair.prepare-agent-handoff"
+        else:
+            result = generate_reference_pair(spec_out)
+            mode = "generate-wall-reference-pair"
         print(
             json.dumps(
                 {
                     "ok": True,
-                    "mode": "generate-wall-reference-pair",
+                    "mode": mode,
                     "spec_path": str(spec_out),
                     "height": height_units,
                     "variants": variants,

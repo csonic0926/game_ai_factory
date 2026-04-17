@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -19,7 +20,6 @@ from pipeline.reference_pair_workflow import (
 
 
 TARGET_SIZE = 128
-MAX_SCORE_REBOUND = 10.0
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CANONICAL_TILE_SPEC_PATH = REPO_ROOT / "examples" / "workflow_references" / "canonical_tile_spec.json"
 
@@ -1197,44 +1197,105 @@ def overlay_preview(reference_mask: Image.Image, candidate_mask: Image.Image, ou
     canvas.save(output_path)
 
 
-def top_boundary_key_contamination(candidate_path: Path, *, active_key_color: str, fail_rules: dict[str, float | int]) -> dict[str, Any]:
+def exterior_background_residue_check(candidate_path: Path, *, active_key_color: str, fail_rules: dict[str, float | int]) -> dict[str, Any]:
     image = Image.open(candidate_path).convert("RGBA")
-    mask = alpha_mask(image)
-    bbox = effective_bbox(mask)
     key_color = parse_hex_color(active_key_color)
-    scan_ratio = float(fail_rules["top_boundary_scan_ratio"])
     similarity_fail = float(fail_rules["top_boundary_key_similarity_fail"])
     pixel_ratio_fail = float(fail_rules["top_boundary_key_pixel_ratio_fail"])
     pixel_count_fail = int(fail_rules["top_boundary_key_pixel_count_fail"])
     run_fail = int(fail_rules["top_boundary_key_run_fail"])
-    scan_limit = bbox.top + max(1, int(round(bbox.height * scan_ratio)))
-    contaminated_pixels = 0
-    scanned_pixels = 0
-    max_contiguous_run = 0
-    current_run = 0
+    rgba = image.convert("RGBA")
+    width, height = rgba.size
+    pixels = rgba.load()
+    alpha = rgba.getchannel("A")
+    alpha_pixels = alpha.load()
+    exterior_mask = Image.new("L", rgba.size, 0)
+    exterior_pixels = exterior_mask.load()
+    queue: deque[tuple[int, int]] = deque()
+
+    def enqueue_if_exterior(x: int, y: int) -> None:
+        if x < 0 or x >= width or y < 0 or y >= height:
+            return
+        if exterior_pixels[x, y] != 0:
+            return
+        if alpha_pixels[x, y] >= 32:
+            return
+        exterior_pixels[x, y] = 255
+        queue.append((x, y))
+
+    for corner_x, corner_y in ((0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1)):
+        enqueue_if_exterior(corner_x, corner_y)
+
+    while queue:
+        x, y = queue.popleft()
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            enqueue_if_exterior(x + dx, y + dy)
+
+    boundary_samples: dict[tuple[int, int], dict[str, Any]] = {}
+    corner_touch_samples: list[dict[str, Any]] = []
     strongest_samples: list[dict[str, Any]] = []
-
-    for x in range(bbox.left, bbox.right + 1):
-        first_hit = None
-        for y in range(bbox.top, min(bbox.bottom + 1, scan_limit + 1)):
-            r, g, b, a = image.getpixel((x, y))
-            if a > 0:
+    for y in range(height):
+        for x in range(width):
+            if exterior_pixels[x, y] < 128:
+                continue
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx = x + dx
+                ny = y + dy
+                if nx < 0 or nx >= width or ny < 0 or ny >= height:
+                    continue
+                if alpha_pixels[nx, ny] < 32:
+                    continue
+                r, g, b, _a = pixels[nx, ny]
                 similarity = color_key_similarity((r, g, b), key_color)
-                first_hit = {"x": x, "y": y, "rgb": [r, g, b], "similarity": similarity}
-                break
-        if first_hit is None:
-            current_run = 0
-            continue
-        scanned_pixels += 1
-        if first_hit["similarity"] >= similarity_fail:
-            contaminated_pixels += 1
-            current_run += 1
-            max_contiguous_run = max(max_contiguous_run, current_run)
-            strongest_samples.append(first_hit)
-        else:
-            current_run = 0
+                sample = {"x": nx, "y": ny, "rgb": [r, g, b], "similarity": similarity}
+                boundary_samples[(nx, ny)] = sample
 
-    strongest_samples.sort(key=lambda item: item["similarity"], reverse=True)
+    corner_window = max(1, min(width, height) // 16)
+    for x in range(width):
+        for y in range(height):
+            if alpha_pixels[x, y] < 32:
+                continue
+            in_corner_window = (
+                (x < corner_window and y < corner_window)
+                or (x >= width - corner_window and y < corner_window)
+                or (x < corner_window and y >= height - corner_window)
+                or (x >= width - corner_window and y >= height - corner_window)
+            )
+            if not in_corner_window:
+                continue
+            r, g, b, _a = pixels[x, y]
+            similarity = color_key_similarity((r, g, b), key_color)
+            sample = {"x": x, "y": y, "rgb": [r, g, b], "similarity": similarity}
+            boundary_samples[(x, y)] = sample
+            corner_touch_samples.append(sample)
+
+    scanned_pixels = len(boundary_samples)
+    contaminated_positions = {
+        position: sample for position, sample in boundary_samples.items()
+        if float(sample["similarity"]) >= similarity_fail
+    }
+    contaminated_pixels = len(contaminated_positions)
+    if contaminated_positions:
+        strongest_samples = sorted(contaminated_positions.values(), key=lambda item: item["similarity"], reverse=True)
+
+    max_contiguous_run = 0
+    visited: set[tuple[int, int]] = set()
+    for position in contaminated_positions:
+        if position in visited:
+            continue
+        component_size = 0
+        component_queue: deque[tuple[int, int]] = deque([position])
+        visited.add(position)
+        while component_queue:
+            px, py = component_queue.popleft()
+            component_size += 1
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                neighbor = (px + dx, py + dy)
+                if neighbor in contaminated_positions and neighbor not in visited:
+                    visited.add(neighbor)
+                    component_queue.append(neighbor)
+        max_contiguous_run = max(max_contiguous_run, component_size)
+
     contamination_ratio = contaminated_pixels / scanned_pixels if scanned_pixels else 0.0
     fail = (
         contaminated_pixels >= pixel_count_fail
@@ -1249,6 +1310,10 @@ def top_boundary_key_contamination(candidate_path: Path, *, active_key_color: st
         "max_contiguous_run": max_contiguous_run,
         "similarity_threshold": similarity_fail,
         "fail": fail,
+        "mode": "four_corner_exterior_fill",
+        "corner_window": corner_window,
+        "corner_touch_sample_count": len(corner_touch_samples),
+        "exterior_background_pixels": int(exterior_mask.histogram()[255]) if len(exterior_mask.histogram()) > 255 else 0,
         "strongest_samples": strongest_samples[:12],
     }
 
@@ -1325,10 +1390,9 @@ def _candidate_cleanup_id(candidate_path: str, *, variant: str) -> str:
 
 
 def _export_selector_stage_artifacts(run_root: Path, *, variant: str, result: dict[str, Any]) -> None:
-    step_5_dir = run_root / "step_5_source"
     step_6_dir = run_root / "step_6_mapping"
     step_7_dir = run_root / "step_7_selection"
-    for directory in (step_5_dir, step_6_dir, step_7_dir):
+    for directory in (step_6_dir, step_7_dir):
         directory.mkdir(parents=True, exist_ok=True)
 
     reference = result.get("reference", {}) if isinstance(result, dict) else {}
@@ -1336,22 +1400,14 @@ def _export_selector_stage_artifacts(run_root: Path, *, variant: str, result: di
     if reference_path_raw:
         _copy_artifact(Path(str(reference_path_raw)), step_7_dir / f"s7_reference_normalized.{variant}.png")
 
-    pass_candidates = result.get("pass_candidates", []) if isinstance(result.get("pass_candidates", []), list) else []
-    failed_candidates = result.get("failed_candidates", []) if isinstance(result.get("failed_candidates", []), list) else []
-    all_candidates = pass_candidates + failed_candidates
-
-    source_candidates: list[dict[str, Any]] = []
+    chosen_candidate = result.get("chosen_candidate") if isinstance(result.get("chosen_candidate"), dict) else None
+    verification = result.get("verification", {}) if isinstance(result.get("verification"), dict) else {}
     mapping_candidates: list[dict[str, Any]] = []
-    selection_pass_candidates: list[dict[str, Any]] = []
-    selection_failed_candidates: list[dict[str, Any]] = []
-    source_pass_example: str | None = None
-    source_fail_example: str | None = None
+    verification_candidates: list[dict[str, Any]] = []
 
-    for candidate in all_candidates:
+    for candidate in ([chosen_candidate] if chosen_candidate is not None else []):
         candidate_path = str(candidate.get("path", ""))
         cleanup_id = _candidate_cleanup_id(candidate_path, variant=variant)
-        source_src = Path(candidate_path) if candidate_path else None
-        source_copy = _copy_artifact(source_src, step_5_dir / f"s5_source.{variant}.{cleanup_id}.png") if source_src else None
         mapped_src = Path(str(candidate.get("final_path", ""))) if candidate.get("final_path") else None
         mapped_copy = _copy_artifact(mapped_src, step_6_dir / f"s6_mapped.{variant}.{cleanup_id}.png") if mapped_src else None
         normalized_src = Path(str(candidate.get("normalized_path", ""))) if candidate.get("normalized_path") else None
@@ -1359,31 +1415,12 @@ def _export_selector_stage_artifacts(run_root: Path, *, variant: str, result: di
         overlay_src = Path(str(candidate.get("overlay_path", ""))) if candidate.get("overlay_path") else None
         overlay_copy = _copy_artifact(overlay_src, step_7_dir / f"s7_overlay.{variant}.{cleanup_id}.png") if overlay_src else None
 
-        source_stage = candidate.get("source_stage", {}) if isinstance(candidate.get("source_stage", {}), dict) else {}
         final_stage = candidate.get("final_stage", {}) if isinstance(candidate.get("final_stage", {}), dict) else {}
-
-        source_entry = {
-            "cleanup_id": cleanup_id,
-            "source_input_path": source_copy or candidate.get("path"),
-            "source_effective_bbox": candidate.get("source_effective_bbox"),
-            "source_metrics": {
-                "raw_mask_area": candidate.get("raw_mask_area"),
-                "top_boundary_contamination": candidate.get("top_boundary_contamination"),
-                "source_nontransparent_canvas": candidate.get("source_nontransparent_canvas"),
-            },
-            "source_passed": bool(source_stage.get("passed", candidate.get("passed"))),
-            "source_fail_reasons": source_stage.get("fail_reasons", []),
-        }
-        if source_entry["source_passed"] and source_pass_example is None and source_copy is not None:
-            source_pass_example = source_copy
-        if (not source_entry["source_passed"]) and source_fail_example is None and source_copy is not None:
-            source_fail_example = source_copy
-        source_candidates.append(source_entry)
 
         mapping_candidates.append(
             {
                 "cleanup_id": cleanup_id,
-                "source_input_path": source_copy or candidate.get("path"),
+                "source_input_path": candidate.get("path"),
                 "mapped_output_path": mapped_copy or candidate.get("final_path"),
                 "canvas_size": result.get("canonical_target", {}),
                 "effective_bbox": candidate.get("effective_bbox"),
@@ -1397,48 +1434,25 @@ def _export_selector_stage_artifacts(run_root: Path, *, variant: str, result: di
             }
         )
 
-        selection_entry = {
+        verification_candidates.append(
+            {
             "cleanup_id": cleanup_id,
-            "source_path": source_copy or candidate.get("path"),
+            "source_path": candidate.get("path"),
             "mapped_path": mapped_copy or candidate.get("final_path"),
             "overlay_path": overlay_copy or candidate.get("overlay_path"),
             "normalized_path": normalized_copy or candidate.get("normalized_path"),
-            "score": candidate.get("score"),
-            "source_stage": source_stage,
+            "mapping_score": candidate.get("score"),
             "final_stage": final_stage,
             "fail_reasons": candidate.get("fail_reasons", []),
-            "blocked_by": next((reason for reason in candidate.get("fail_reasons", []) if str(reason).startswith("blocked_by_")), None),
-        }
-        if candidate.get("passed"):
-            selection_pass_candidates.append(selection_entry)
-        else:
-            selection_failed_candidates.append(selection_entry)
+            }
+        )
 
-    write_json(
-        step_5_dir / f"s5_source.{variant}.json",
-        {
-            "variant": variant,
-            "passed_candidate_ids": [item["cleanup_id"] for item in source_candidates if item["source_passed"]],
-            "failed_candidate_ids": [item["cleanup_id"] for item in source_candidates if not item["source_passed"]],
-            "primary_pass_example": source_pass_example,
-            "primary_fail_example": source_fail_example,
-            "candidates": source_candidates,
-        },
-    )
-    update_step_status_summary(
-        run_root,
-        variant=variant,
-        step_key="step_5_source",
-        status="pass" if any(item["source_passed"] for item in source_candidates) else "fail",
-        summary=f"{sum(1 for item in source_candidates if item['source_passed'])}/{len(source_candidates)} source candidates passed",
-        primary_artifact=source_pass_example or source_fail_example,
-        details_path=str(step_5_dir / f"s5_source.{variant}.json"),
-    )
     write_json(
         step_6_dir / f"s6_mapping.{variant}.json",
         {
             "variant": variant,
-            "mapping_method": "existing_selector_mapping_no_algorithm_change",
+            "mapping_method": "single_chosen_cleanup_candidate",
+            "chosen_candidate_id": result.get("chosen_candidate_id"),
             "candidates": mapping_candidates,
         },
     )
@@ -1466,11 +1480,10 @@ def _export_selector_stage_artifacts(run_root: Path, *, variant: str, result: di
         {
             "variant": variant,
             "ok": bool(result.get("ok")),
-            "selected_candidate_id": selected_cleanup_id,
+            "verified_candidate_id": selected_cleanup_id,
             "selected_output_path": selected_output_path or result.get("selected_final_output"),
-            "rebound_cutoff": result.get("rebound_cutoff"),
-            "pass_candidates": selection_pass_candidates,
-            "failed_candidates": selection_failed_candidates,
+            "verification": verification,
+            "candidates": verification_candidates,
         },
     )
     update_step_status_summary(
@@ -1478,7 +1491,7 @@ def _export_selector_stage_artifacts(run_root: Path, *, variant: str, result: di
         variant=variant,
         step_key="step_7_selection",
         status="pass" if selected_output_path else "fail",
-        summary="selector chose a candidate" if selected_output_path else "selector did not choose a candidate",
+        summary="mapped candidate verified" if selected_output_path else "mapped candidate failed verification",
         primary_artifact=selected_output_path,
         details_path=str(step_7_dir / f"s7_selection.{variant}.json"),
     )
@@ -1486,31 +1499,9 @@ def _export_selector_stage_artifacts(run_root: Path, *, variant: str, result: di
         _update_deliverable_manifest(
             run_root,
             selected_outputs={variant: selected_output_path},
-            workflow_status="selector_selected",
+            workflow_status="mapping_verified",
             selected_from_step="step_7_selection",
         )
-
-
-def evaluate_source_eligibility(
-    candidate: dict[str, Any],
-    *,
-    active_key_color: str,
-    fail_rules: dict[str, float | int],
-) -> tuple[list[str], dict[str, Any]]:
-    fail_reasons: list[str] = []
-    if candidate.get("source_nontransparent_canvas"):
-        fail_reasons.append("source_full_canvas_foreground")
-    contamination = top_boundary_key_contamination(Path(candidate["path"]), active_key_color=active_key_color, fail_rules=fail_rules)
-    if contamination["fail"]:
-        fail_reasons.append("source_top_boundary_key_contamination")
-    return fail_reasons, {
-        "passed": len(fail_reasons) == 0,
-        "fail_reasons": fail_reasons,
-        "top_boundary_contamination": contamination,
-        "source_effective_bbox": candidate.get("source_effective_bbox"),
-        "source_nontransparent_canvas": bool(candidate.get("source_nontransparent_canvas")),
-        "raw_mask_area": candidate.get("raw_mask_area"),
-    }
 
 
 def evaluate_final_fit(
@@ -1575,43 +1566,6 @@ def evaluate_final_fit(
         "anchors": candidate["anchors"],
     }
 
-
-def fail_reason_cutoff_direction(fail_reasons: list[str]) -> str | None:
-    if "source_top_boundary_key_contamination" in fail_reasons or "source_full_canvas_foreground" in fail_reasons:
-        return "more_conservative"
-    geometry_fail_reasons = {
-        "final_normalized_iou_too_low",
-        "final_anchor_error_too_high",
-        "final_effective_width_too_small",
-        "final_effective_height_too_small",
-        "final_missing_left_shoulder",
-        "final_missing_right_shoulder",
-        "final_missing_left_mid",
-        "final_missing_right_mid",
-        "final_missing_bottom_tip",
-        "final_left_shoulder_inset_too_large",
-        "final_right_shoulder_inset_too_large",
-        "final_left_mid_inset_too_large",
-        "final_right_mid_inset_too_large",
-        "final_bottom_tip_drift_too_large",
-    }
-    if any(reason in geometry_fail_reasons for reason in fail_reasons):
-        return "more_aggressive"
-    return None
-
-
-def detect_score_rebound_cutoff(ordered_names: list[str], candidate_by_name: dict[str, dict[str, Any]]) -> tuple[str, float] | None:
-    previous_score: float | None = None
-    for name in ordered_names:
-        score = float(candidate_by_name[name]["score"])
-        if previous_score is not None:
-            rebound = score - previous_score
-            if rebound > MAX_SCORE_REBOUND:
-                return name, rebound
-        previous_score = score
-    return None
-
-
 def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, Any]:
     request = load_json(run_root / "request" / "request.json")
     variant_profiles = request.get("variant_profiles", {})
@@ -1626,6 +1580,7 @@ def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, A
     validation_path = run_root / "validation" / "validation.json"
     validation_payload = load_json(validation_path) if validation_path.exists() else {}
     preprocessing_payload = validation_payload.get("preprocessing", {}).get(variant, {})
+    preprocessing_gate = validation_payload.get(variant, {}).get("preprocessing_gate", {})
     active_key_color = str(preprocessing_payload.get("active_key_color", request.get("background", {}).get("prompt_color", "#FF00FF")))
     reference_path = Path(request["references"][variant])
     canonical_target = canonical_target_for_variant(
@@ -1644,113 +1599,38 @@ def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, A
     reference_mask_normalized, reference_bbox = normalize_mask(reference_scoring_mask)
     reference_anchors = mask_anchors(reference_mask_normalized)
 
-    generated_dir = run_root / "generated"
-    candidates = [generated_dir / f"generated_{variant}.{name}.png" for name in KNOWN_VARIANTS]
-    missing = [str(path) for path in candidates if not path.exists()]
-    if missing:
-        raise VariantSelectorError(f"Missing variant candidate(s): {', '.join(missing)}")
+    chosen_candidate_raw = preprocessing_gate.get("chosen_candidate", {}) if isinstance(preprocessing_gate, dict) else {}
+    chosen_candidate_path_raw = chosen_candidate_raw.get("path") if isinstance(chosen_candidate_raw, dict) else None
+    if not chosen_candidate_path_raw:
+        raise VariantSelectorError(f"No chosen cleanup candidate found for variant '{variant}'.")
+    chosen_candidate_path = Path(str(chosen_candidate_path_raw))
+    if not chosen_candidate_path.exists():
+        raise VariantSelectorError(f"Chosen cleanup candidate is missing: {chosen_candidate_path}")
 
     output_dir = run_root / "selection" / variant
     output_dir.mkdir(parents=True, exist_ok=True)
     reference_mask_normalized.save(output_dir / "reference.normalized.png")
 
-    staged_candidates: list[dict[str, Any]] = []
-    for candidate_path in candidates:
-        scored_candidate = score_candidate(
-            candidate_path,
-            reference_path,
-            reference_mask_normalized,
-            reference_anchors,
-            output_dir,
-            canonical_target=canonical_target,
-        )
-        source_fail_reasons, source_stage = evaluate_source_eligibility(
-            scored_candidate,
-            active_key_color=active_key_color,
-            fail_rules=fail_rules,
-        )
-        scored_candidate["source_stage"] = source_stage
-        scored_candidate["top_boundary_contamination"] = source_stage["top_boundary_contamination"]
-        if source_stage["passed"]:
-            final_fail_reasons, final_stage = evaluate_final_fit(
-                scored_candidate,
-                reference_effective_bbox=reference_bbox,
-                reference_anchors=reference_anchors,
-                fail_rules=fail_rules,
-            )
-        else:
-            final_fail_reasons = []
-            final_stage = {
-                "passed": False,
-                "skipped": True,
-                "fail_reasons": [],
-            }
-        scored_candidate["final_stage"] = final_stage
-        scored_candidate["base_fail_reasons"] = source_fail_reasons + final_fail_reasons
-        staged_candidates.append(scored_candidate)
-
-    candidate_by_name = {Path(candidate["path"]).stem.replace(f"generated_{variant}.", ""): candidate for candidate in staged_candidates}
-    ordered_names = [name for name in KNOWN_VARIANTS if name in candidate_by_name]
-    ordered_candidates = [candidate_by_name[name] for name in ordered_names]
-
-    pass_candidates: list[dict[str, Any]] = []
-    failed_candidates: list[dict[str, Any]] = []
-    base_fail_reasons_by_name: dict[str, list[str]] = {}
-    base_cutoff_by_name: dict[str, str | None] = {}
-    for candidate in ordered_candidates:
-        candidate_name = Path(candidate["path"]).stem.replace(f"generated_{variant}.", "")
-        fail_reasons = list(candidate.get("base_fail_reasons", []))
-        base_fail_reasons_by_name[candidate_name] = fail_reasons
-        base_cutoff_by_name[candidate_name] = fail_reason_cutoff_direction(fail_reasons)
-
-    blocked_names: dict[str, str] = {}
-    ordered_names_for_rebound = [
-        name for name in ordered_names
-        if bool(candidate_by_name[name].get("source_stage", {}).get("passed"))
-    ]
-    rebound_cutoff = detect_score_rebound_cutoff(ordered_names_for_rebound, candidate_by_name)
-    if rebound_cutoff is not None:
-        rebound_name, rebound_amount = rebound_cutoff
-        rebound_index = ordered_names.index(rebound_name)
-        for affected_name in ordered_names[rebound_index:]:
-            if affected_name not in blocked_names:
-                blocked_names[affected_name] = f"blocked_by_score_rebound_gt_{int(MAX_SCORE_REBOUND)}"
-            candidate_by_name[affected_name]["score_rebound_trigger"] = {
-                "triggered_at": rebound_name,
-                "rebound_amount": rebound_amount,
-                "threshold": MAX_SCORE_REBOUND,
-            }
-
-    for index, name in enumerate(ordered_names):
-        fail_reasons = base_fail_reasons_by_name[name]
-        cutoff_direction = base_cutoff_by_name[name]
-        if not fail_reasons or cutoff_direction is None:
-            continue
-        if cutoff_direction == "more_aggressive":
-            affected = ordered_names[index + 1 :]
-        elif cutoff_direction == "more_conservative":
-            affected = ordered_names[:index]
-        else:
-            affected = []
-        for affected_name in affected:
-            if affected_name not in blocked_names:
-                blocked_names[affected_name] = f"blocked_by_{cutoff_direction}_after_fail"
-
-    for candidate in ordered_candidates:
-        candidate_name = Path(candidate["path"]).stem.replace(f"generated_{variant}.", "")
-        fail_reasons = list(base_fail_reasons_by_name[candidate_name])
-        if candidate_name in blocked_names:
-            fail_reasons = fail_reasons + [blocked_names[candidate_name]]
-        candidate["fail_reasons"] = fail_reasons
-        candidate["passed"] = len(fail_reasons) == 0
-        if candidate["passed"]:
-            pass_candidates.append(candidate)
-        else:
-            failed_candidates.append(candidate)
-    pass_candidates.sort(key=lambda item: item["score"], reverse=True)
+    chosen_candidate = score_candidate(
+        chosen_candidate_path,
+        reference_path,
+        reference_mask_normalized,
+        reference_anchors,
+        output_dir,
+        canonical_target=canonical_target,
+    )
+    final_fail_reasons, final_stage = evaluate_final_fit(
+        chosen_candidate,
+        reference_effective_bbox=reference_bbox,
+        reference_anchors=reference_anchors,
+        fail_rules=fail_rules,
+    )
+    chosen_candidate["final_stage"] = final_stage
+    chosen_candidate["fail_reasons"] = list(final_fail_reasons)
+    chosen_candidate["passed"] = len(final_fail_reasons) == 0
 
     result = {
-        "ok": True,
+        "ok": bool(chosen_candidate["passed"]),
         "run_root": str(run_root),
         "variant": variant,
         "reference": {
@@ -1782,19 +1662,13 @@ def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, A
             "contact_edge": canonical_target.get("contact_edge") if canonical_target is not None else None,
         } if canonical_target is not None else None,
         "active_key_color": active_key_color,
-        "selector_workflow": {
+        "verification_workflow": {
             "stages": [
-                "source_eligibility",
+                "chosen_cleanup_candidate",
                 "map_to_canonical_game_iso",
-                "final_fit_validation",
-                "winner_selection",
+                "mapping_verification",
             ]
         },
-        "rebound_cutoff": {
-            "triggered_at": rebound_cutoff[0],
-            "rebound_amount": rebound_cutoff[1],
-            "threshold": MAX_SCORE_REBOUND,
-        } if rebound_cutoff is not None else None,
         "fail_rule_thresholds": {
             "min_normalized_iou": float(fail_rules["min_normalized_iou"]),
             "max_anchor_error": float(fail_rules["max_anchor_error"]),
@@ -1808,9 +1682,10 @@ def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, A
             "top_boundary_key_pixel_count_fail": int(fail_rules["top_boundary_key_pixel_count_fail"]),
             "top_boundary_key_run_fail": int(fail_rules["top_boundary_key_run_fail"]),
         },
-        "pass_candidates": pass_candidates,
-        "failed_candidates": failed_candidates,
-        "selected": pass_candidates[0] if pass_candidates else None,
+        "chosen_candidate_id": _candidate_cleanup_id(str(chosen_candidate["path"]), variant=variant),
+        "chosen_candidate": chosen_candidate,
+        "verification": final_stage,
+        "selected": chosen_candidate if chosen_candidate["passed"] else None,
     }
     if result["selected"] is not None:
         selected_path = Path(str(result["selected"]["final_path"]))

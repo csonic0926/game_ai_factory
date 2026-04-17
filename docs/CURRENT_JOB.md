@@ -470,17 +470,14 @@ Primary regression target:
   2. make it faster to see which step failed
 - New step-oriented output folders now exist under each run root:
   - `step_1_raw/`
-  - `step_2_keyed_default/`
   - `step_3_cleanup_pool/`
   - `step_4_gate/`
-  - `step_5_source/`
   - `step_6_mapping/`
   - `step_7_selection/`
   - `deliverables/`
 - New canonical artifact names follow the `s<step>_<kind>.<variant>[.vXX_*].png/json` pattern.
   - examples:
     - `s1_raw.left.png`
-    - `s2_keyed_default.left.png`
     - `s3_cleanup.left.v01_conservative.png`
     - `s4_gate.left.json`
     - `s6_mapped.left.v01_conservative.png`
@@ -488,3 +485,107 @@ Primary regression target:
     - `deliverable.left.png`
 - Added run-level `artifact_status.json` so a reviewer can quickly scan per-variant step status without opening every folder first.
 - Legacy folders (`generated/`, `processed/`, `selection/`, `final/`) are still written for compatibility; the new step folders are diagnostic aliases, not algorithm changes.
+
+## April 16 — Step 0 review checkpoint
+
+- Current review conclusion:
+  - wall Step 0 is mostly acceptable as a deterministic safety boundary for Step 1
+  - keep its preflight responsibilities for now:
+    - spec/schema validation
+    - wall handedness / height / reference integrity enforcement
+    - generation-input routing
+    - request snapshot writing
+- The main Step 0 area still under suspicion is the **Gemini prompt assembly structure**, not the existence of Step 0 itself.
+- Decision:
+  - do **not** refactor Step 0 first
+  - continue the workflow review until the Gemini generation step
+  - decide the proper prompt contract there first
+  - only then return to Step 0 and judge whether prompt-building should be simplified
+
+## April 16 — Step 1 split completed
+
+- Completed the first boundary-cleanup pass around wall Step 1 **without changing keying algorithms**.
+- New intended execution boundary:
+  - Step 1 = raw generation only
+- Implementation change in `pipeline/reference_pair_workflow.py`:
+  - `generate_reference_pair()` no longer runs `apply_color_key_to_image(...)` directly inside the provider-generation loop
+- Review consequence:
+  - future Step 1 discussion should treat color keying as out-of-scope for Step 1
+  - next cleanup target after Step 1 review is the keyed cleanup stage boundary
+
+## April 17 — wall Step 1 prompt simplification
+
+- Simplified wall prompt generation in `pipeline/reference_pair_workflow.py`.
+- New wall prompt contract:
+  - one side-specific reference image per variant (`refs/left.png` / `refs/right.png`)
+  - short prompt centered on:
+    - exact geometry lock from the supplied reference image
+    - no extra scene / props / text
+    - chroma-key background rule
+    - style direction
+    - negative constraints
+- Removed wall-only prompt clutter that was competing for attention:
+  - no extra 1u / 2u prose reminders
+  - no 1u / 2u wording inside wall `role_text`
+  - no 1u / 2u wording inside wall style prompt text
+  - no extra wall reinterpretation sentences
+  - no outline-specific block
+  - no `Reference intent` / `Extra notes` tail for wall Step 1
+- Wall pair runs no longer compose `refs/reference_pair_sheet.png`.
+  - prepare now leaves `reference_sheet = null` for wall pair runs
+  - `generation_inputs.left/right` point directly to `refs/left.png` / `refs/right.png`
+- Verified with a prepare-only 2u wall check:
+  - 2u wall Step 1 still uses the correct 2u reference PNGs
+  - but the generated prompt text no longer mentions `two-tile-high`, `2u`, or any other height wording
+  - height is now carried only by the supplied reference image and structured metadata, not by Gemini-facing prose
+
+## Next review target
+
+- Step 1 prompt / reference contract is now intentionally simplified and should be treated as the current baseline.
+- Next step for the wall workflow review:
+  - inspect the keyed cleanup stage
+  - decide whether default keyed output deserves its own processing step
+  - keep Step 5 / Step 6 redesign deferred until keyed cleanup semantics are clearer
+
+## April 17 — agent-assisted imagegen wall Step 1
+
+- Added a new wall execution path for Codex-side image generation without treating imagegen as a normal in-repo provider call.
+- Spec / Step 0 changes:
+  - `provider.mode = "agent_handoff"` is now supported
+  - `provider.name = "imagegen"` is the current allowed handoff backend
+  - prepare writes `request/imagegen_handoff.json`
+  - request metadata now preserves per-variant handoff raw output paths
+- Step 1 behavior:
+  - `generate-reference-pair` can now ingest externally staged raw PNGs from:
+    - `agent_handoff/step_1_raw/left.png`
+    - `agent_handoff/step_1_raw/right.png`
+  - after ingest, the existing Step 3+ wall workflow continues unchanged
+- April 17 follow-up decision:
+  - removed Step 2 as an independent processing step
+  - validation now uses the default candidate emitted by Step 3 cleanup-pool generation as the baseline keyed image
+  - the repo now treats cleanup/keying as one Step 3 stage rather than a Step 2 + Step 3 split
+- April 17 Step 3 simplification:
+  - Step 3 is now defined as **deterministic six-candidate cleanup emission only**
+  - Step 3 no longer writes a baseline keyed output of its own
+  - Step 3 no longer exports `selected_variant` semantics
+  - wall preprocessing gate now inspects the six Step 3 candidates directly
+  - any choice to read one candidate as a validation baseline now belongs to validation logic, not to Step 3 itself
+- April 17 post-Step-3 wall simplification:
+  - Step 4 now merges gate + pick:
+    - check cleanup residue / silhouette viability
+    - choose the least-destructive valid candidate by fixed cleanup order
+  - removed Step 5 as a distinct wall step
+  - Step 6 now maps only the chosen cleanup candidate
+  - Step 7 now verifies the mapped result instead of running multi-candidate rebound / cutoff selection
+- April 17 Step 4 tightening:
+  - tightened wall residue detection toward **four-corner / exterior-fill background residue**
+  - intent is to catch leftover outside background color while avoiding false positives from interior colors that only look similar to the key color
+- Current practical test status:
+  - prepared a 2u left/right wall run with `provider=imagegen`
+  - staged simulated Step 1 raw outputs into the handoff paths
+  - verified `generate-reference-pair` resumed successfully and produced final deliverables
+  - test run root:
+    - `/private/tmp/itf_imagegen_test_runs/wall_2u_imagegen_test`
+- Important boundary:
+  - this makes imagegen usable when another Codex skill/agent is orchestrating the repo
+  - it does **not** make imagegen a normal standalone provider API for non-Codex execution

@@ -120,15 +120,78 @@
 
 - Keep legacy runtime folders for compatibility, but treat the **step-oriented folders** as the primary diagnostic interface for wall workflow review:
   - `step_1_raw/`
-  - `step_2_keyed_default/`
   - `step_3_cleanup_pool/`
   - `step_4_gate/`
-  - `step_5_source/`
   - `step_6_mapping/`
   - `step_7_selection/`
   - `deliverables/`
 - Prefer reviewing `artifact_status.json` first when triaging a run.
 - Prefer `s<step>_<kind>...` artifact names over ambiguous names like bare `final` when adding new diagnostic outputs.
+
+## Step 0 review checkpoint
+
+- Current working conclusion for wall workflow review:
+  - Step 0 is allowed to stay **deterministic and safety-oriented**.
+  - Most of Step 0 complexity is acceptable because it protects Step 1 generation:
+    - input/schema validation
+    - wall handedness / height / reference integrity checks
+    - generation-input routing
+    - request snapshot materialization
+- The main Step 0 area that still looks suspicious is **Gemini prompt assembly structure**.
+- Do **not** rewrite Step 0 preflight logic first.
+- Instead:
+  1. review the actual Gemini generation step and decide the correct prompt contract there
+  2. then come back and decide whether Step 0 prompt-building should be simplified or rewritten
+
+## Step 1 / Step 3 boundary rule
+
+- Current repo-side review decision:
+  - treat **Step 1 as raw generation only**
+  - treat **Step 3 as deterministic six-candidate cleanup emission only**
+- Do not let Step 1 silently perform keying inside the provider-generation loop.
+- For wall workflow review:
+  - if color keying artifacts appear, discuss them as Step 3 artifacts
+  - do not attribute keyed outputs back to Step 1
+- Post-Step-3 wall direction:
+  - Step 4 = cleanup validation + least-destructive valid candidate pick
+  - Step 6 = game-iso mapping of the chosen candidate
+  - Step 7 = mapping verification, not multi-candidate winner selection
+- Step 4 background-residue rule should bias toward **four-corner / exterior-fill detection** rather than only scanning the top boundary.
+  - Goal: catch leftover outside background color
+  - Avoid over-penalizing interior painted colors that merely resemble the chroma-key color
+
+## Wall Step 1 prompt contract
+
+- Current wall-generation direction:
+  - let the **reference PNG** carry wall geometry, handedness, and height semantics
+  - do **not** spend extra prompt budget restating 1u / 2u height in prose
+  - do **not** let wall `role_text` or wall style text smuggle height wording back into the prompt
+  - do **not** compose `refs/reference_pair_sheet.png` for wall pair runs
+- Wall Step 1 should send Gemini only:
+  - one side-specific wall reference PNG (`refs/left.png` or `refs/right.png`)
+  - a short prompt that emphasizes:
+    - exact geometry lock from the reference image
+    - no extra scene / props / text
+    - chroma-key background rules
+    - style direction
+    - negative constraints
+- Prefer keeping wall prompt text short so more attention stays on:
+  - the supplied reference image
+  - the actual wall rendering
+  - the background-color restriction
+
+## Agent-assisted wall Step 1 contract
+
+- Wall Step 0 may now emit an **agent_handoff** contract for Codex-side image generation.
+- This is **not** a normal repo-local provider call.
+  - use `provider.mode = "agent_handoff"`
+  - use `provider.name = "imagegen"`
+  - Step 0 writes `request/imagegen_handoff.json`
+- The external Codex/imagegen side owns **Step 1 raw generation only**:
+  - read prompt + reference image(s) from the handoff packet
+  - write one PNG per variant to `agent_handoff/step_1_raw/<variant>.png`
+  - do not perform Step 3 cleanup / selection there
+- After those raw PNGs are staged, the factory resumes with `generate-reference-pair` and ingests them into the normal Step 3+ workflow.
 
 ## Why this matters
 

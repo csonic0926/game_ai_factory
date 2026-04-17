@@ -13,8 +13,7 @@ Use:
 - `docs/WALL_REFERENCE_PAIR_WORKFLOW.md` for:
   - `left` / `right` wall runs
   - wall preprocessing gate
-  - wall source eligibility
-  - wall mapping / selection
+  - wall mapping / verification
 
 ## Shared command surface
 
@@ -38,10 +37,8 @@ Both floor and wall runs use the same high-level artifact convention:
   - `final/`
 - step-oriented folders are the preferred diagnostic interface:
   - `step_1_raw/`
-  - `step_2_keyed_default/`
   - `step_3_cleanup_pool/`
   - `step_4_gate/` when that step exists for the workflow
-  - `step_5_source/` when that step exists for the workflow
   - `step_6_mapping/` when that step exists for the workflow
   - `step_7_selection/`
   - `deliverables/`

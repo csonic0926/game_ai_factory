@@ -34,7 +34,6 @@ Each run keeps both:
    - `final/`
 2. step-oriented diagnostic folders for review
    - `step_1_raw/`
-   - `step_2_keyed_default/`
    - `step_3_cleanup_pool/`
    - `step_7_selection/`
    - `deliverables/`
@@ -52,7 +51,6 @@ Preferred artifact naming:
 Examples:
 
 - `s1_raw.full.png`
-- `s2_keyed_default.full.png`
 - `s3_cleanup.full.v01_conservative.png`
 - `s7_selected.full.png`
 - `deliverable.full.png`
@@ -67,8 +65,8 @@ The floor workflow supports:
 When `background.mode = "color_key"`:
 
 1. the raw floor image is generated
-2. a default keyed result is written
-3. six cleanup variants are emitted
+2. six cleanup variants are emitted
+3. validation may read one fixed cleanup candidate as its baseline keyed image, but that choice is outside Step 3 itself
 4. validation / selection compare those results against the canonical floor geometry
 
 ## Workflow stages
@@ -123,9 +121,6 @@ Preferred diagnostic artifacts:
 
 - step 1 raw:
   - `step_1_raw/s1_raw.<variant>.png`
-- step 2 keyed default:
-  - `step_2_keyed_default/s2_keyed_default.<variant>.png`
-  - `step_2_keyed_default/s2_keyed_default.<variant>.json`
 - step 3 cleanup pool:
   - `step_3_cleanup_pool/s3_cleanup.<variant>.vXX_<cleanup>.png`
   - `step_3_cleanup_pool/s3_cleanup.<variant>.json`
