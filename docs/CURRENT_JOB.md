@@ -589,3 +589,255 @@ Primary regression target:
 - Important boundary:
   - this makes imagegen usable when another Codex skill/agent is orchestrating the repo
   - it does **not** make imagegen a normal standalone provider API for non-Codex execution
+
+## April 18 — game iso mapping review handoff
+
+- Prepared `docs/GAME_ISO_MAPPING_PLAN.md` as the handoff plan for the next wall game-iso mapping review pass.
+- Reason for handoff: current CLI session showed output-text corruption during findings review, so continue from Codex app.
+- Immediate next work:
+  1. summarize mapping failure surfaces
+  2. separate true mapping errors from over-strict thickness/shape verification
+  3. redesign Step 6 / Step 7 acceptance around mapping correctness first
+
+
+## April 19 — Step 7 edge-direction validation
+
+- Implemented the Step 6 / Step 7 contract split inside `pipeline/variant_selector.py`:
+  - Step 6 remains the single wall mapping step.
+  - Step 7 now validates the mapped wall by fitted edge-direction semantics instead of thickness-driven mask thresholds.
+- Added wall edge validation for:
+  - face edge
+  - top edge
+  - outer edge
+  - bottom edge
+- Wall pass/fail now uses:
+  - approximate angle agreement with canonical wall-body edges
+  - face-edge attachment-side offset guard to reject mirrored/shifted outputs
+- Legacy `normalized_iou` / `anchor_error` / anchor payloads are still emitted as diagnostics, but they no longer gate wall acceptance.
+- Added regression tests in `tests/test_variant_selector_wall_validation.py` covering:
+  - thicker-but-aligned pass case
+  - mirrored fail case
+  - slumped-top fail case
+  - real wall reference mapping smoke passes for left/right 1u/2u
+
+## April 19 — 2u stone wall Codex imagegen run
+
+- Ran a 2u left/right wall job through the agent-handoff path:
+  - spec: `examples/reference_pair_workflow/stone_wall_2u_imagegen_20260419_200320.generated.spec.json`
+  - run root: `output/reference_pair_runs/stone_wall_2u_imagegen_20260419_200320`
+- Direct Codex imagegen Step 1 attempts produced stone-wall art, but did not preserve the narrow canonical wall silhouette and used noisy chroma backgrounds.
+  - The first raw handoff outputs were preserved under:
+    - `agent_handoff/imagegen_raw_attempts/left.imagegen_raw_original.png`
+    - `agent_handoff/imagegen_raw_attempts/right.imagegen_raw_original.png`
+- To complete the factory run, created geometry-locked handoff composites:
+  - extracted imagegen stone texture
+  - composited it into the canonical left/right reference alpha/silhouette
+  - used a flat `#FF00FF` background
+  - staged those as `agent_handoff/step_1_raw/left.png` and `agent_handoff/step_1_raw/right.png`
+- Factory Step 3+ completed and produced deliverables:
+  - `deliverables/deliverable.left.png`
+  - `deliverables/deliverable.right.png`
+- Artifact status shows Step 4 / Step 6 / Step 7 passing for both sides.
+- The outer `generate-reference-pair` result still reports `ok=false` because final validation compares 128x256 wall deliverables back against the original 256x256 reference render bbox and records soft bbox failures; the wall-specific Step 7 edge-direction verification passes.
+- Follow-up issue discovered:
+  - a pure imagegen raw attempt with no usable cleanup candidate triggered an AttributeError in `validate_reference_pair_run()` instead of returning a clean gate failure.
+  - Fix target: guard `preprocessing_gate.get("chosen_candidate")` when it is `None`.
+
+## April 19 — imagegen handoff path-contract fix
+
+- Updated the imagegen handoff packet so it no longer relies on ambiguous `reference_images` paths alone.
+- `request/imagegen_handoff.json` tasks now include:
+  - `codex_imagegen_mode = "edit"`
+  - `edit_target_image`
+  - `codex_prompt_text`
+  - an explicit `contract.codex_execution_protocol`
+- The intended Codex-side operator flow is now:
+  1. load `edit_target_image` with `view_image`
+  2. invoke built-in imagegen in edit mode using `codex_prompt_text`
+  3. copy the selected generated PNG from `$CODEX_HOME/generated_images/...` to the task `output_path`
+- Prepared a new 2u left/right run with the enlarged golden references:
+  - spec: `examples/reference_pair_workflow/stone_wall_2u_imagegen_refbig_20260419_211306.generated.spec.json`
+  - run root: `output/reference_pair_runs/stone_wall_2u_imagegen_refbig_20260419_211306`
+- Observed result from the first updated left edit attempt:
+  - the enlarged reference + edit-style prompt still did not reliably preserve the exact narrow wall geometry.
+  - Conclusion: the path-contract issue is fixed in the repo handoff, but pure imagegen geometry-lock remains unresolved.
+
+## April 19 — return to Gemini/Nano Banana for 2u wall
+
+- Confirmed repo `.env` contains `GEMINI_API_KEY`; credential resolver can read it via repo `.env` fallback.
+- Tried `nano_banana` first:
+  - run id: `stone_wall_2u_gemini_20260419_212327`
+  - provider failed before image output with a fetch failure / remote side closed.
+- Retried with `nano_banana_pro`:
+  - spec: `examples/reference_pair_workflow/stone_wall_2u_gemini_pro_20260419_212444.generated.spec.json`
+  - run root: `output/reference_pair_runs/stone_wall_2u_gemini_pro_20260419_212444`
+  - raw generation succeeded for both left and right.
+- Raw Gemini Pro outputs are much closer to the intended 2u wall geometry than imagegen:
+  - `generated/generated_left.raw.png`
+  - `generated/generated_right.raw.png`
+- Factory Step 4 / Step 6 / Step 7 all pass and deliverables are written:
+  - `deliverables/deliverable.left.png`
+  - `deliverables/deliverable.right.png`
+- However, visual review shows the final deliverables are heavily zoomed/cropped after wall mapping; the raw provider outputs look more usable than the mapped deliverables.
+- Follow-up focus should be on Step 6 wall mapping/fitting behavior with the newly enlarged 2u references, not provider prompt quality first.
+
+## April 19 — Step 6 six-point mapping/debug pass
+
+- Reworked Step 6 to follow the requested six-point wall mapping contract more literally:
+  - source points `p0/p1/p2` are the detected real points
+  - source points `p3/p4/p5` are virtual points derived by affine extension from the target game-iso six-point polygon
+  - the final mask is now the target six-point polygon, not the old 4-point body polygon
+  - removed the post-warp `opaque_half` clipping from wall Step 6
+- Added Step 6 debug PNG/JSON outputs:
+  - real 3-point source markup
+  - virtual 3-point + extension-line source markup
+  - target game-iso six-point polygon markup
+  - mapped full six-polygon output
+  - raw geometry JSON
+- Reran selector on the Gemini Pro 2u wall run:
+  - `output/reference_pair_runs/stone_wall_2u_gemini_pro_20260419_212444`
+- Step 6 debug artifacts now exist under:
+  - `step_6_mapping/s6_debug.left.v_keyed.01_conservative.*`
+  - `step_6_mapping/s6_debug.right.v_keyed.01_conservative.*`
+- The new mapped outputs are no longer clipped to exactly half-width:
+  - left bbox changed to roughly `(0, 0, 88, 224)`
+  - right bbox changed to roughly `(42, 0, 128, 224)`
+- Remaining visual issue:
+  - the mapping still crops/warps too aggressively compared with the raw Gemini output.
+  - The new debug PNGs make the likely next bug visible: the derived virtual source polygon and extension-line choice need review/tuning, especially how the visible wall thickness maps into the full six-point target.
+
+## April 19 — Step 6 real-point correction
+
+- User clarified the first Step 6 bug is the red real-point detection, not the provider prompt.
+- Updated `pipeline/variant_selector.py` so Step 6 real points now use the face-axis opaque column:
+  - left wall: extreme face axis = minimum opaque x
+  - right wall: mirrored face axis = maximum opaque x
+  - `p0` = min y opaque pixel on that axis
+  - `p1` = max y opaque pixel on that axis
+  - `p2` remains the top-row apex and was already considered correct
+- The six-point warp keeps the stored target polygon winding internally (`[p1, p0, p2, ...]`) so the existing polygon order remains non-self-crossing while the debug labels show the user-defined p0/p1.
+- Reran selector for the Gemini Pro 2u run:
+  - left passes Step 7, bbox now roughly `0..76 x 0..223`
+  - right currently fails narrowly on bottom-edge angle (`12.124°` vs `12°` threshold), but the requested p0/p1 red-point correction is in place.
+
+## April 20 — Step 6 virtual-point correction
+
+- User clarified the next Step 6 bug is the three virtual points.
+- Updated `pipeline/variant_selector.py` so virtual points are no longer affine-derived from all old target vertices.
+- Current virtual-source construction:
+  - `p2_prime` = topmost opaque pixel on the outer x column (`max x` for left wall, mirrored `min x` for right wall)
+  - thickness magnitude = `|p0p2|` (chosen because the user repeated `p0p2` in the p5 rule, despite one conflicting `p1p2` mention)
+  - `p3 = p2 + unit(p2_prime - p2) * |p0p2|`
+  - `inner_bottom_support` still comes from the previous affine support calculation; user said inner bottom itself was correct
+  - `p4 = inner_bottom_support + (p3 - p2)`
+  - `p5 = p1 + (p3 - p2)` and is now the outer-bottom point
+- The target six-point polygon used by Step 6 now also replaces the old inner-bottom sixth vertex with the derived outer-bottom target:
+  - left p5 target = `[63, 256]`
+  - right p5 target = `[63, 256]`
+  - old inner-bottom target `[64, 192]` is kept as support/debug data, not as final p5
+- Reran selector on the Gemini Pro 2u run after this correction:
+  - left/right both regenerate Step 6 debug PNG/JSON artifacts
+  - both currently fail Step 7 bottom-edge-angle by the strict validator, but the virtual point construction requested by the user is now reflected in the debug artifacts
+
+## April 20 — Step 6 robust edge-band point detection
+
+- User noted the left side was correct only for the current cleanup result and the same keying/edge erosion risk applies to all four structural source points: `p0`, `p1`, `p2`, and `p2_prime`.
+- Updated `pipeline/variant_selector.py` so Step 6 no longer depends on a single exact extreme x column / top row:
+  - `p0`/`p1` are found in a narrow face-side tolerance band (`2–4px` depending on image size), choosing the topmost/bottommost opaque pixel and preferring the actual outermost side pixel on ties.
+  - `p2_prime` is found in a mirrored outer-side tolerance band with the same tie preference.
+  - `p2` apex is now chosen from the first few top rows by preferring the narrowest top-band span, which preserves the current apex when clean but tolerates small top-edge gaps.
+- Reran selector on the Gemini Pro 2u run:
+  - left points stay essentially aligned with the previously approved geometry (`p0` shifted from `[271,204]` to `[273,203]` due to the robust band picking the topmost band pixel).
+  - right `p0` is corrected upward to `[740,203]` instead of the previous bad `[743,348]`.
+  - Step 7 still fails after the geometry change (`left` bottom-edge angle, `right` top-edge angle), so next work should review the target/checking interpretation rather than reverting the robust source-point logic.
+
+## April 20 — Step 6 point naming cleanup
+
+- User clarified the previous "outer top" interpretation was wrong: current `p0..p5`, intermediate `p2_prime`, and `inner_bottom` are correct.
+- Renamed Step 6 geometry/debug labels to the user's point vocabulary:
+  - real points: `p0`, `p1`, `p2`
+  - virtual mapped points: `p3`, `p4`, `p5`
+  - support/intermediate points: `p2_prime`, `inner_bottom`
+- Added the still-unhandled top-plane point to debug/JSON only:
+  - source label: `top_plane_apex_opposite_unmapped`
+  - target label: `top_plane_apex_opposite_unmapped = [64,64]`
+  - source construction currently recorded as `p0 + (p3 - p2)` following the user's "from p0, same parallel line" description
+- This new top-plane point is not yet included in the warp/control polygon; it is exposed for the next geometry fix.
+
+## April 20 — Step 6 apex-opposite warp control
+
+- User confirmed the currently exposed point set is correct and identified the remaining visible issue: the top-plane point opposite the apex is drifting in the final mapped image.
+- Updated Step 6 rendering so `top_plane_apex_opposite` is no longer debug-only:
+  - source point = `p0 + (p3 - p2)`
+  - target point = `[64,64]`
+  - final wall warp now uses a star triangulation around this interior control point instead of only boundary mean-value coordinates.
+- The existing six boundary points remain the final polygon/mask boundary; `top_plane_apex_opposite` is an interior warp constraint.
+- Reran the Gemini Pro 2u left/right selectors and regenerated Step 6 debug PNG/JSON outputs.
+
+## April 20 — Step 6 source geometry verification overlay
+
+- User clarified that the requested point overlay should not mark target points; it should rerun the Step 6 source-side point finding on the conservative candidate itself.
+- Added a new Step 6 debug artifact for each candidate:
+  - `*.01b_source_detected_geometry_points.png`
+- This image overlays the conservative source image with the detected source geometry points:
+  - red: `p0`, `p1`, `p2`
+  - blue: `p3`, `p4`, `p5`
+  - orange: support points `p2_prime`, `inner_bottom`
+  - magenta: `top_plane_apex_opposite`
+- Reran the Gemini Pro 2u selectors and generated left/right 01b overlays under `step_6_mapping/`.
+
+## April 20 — Step 6 mapped-output geometry re-detection
+
+- User corrected the geometry verification target: the point overlay should rerun point detection on the already warped mapped output (`04_mapped_full_6_polygon.png`), not on the conservative source image.
+- Added a new Step 6 artifact:
+  - `*.04b_mapped_detected_geometry_points.png`
+- This artifact runs `_wall_mapping_geometry()` on the mapped PNG and overlays the re-detected mapped geometry points on that mapped image.
+- The re-detected mapped geometry is also written into each candidate `geometry.json` under `mapped_detected_geometry`.
+- Current re-detected mapped values on the Gemini Pro 2u run are close to target, e.g. apex-opposite lands near `[64,62]` left and `[63.8,61.6]` right.
+
+## April 20 — Step 6 piecewise mesh warp fix
+
+- User correctly identified the issue as an algorithm bug, not a validator problem: mapped `inner_bottom` must land inside solid wall pixels.
+- Root cause: the previous warp constrained only the six boundary points plus `top_plane_apex_opposite`; `inner_bottom` remained an unconstrained interior support point, so scale/content could drift while boundary geometry looked close.
+- Fixed `_render_wall_output()` to use a named piecewise-affine triangle mesh with both interior support points constrained:
+  - boundary: `p0..p5`
+  - interior controls: `top_plane_apex_opposite`, `inner_bottom`
+  - triangles: top plane, left/right middle quads, and lower quads around the two interior controls
+- Reran the Gemini Pro 2u selectors.
+- Current mapped-output alpha check at re-detected `inner_bottom` and `top_plane_apex_opposite`:
+  - left inner bottom: center alpha 255, 9x9 coverage 1.0
+  - left apex opposite: center alpha 255, 9x9 coverage 1.0
+  - right inner bottom: center alpha 255, 9x9 coverage 1.0
+  - right apex opposite: center alpha 255, 9x9 coverage 1.0
+- Left now passes Step 7; right still has a Step 7 `wall_top_edge_angle_mismatch`, likely a separate validation/edge-fitting tolerance issue after the warp algorithm fix.
+
+## April 20 — experimental PS Distort / plane-based wall mapper
+
+- User suggested the manual Photoshop operation is closer to Distort than mesh warp.
+- Added an experimental Step 6 plane-distort path without replacing the current deliverable:
+  - `*.04c_plane_distort_mapped.png`
+  - `*.04d_plane_distort_detected_geometry_points.png`
+- The experiment treats the wall as an iso rectangular tile with three planes:
+  - `top = p0, p2, p2_prime, p0_prime`
+  - `left/front = p0, p0_prime, p1_prime, p1`
+  - `right/side = p0_prime, p2_prime, n, p1_prime`
+- New derived source points:
+  - `p0_prime = p0 + (p2_prime - p2)`
+  - `p1_prime = p1 + (p2_prime - p2)`
+  - `n` = lowest solid pixel along the `p2_prime` x column
+- Target `p2_prime` is calculated by scaling source `|p2p2_prime|` into game iso using the source/target p0-p1 scale and the target p2->p3 direction; target `p0_prime`, `p1_prime`, and `n` are derived from that.
+- Current experimental outputs look promising and visibly more like a per-plane PS Distort result, but this path is debug-only for now.
+
+## April 20 — plane-distort promoted to official Step 6 mapper
+
+- Cleaned up the Step 6 implementation after visual approval of the PS Distort-style approach.
+- Promoted the per-plane mapper from debug-only `04c` to the official wall output path:
+  - official `04_mapped_full_6_polygon.png` / final selected output now use the three-plane Distort mapper
+  - removed the obsolete mesh-warp path from `_render_wall_output()`
+  - retained mapped-output re-detection as `04b_mapped_detected_geometry_points.png`
+- Re-ran the Gemini Pro 2u left/right selectors:
+  - left: passes Step 7, selected `v_keyed.01_conservative`
+  - right: passes Step 7, selected `v_keyed.01_conservative`
+- Verification before commit:
+  - `python3 -m py_compile pipeline/variant_selector.py pipeline/reference_pair_workflow.py`
+  - `python3 -m unittest tests/test_variant_selector_wall_validation.py`

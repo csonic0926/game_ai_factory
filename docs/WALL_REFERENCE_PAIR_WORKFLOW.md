@@ -149,10 +149,14 @@ When wall Step 1 is executed by Codex/imagegen rather than a repo-local provider
    - `provider.name = "imagegen"`
 2. run `prepare-reference-pair`
 3. read `request/imagegen_handoff.json`
-4. write one raw PNG per variant to:
+4. for each task:
+   - load `edit_target_image` into Codex with `view_image`
+   - invoke built-in imagegen in edit mode with `codex_prompt_text`
+   - copy the selected generated PNG to the task's `output_path`
+5. write one raw PNG per variant to:
    - `agent_handoff/step_1_raw/left.png`
    - `agent_handoff/step_1_raw/right.png`
-5. run `generate-reference-pair` to ingest those Step 1 outputs and continue with Step 3+
+6. run `generate-reference-pair` to ingest those Step 1 outputs and continue with Step 3+
 
 ### 3. Validate and gate
 

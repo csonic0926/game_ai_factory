@@ -65,6 +65,10 @@ FAIL_RULES_BY_VARIANT = {
         "max_mid_inset": 2,
         "max_bottom_tip_drift": 12,
         "min_effective_scale_ratio": 0.88,
+        "max_edge_angle_delta_degrees": 12.0,
+        "max_vertical_angle_delta_degrees": 8.0,
+        "min_edge_points": 8,
+        "max_face_edge_offset_pixels": 12,
         "top_boundary_scan_ratio": 0.35,
         "top_boundary_key_similarity_fail": 0.55,
         "top_boundary_key_pixel_ratio_fail": 0.03,
@@ -563,26 +567,27 @@ def _detect_wall_edge_pixels(
     bw = bx1 - bx0
     bh = by1 - by0
     pixels = mask.load()
+    max_x = bx1 - 1
 
-    # Vertical range for face/outer edge sampling (middle 60 %)
-    y_margin = int(bh * 0.20)
+    # Vertical range for face/outer edge sampling (middle 40 %)
+    y_margin = int(bh * 0.30)
     y_lo = by0 + y_margin
     y_hi = by1 - y_margin
 
     # Column range for top/bottom edge sampling.
     # The top edge can start from the face column (the taper diverges outward).
-    # The bottom edge must skip ~25 % near the face to avoid the wall-base
-    # taper where face meets bottom edge.
+    # The bottom edge should bias toward the outer half so we do not confuse
+    # the lower inner taper with the delivered contact edge direction.
     if wall_side == "left":
         top_col_lo = bx0
-        top_col_hi = bx0 + int(bw * 0.55)
-        bot_col_lo = bx0 + int(bw * 0.25)
-        bot_col_hi = bx0 + int(bw * 0.65)
+        top_col_hi = min(max_x, bx0 + int(bw * 0.55))
+        bot_col_lo = bx0 + int(bw * 0.45)
+        bot_col_hi = max_x
     else:
-        top_col_lo = bx1 - int(bw * 0.55)
-        top_col_hi = bx1
-        bot_col_lo = bx1 - int(bw * 0.65)
-        bot_col_hi = bx1 - int(bw * 0.25)
+        top_col_lo = max(bx0, bx1 - int(bw * 0.55))
+        top_col_hi = max_x
+        bot_col_lo = bx0
+        bot_col_hi = min(max_x, bx0 + int(bw * 0.55))
 
     face_pixels: list[tuple[float, float]] = []
     outer_pixels: list[tuple[float, float]] = []
@@ -618,6 +623,117 @@ def _detect_wall_edge_pixels(
 
     return {"face": face_pixels, "top": top_pixels,
             "bottom": bottom_pixels, "outer": outer_pixels}
+
+
+def _line_angle_degrees(line: tuple[float, float, float]) -> float:
+    a, b, _c = line
+    angle = math.degrees(math.atan2(-a, b))
+    while angle <= -90.0:
+        angle += 180.0
+    while angle > 90.0:
+        angle -= 180.0
+    return angle
+
+
+def _segment_angle_degrees(start: tuple[float, float], end: tuple[float, float]) -> float:
+    angle = math.degrees(math.atan2(end[1] - start[1], end[0] - start[0]))
+    while angle <= -90.0:
+        angle += 180.0
+    while angle > 90.0:
+        angle -= 180.0
+    return angle
+
+
+def _line_angle_delta_degrees(actual: float, expected: float) -> float:
+    delta = abs(actual - expected)
+    while delta > 180.0:
+        delta -= 180.0
+    return min(delta, abs(180.0 - delta))
+
+
+def _canonical_wall_edge_segments(canonical_target: dict[str, Any]) -> dict[str, tuple[tuple[float, float], tuple[float, float]]]:
+    body = _canonical_wall_body(canonical_target)
+    if len(body) != 4:
+        raise VariantSelectorError("Canonical wall body must contain 4 points for edge validation.")
+    wall_side = _wall_side_from_target(canonical_target)
+    if wall_side == "left":
+        return {
+            "face": (body[0], body[1]),
+            "top": (body[1], body[2]),
+            "outer": (body[2], body[3]),
+            "bottom": (body[3], body[0]),
+        }
+    return {
+        "face": (body[2], body[3]),
+        "top": (body[1], body[2]),
+        "outer": (body[0], body[1]),
+        "bottom": (body[3], body[0]),
+    }
+
+
+def _validate_wall_edge_alignment(
+    image_path: Path,
+    *,
+    canonical_target: dict[str, Any],
+    fail_rules: dict[str, float | int],
+) -> dict[str, Any]:
+    wall_side = _wall_side_from_target(canonical_target)
+    try:
+        image = Image.open(image_path).convert("RGBA")
+        mask = alpha_mask(image)
+        edge_pixels = _detect_wall_edge_pixels(mask, wall_side=wall_side)
+        expected_segments = _canonical_wall_edge_segments(canonical_target)
+        max_edge_delta = float(fail_rules["max_edge_angle_delta_degrees"])
+        max_vertical_delta = float(fail_rules["max_vertical_angle_delta_degrees"])
+        min_edge_points = int(fail_rules["min_edge_points"])
+        max_face_edge_offset = float(fail_rules["max_face_edge_offset_pixels"])
+
+        edge_results: dict[str, Any] = {}
+        fail_reasons: list[str] = []
+
+        for edge_name, points in edge_pixels.items():
+            fitted_line = _fit_line(points)
+            actual_angle = _line_angle_degrees(fitted_line)
+            expected_angle = _segment_angle_degrees(*expected_segments[edge_name])
+            angle_delta = _line_angle_delta_degrees(actual_angle, expected_angle)
+            allowed_delta = max_vertical_delta if edge_name in {"face", "outer"} else max_edge_delta
+            passed = len(points) >= min_edge_points and angle_delta <= allowed_delta
+            position_offset = None
+            if edge_name == "face":
+                actual_position = sum(point[0] for point in points) / len(points)
+                expected_position = (expected_segments[edge_name][0][0] + expected_segments[edge_name][1][0]) / 2.0
+                position_offset = abs(actual_position - expected_position)
+                if position_offset > max_face_edge_offset:
+                    passed = False
+            edge_results[edge_name] = {
+                "point_count": len(points),
+                "actual_angle_degrees": actual_angle,
+                "expected_angle_degrees": expected_angle,
+                "angle_delta_degrees": angle_delta,
+                "max_allowed_delta_degrees": allowed_delta,
+                "position_offset_pixels": position_offset,
+                "passed": passed,
+            }
+            if len(points) < min_edge_points:
+                fail_reasons.append(f"wall_{edge_name}_edge_insufficient_points")
+            elif edge_name == "face" and position_offset is not None and position_offset > max_face_edge_offset:
+                fail_reasons.append("wall_face_edge_offset_too_large")
+            elif angle_delta > allowed_delta:
+                fail_reasons.append(f"wall_{edge_name}_edge_angle_mismatch")
+        error_message = None
+    except VariantSelectorError as exc:
+        edge_results = {}
+        fail_reasons = ["wall_edge_detection_failed"]
+        error_message = str(exc)
+
+    return {
+        "passed": len(fail_reasons) == 0,
+        "fail_reasons": fail_reasons,
+        "validation_mode": "wall_edge_direction_alignment",
+        "wall_side": wall_side,
+        "edges": edge_results,
+        "error": error_message,
+    }
 
 
 def _detect_wall_corners(
@@ -755,6 +871,32 @@ def _perspective_warp(
     return _unpremultiply_rgba(result)
 
 
+def _perspective_warp_unpadded(
+    image: Image.Image,
+    *,
+    source_corners: list[tuple[float, float]],
+    target_corners: list[tuple[float, float]],
+    output_size: tuple[int, int],
+) -> Image.Image:
+    coeffs = _solve_perspective_coefficients(source_corners, target_corners)
+    result = _premultiply_rgba(image).transform(output_size, Image.PERSPECTIVE, coeffs, Image.BICUBIC)
+    return _unpremultiply_rgba(result)
+
+
+def _alpha_mask_for_polygon(size: tuple[int, int], polygon: list[tuple[float, float]]) -> Image.Image:
+    mask = Image.new("L", size, 0)
+    ImageDraw.Draw(mask).polygon([(int(round(x)), int(round(y))) for x, y in polygon], fill=255)
+    return mask
+
+
+def _extract_polygon_rgba(image: Image.Image, polygon: list[tuple[float, float]]) -> Image.Image:
+    rgba = image.convert("RGBA")
+    mask = _alpha_mask_for_polygon(rgba.size, polygon)
+    alpha = rgba.getchannel("A")
+    rgba.putalpha(ImageChops.multiply(alpha, mask))
+    return rgba
+
+
 def _canonical_wall_body(canonical_target: dict[str, Any]) -> list[tuple[float, float]]:
     """Extract the 4-point body polygon from *canonical_target*.
 
@@ -773,6 +915,125 @@ def _canonical_wall_body(canonical_target: dict[str, Any]) -> list[tuple[float, 
         return [(float(p[0]), float(p[1])) for p in polygon[:4]]
     raise VariantSelectorError(f"Cannot extract 4-point body for {tile_key}.")
 
+
+
+def _wall_extreme_face_axis_points(
+    mask: Image.Image,
+    *,
+    wall_side: str,
+) -> dict[str, tuple[float, float] | int]:
+    """Return the user-defined three real wall points.
+
+    For a left wall, the face axis is the minimum opaque x side:
+    - p0 = minimum y among opaque pixels on that x
+    - p1 = maximum y among opaque pixels on that x
+
+    For a right wall, use the mirrored face axis (maximum opaque x side).
+    The lookup uses a narrow tolerance band so small keying gaps / 1px edge
+    erosion do not move the top or bottom endpoint to the wrong row.
+    """
+    bbox = mask.getbbox()
+    if bbox is None:
+        raise VariantSelectorError("Wall source image has no opaque pixels.")
+
+    tolerance = max(2, min(4, int(round(max(mask.width, mask.height) * 0.004))))
+    pixels = mask.load()
+    candidates: list[tuple[int, int]] = []
+    if wall_side == "left":
+        extreme_x = bbox[0]
+        x_start = bbox[0]
+        x_end = min(bbox[2] - 1, bbox[0] + tolerance)
+    else:
+        extreme_x = bbox[2] - 1
+        x_start = max(bbox[0], bbox[2] - 1 - tolerance)
+        x_end = bbox[2] - 1
+    for y in range(bbox[1], bbox[3]):
+        for x in range(x_start, x_end + 1):
+            if pixels[x, y] > 0:
+                candidates.append((x, y))
+    if not candidates:
+        raise VariantSelectorError("Wall source face-axis tolerance band has no opaque pixels.")
+
+    def face_sort_key(pixel: tuple[int, int]) -> tuple[int, int]:
+        x, y = pixel
+        side_distance = x - bbox[0] if wall_side == "left" else (bbox[2] - 1) - x
+        return (side_distance, x if wall_side == "left" else -x)
+
+    min_y = min(y for _, y in candidates)
+    max_y = max(y for _, y in candidates)
+    p0_x, p0_y = min((pixel for pixel in candidates if pixel[1] == min_y), key=face_sort_key)
+    p1_x, p1_y = min((pixel for pixel in candidates if pixel[1] == max_y), key=face_sort_key)
+
+    apex = _wall_apex_point(mask)
+
+
+    return {
+        "face_axis_x": extreme_x,
+        "face_band": (x_start, x_end),
+        "p0": (float(p0_x), float(p0_y)),
+        "p1": (float(p1_x), float(p1_y)),
+        "p2": apex,
+    }
+
+
+def _wall_apex_point(mask: Image.Image) -> tuple[float, float]:
+    """Return a robust apex over the first few non-empty top rows."""
+    bbox = mask.getbbox()
+    if bbox is None:
+        raise VariantSelectorError("Wall source image has no opaque pixels.")
+    tolerance = max(2, min(4, int(round(max(mask.width, mask.height) * 0.004))))
+    spans: list[tuple[int, int, int]] = []
+    for y in range(bbox[1], min(bbox[3], bbox[1] + tolerance + 1)):
+        span = row_span(mask, y)
+        if span is None:
+            continue
+        spans.append((span[0], span[1], y))
+    if not spans:
+        raise VariantSelectorError("Wall source top band did not contain opaque pixels for apex extraction.")
+    # Prefer the narrowest top-band span, then the topmost row.  This keeps the
+    # current correct apex stable while tolerating a few broken pixels at y=min.
+    left, right, y = min(spans, key=lambda item: (item[1] - item[0], item[2]))
+    return ((left + right) / 2.0, float(y))
+
+
+def _wall_outer_top_probe(mask: Image.Image, *, wall_side: str) -> tuple[float, float]:
+    """Return p2': the topmost opaque pixel on the outer x column.
+
+    The user's p2' rule is "max x then min y".  For the mirrored right wall,
+    the outer side is the minimum x column, so this mirrors the same rule.  A
+    narrow tolerance band makes the probe robust to keying/edge erosion.
+    """
+    bbox = mask.getbbox()
+    if bbox is None:
+        raise VariantSelectorError("Wall source image has no opaque pixels.")
+
+    tolerance = max(2, min(4, int(round(max(mask.width, mask.height) * 0.004))))
+    pixels = mask.load()
+    candidates: list[tuple[int, int]] = []
+    pixels = mask.load()
+    if wall_side == "left":
+        outer_x = bbox[2] - 1
+        x_start = max(bbox[0], bbox[2] - 1 - tolerance)
+        x_end = bbox[2] - 1
+    else:
+        outer_x = bbox[0]
+        x_start = bbox[0]
+        x_end = min(bbox[2] - 1, bbox[0] + tolerance)
+    for y in range(bbox[1], bbox[3]):
+        for x in range(x_start, x_end + 1):
+            if pixels[x, y] > 0:
+                candidates.append((x, y))
+    if not candidates:
+        raise VariantSelectorError("Wall source outer-axis tolerance band has no opaque pixels.")
+
+    def outer_sort_key(pixel: tuple[int, int]) -> tuple[int, int]:
+        x, y = pixel
+        side_distance = (bbox[2] - 1) - x if wall_side == "left" else x - bbox[0]
+        return (side_distance, -x if wall_side == "left" else x)
+
+    min_y = min(y for _, y in candidates)
+    p2p_x, p2p_y = min((pixel for pixel in candidates if pixel[1] == min_y), key=outer_sort_key)
+    return (float(p2p_x), float(p2p_y))
 
 
 def _wall_source_backbone_points(mask: Image.Image, *, wall_side: str) -> list[tuple[float, float]]:
@@ -810,12 +1071,12 @@ def _wall_source_backbone_points(mask: Image.Image, *, wall_side: str) -> list[t
 
 
 
-def _derive_wall_source_polygon(
+def _wall_mapping_geometry(
     image: Image.Image,
     *,
     canonical_target: dict[str, Any],
     wall_side: str,
-) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
+) -> dict[str, Any]:
     mask = alpha_mask(image)
     bbox = mask.getbbox()
     if bbox is None:
@@ -824,55 +1085,205 @@ def _derive_wall_source_polygon(
     target_polygon = [tuple(float(value) for value in point) for point in canonical_target["target_polygon"]]
     target_backbone = [target_polygon[0], target_polygon[1], target_polygon[2]]
 
-    top_y = bbox[1]
-    bottom_y = bbox[3] - 1
-    apex_span = _row_span_or_error(mask, top_y, label="top row span")
-    bottom_span = _row_span_or_error(mask, bottom_y, label="bottom row span")
+    real = _wall_extreme_face_axis_points(mask, wall_side=wall_side)
+    p0 = real["p0"]
+    p1 = real["p1"]
+    p2 = real["p2"]
+    if not isinstance(p0, tuple) or not isinstance(p1, tuple) or not isinstance(p2, tuple):
+        raise VariantSelectorError("Wall real-point extraction returned invalid point data.")
 
-    target_face_top_ratio_den = target_polygon[0][1] - target_polygon[2][1]
-    if abs(target_face_top_ratio_den) < 1e-6:
-        raise VariantSelectorError("Canonical wall backbone is degenerate.")
-    target_face_top_ratio = (target_polygon[1][1] - target_polygon[2][1]) / target_face_top_ratio_den
-    desired_face_top_y = int(round(top_y + (bottom_y - top_y) * target_face_top_ratio))
-    desired_face_top_y = min(max(desired_face_top_y, top_y), bottom_y)
-
-    face_top_y = desired_face_top_y
-    face_top_span = row_span(mask, face_top_y)
-    if face_top_span is None or (face_top_span[1] - face_top_span[0]) < 2:
-        max_radius = max(8, int(round(mask.height * 0.05)))
-        face_top_span = None
-        for radius in range(1, max_radius + 1):
-            for probe_y in (desired_face_top_y - radius, desired_face_top_y + radius):
-                if probe_y < top_y or probe_y > bottom_y:
-                    continue
-                span = row_span(mask, probe_y)
-                if span is None or (span[1] - span[0]) < 2:
-                    continue
-                face_top_y = probe_y
-                face_top_span = span
-                break
-            if face_top_span is not None:
-                break
-    if face_top_span is None:
-        raise VariantSelectorError("Could not find a stable wall shoulder row for 6-point mapping.")
-
-    apex = ((apex_span[0] + apex_span[1]) / 2.0, float(top_y))
-    face_bottom = (float(bottom_span[0] if wall_side == "left" else bottom_span[1]), float(bottom_y))
-    face_top = (float(face_top_span[0] if wall_side == "left" else face_top_span[1]), float(face_top_y))
-    top_outer = (float(face_top_span[1] if wall_side == "left" else face_top_span[0]), float(face_top_y))
-    bottom_outer = (float(bottom_span[1] if wall_side == "left" else bottom_span[0]), float(bottom_y))
-
-    source_backbone = [face_bottom, face_top, apex]
+    # The stored canonical target still contains the old inner-bottom support
+    # point as its sixth vertex.  Keep using it as a support point because the
+    # user confirmed that "inner bottom" itself was correct, but build the
+    # final six mapped vertices from the new explicit virtual-point rules.
+    source_backbone = [p1, p0, p2]
     target_to_source = _solve_affine_coefficients(target_backbone, source_backbone)
-    source_polygon = [
-        face_bottom,
-        face_top,
-        apex,
-        top_outer,
-        bottom_outer,
-        _apply_affine_point(target_to_source, target_polygon[5]),
+    inner_bottom = _apply_affine_point(target_to_source, target_polygon[5])
+
+    p2_prime = _wall_outer_top_probe(mask, wall_side=wall_side)
+    p2_to_prime = (p2_prime[0] - p2[0], p2_prime[1] - p2[1])
+    p2_to_prime_len = math.hypot(p2_to_prime[0], p2_to_prime[1])
+    if p2_to_prime_len < 1e-6:
+        raise VariantSelectorError("Wall p2-to-p2-prime vector is degenerate.")
+    # User wording mentioned both p0p2 and p1p2 once; p0p2 is used here because
+    # it is repeated in the p5 rule and keeps p2→p3 / p1→p5 lengths consistent.
+    thickness_magnitude = math.hypot(p2[0] - p0[0], p2[1] - p0[1])
+    thickness_vector = (
+        p2_to_prime[0] / p2_to_prime_len * thickness_magnitude,
+        p2_to_prime[1] / p2_to_prime_len * thickness_magnitude,
+    )
+    p3 = (p2[0] + thickness_vector[0], p2[1] + thickness_vector[1])
+    p4 = (inner_bottom[0] + thickness_vector[0], inner_bottom[1] + thickness_vector[1])
+    p5 = (p1[0] + thickness_vector[0], p1[1] + thickness_vector[1])
+    top_plane_apex_opposite = (p0[0] + thickness_vector[0], p0[1] + thickness_vector[1])
+    target_top_plane_apex_opposite = (64.0, 64.0)
+    p2_prime_vector = (p2_prime[0] - p2[0], p2_prime[1] - p2[1])
+    p0_prime = (p0[0] + p2_prime_vector[0], p0[1] + p2_prime_vector[1])
+    p1_prime = (p1[0] + p2_prime_vector[0], p1[1] + p2_prime_vector[1])
+
+    pixels = mask.load()
+    p2_prime_x = int(round(p2_prime[0]))
+    n_ys = [
+        y
+        for y in range(bbox[1], bbox[3])
+        if 0 <= p2_prime_x < mask.width and pixels[p2_prime_x, y] > 0
     ]
-    return source_polygon, target_polygon
+    if n_ys:
+        n_point = (float(p2_prime_x), float(max(n_ys)))
+    else:
+        n_point = (p2_prime[0], p1_prime[1])
+
+    source_face_len = max(1e-6, math.hypot(p1[0] - p0[0], p1[1] - p0[1]))
+    target_face_len = math.hypot(target_polygon[0][0] - target_polygon[1][0], target_polygon[0][1] - target_polygon[1][1])
+    source_to_target_scale = target_face_len / source_face_len
+    target_p2_to_p3 = (
+        target_polygon[3][0] - target_polygon[2][0],
+        target_polygon[3][1] - target_polygon[2][1],
+    )
+    target_p2_to_p3_len = max(1e-6, math.hypot(target_p2_to_p3[0], target_p2_to_p3[1]))
+    target_p2_prime_len = p2_to_prime_len * source_to_target_scale
+    target_p2_prime_vector = (
+        target_p2_to_p3[0] / target_p2_to_p3_len * target_p2_prime_len,
+        target_p2_to_p3[1] / target_p2_to_p3_len * target_p2_prime_len,
+    )
+    target_p2_prime = (
+        target_polygon[2][0] + target_p2_prime_vector[0],
+        target_polygon[2][1] + target_p2_prime_vector[1],
+    )
+    target_p0_prime = (
+        target_polygon[1][0] + target_p2_prime_vector[0],
+        target_polygon[1][1] + target_p2_prime_vector[1],
+    )
+    target_p1_prime = (
+        target_polygon[0][0] + target_p2_prime_vector[0],
+        target_polygon[0][1] + target_p2_prime_vector[1],
+    )
+    source_p2prime_to_n = math.hypot(n_point[0] - p2_prime[0], n_point[1] - p2_prime[1])
+    target_vertical = (
+        target_polygon[0][0] - target_polygon[1][0],
+        target_polygon[0][1] - target_polygon[1][1],
+    )
+    target_vertical_len = max(1e-6, math.hypot(target_vertical[0], target_vertical[1]))
+    target_n = (
+        target_p2_prime[0] + target_vertical[0] / target_vertical_len * source_p2prime_to_n * source_to_target_scale,
+        target_p2_prime[1] + target_vertical[1] / target_vertical_len * source_p2prime_to_n * source_to_target_scale,
+    )
+
+    target_thickness_vector = (
+        target_polygon[3][0] - target_polygon[2][0],
+        target_polygon[3][1] - target_polygon[2][1],
+    )
+    target_p5 = (
+        target_polygon[0][0] + target_thickness_vector[0],
+        target_polygon[0][1] + target_thickness_vector[1],
+    )
+    mapping_target_polygon = [
+        target_polygon[0],
+        target_polygon[1],
+        target_polygon[2],
+        target_polygon[3],
+        target_polygon[4],
+        target_p5,
+    ]
+    source_polygon = [
+        p1,
+        p0,
+        p2,
+        p3,
+        p4,
+        p5,
+    ]
+    return {
+        "source_polygon": source_polygon,
+        "target_polygon": mapping_target_polygon,
+        "source_real_points": {
+            "p0": p0,
+            "p1": p1,
+            "p2": p2,
+        },
+        "source_virtual_points": {
+            "p3": p3,
+            "p4": p4,
+            "p5": p5,
+        },
+        "source_support_points": {
+            "p2_prime": p2_prime,
+            "p0_prime": p0_prime,
+            "p1_prime": p1_prime,
+            "n": n_point,
+            "inner_bottom": inner_bottom,
+            "top_plane_apex_opposite": top_plane_apex_opposite,
+        },
+        "target_points": {
+            "p0": mapping_target_polygon[1],
+            "p1": mapping_target_polygon[0],
+            "p2": mapping_target_polygon[2],
+            "p3": mapping_target_polygon[3],
+            "p4": mapping_target_polygon[4],
+            "p5": mapping_target_polygon[5],
+            "p2_prime": target_p2_prime,
+            "p0_prime": target_p0_prime,
+            "p1_prime": target_p1_prime,
+            "n": target_n,
+            "inner_bottom": target_polygon[5],
+            "top_plane_apex_opposite": target_top_plane_apex_opposite,
+        },
+        "extension_lines": {
+            "p2_to_p2_prime_direction_probe": (p2, p2_prime),
+            "p0_to_p0_prime": (p0, p0_prime),
+            "p1_to_p1_prime": (p1, p1_prime),
+            "p2_prime_to_n": (p2_prime, n_point),
+            "p2_to_p3": (p2, p3),
+            "inner_bottom_to_p4": (inner_bottom, p4),
+            "p1_to_p5": (p1, p5),
+            "p0_to_top_plane_apex_opposite": (p0, top_plane_apex_opposite),
+            "p3_to_p4": (p3, p4),
+            "p4_to_p5": (p4, p5),
+        },
+    "source_bbox": bbox,
+        "face_axis_x": real["face_axis_x"],
+        "face_band": real.get("face_band"),
+        "outer_axis_x": int(round(p2_prime[0])),
+        "face_top_y": int(round(p0[1])),
+        "desired_face_top_y": int(round(p0[1])),
+        "thickness_magnitude_source_p0p2": thickness_magnitude,
+        "thickness_vector_source": thickness_vector,
+        "target_inner_bottom_support": target_polygon[5],
+        "target_top_plane_apex_opposite": target_top_plane_apex_opposite,
+        "source_top_plane_apex_opposite": top_plane_apex_opposite,
+        "plane_distort_points": {
+            "source": {
+                "p0": p0,
+                "p1": p1,
+                "p2": p2,
+                "p2_prime": p2_prime,
+                "p0_prime": p0_prime,
+                "p1_prime": p1_prime,
+                "n": n_point,
+            },
+            "target": {
+                "p0": target_polygon[1],
+                "p1": target_polygon[0],
+                "p2": target_polygon[2],
+                "p2_prime": target_p2_prime,
+                "p0_prime": target_p0_prime,
+                "p1_prime": target_p1_prime,
+                "n": target_n,
+            },
+        },
+        "target_thickness_vector": target_thickness_vector,
+        "affine_target_to_source": target_to_source,
+    }
+
+
+def _derive_wall_source_polygon(
+    image: Image.Image,
+    *,
+    canonical_target: dict[str, Any],
+    wall_side: str,
+) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
+    geometry = _wall_mapping_geometry(image, canonical_target=canonical_target, wall_side=wall_side)
+    return geometry["source_polygon"], geometry["target_polygon"]
 
 
 
@@ -1019,31 +1430,374 @@ def _warp_rgba_polygon(
     return _unpremultiply_rgba(result)
 
 
+def _barycentric_coordinates(
+    point: tuple[float, float],
+    triangle: list[tuple[float, float]],
+) -> tuple[float, float, float] | None:
+    x, y = point
+    (x0, y0), (x1, y1), (x2, y2) = triangle
+    denom = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2)
+    if abs(denom) < 1e-9:
+        return None
+    w0 = ((y1 - y2) * (x - x2) + (x2 - x1) * (y - y2)) / denom
+    w1 = ((y2 - y0) * (x - x2) + (x0 - x2) * (y - y2)) / denom
+    w2 = 1.0 - w0 - w1
+    eps = -1e-5
+    if w0 < eps or w1 < eps or w2 < eps:
+        return None
+    return (w0, w1, w2)
+
+
+def _render_wall_plane_distort(
+    image: Image.Image,
+    *,
+    geometry: dict[str, Any],
+    output_size: tuple[int, int],
+) -> Image.Image:
+    """Render a wall with PS-Distort-style per-plane perspective mapping."""
+    plane = geometry["plane_distort_points"]
+    source = plane["source"]
+    target = plane["target"]
+    canvas = Image.new("RGBA", output_size, (0, 0, 0, 0))
+    planes = [
+        (
+            "top",
+            [source["p0"], source["p2"], source["p2_prime"], source["p0_prime"]],
+            [target["p0"], target["p2"], target["p2_prime"], target["p0_prime"]],
+        ),
+        (
+            "left",
+            [source["p0"], source["p0_prime"], source["p1_prime"], source["p1"]],
+            [target["p0"], target["p0_prime"], target["p1_prime"], target["p1"]],
+        ),
+        (
+            "right",
+            [source["p0_prime"], source["p2_prime"], source["n"], source["p1_prime"]],
+            [target["p0_prime"], target["p2_prime"], target["n"], target["p1_prime"]],
+        ),
+    ]
+    for _name, source_quad, target_quad in planes:
+        source_piece = _extract_polygon_rgba(image, source_quad)
+        warped_piece = _perspective_warp_unpadded(
+            source_piece,
+            source_corners=source_quad,
+            target_corners=target_quad,
+            output_size=output_size,
+        )
+        target_mask = _alpha_mask_for_polygon(output_size, target_quad)
+        alpha = warped_piece.getchannel("A")
+        warped_piece.putalpha(ImageChops.multiply(alpha, target_mask))
+        canvas.alpha_composite(warped_piece)
+    return canvas
+
+
+def _point_to_json(point: tuple[float, float]) -> list[float]:
+    return [float(point[0]), float(point[1])]
+
+
+def _draw_labeled_point(
+    draw: ImageDraw.ImageDraw,
+    point: tuple[float, float],
+    *,
+    offset: tuple[float, float] = (0.0, 0.0),
+    label: str,
+    fill: tuple[int, int, int, int],
+    radius: int = 7,
+) -> None:
+    x = float(point[0]) + offset[0]
+    y = float(point[1]) + offset[1]
+    draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=fill, outline=(0, 0, 0, 255), width=2)
+    draw.text((x + radius + 3, y - radius - 3), label, fill=fill)
+
+
+def _source_debug_canvas(
+    image: Image.Image,
+    *,
+    geometry: dict[str, Any],
+) -> tuple[Image.Image, tuple[float, float]]:
+    points: list[tuple[float, float]] = []
+    points.extend(geometry["source_polygon"])
+    for start, end in geometry["extension_lines"].values():
+        points.extend([start, end])
+    min_x = min([0.0, *[point[0] for point in points]])
+    min_y = min([0.0, *[point[1] for point in points]])
+    max_x = max([float(image.width - 1), *[point[0] for point in points]])
+    max_y = max([float(image.height - 1), *[point[1] for point in points]])
+    margin = 96
+    out_w = max(1, int(math.ceil(max_x - min_x)) + margin * 2)
+    out_h = max(1, int(math.ceil(max_y - min_y)) + margin * 2)
+    offset = (margin - min_x, margin - min_y)
+    canvas = Image.new("RGBA", (out_w, out_h), (28, 28, 28, 255))
+    source_preview = Image.new("RGBA", image.size, (42, 42, 42, 255))
+    checker = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    checker_draw = ImageDraw.Draw(checker)
+    tile = 16
+    for y in range(0, image.height, tile):
+        for x in range(0, image.width, tile):
+            if ((x // tile) + (y // tile)) % 2 == 0:
+                checker_draw.rectangle((x, y, x + tile - 1, y + tile - 1), fill=(68, 68, 68, 255))
+    source_preview.alpha_composite(checker)
+    source_preview.alpha_composite(image.convert("RGBA"))
+    canvas.alpha_composite(source_preview, (int(round(offset[0])), int(round(offset[1]))))
+    return canvas, offset
+
+
+def _save_wall_mapping_debug_images(
+    image: Image.Image,
+    *,
+    geometry: dict[str, Any],
+    canonical_target: dict[str, Any],
+    debug_dir: Path,
+    prefix: str,
+    mapped: Image.Image,
+) -> dict[str, str]:
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    paths: dict[str, str] = {}
+
+    real_canvas, real_offset = _source_debug_canvas(image, geometry=geometry)
+    real_draw = ImageDraw.Draw(real_canvas)
+    for label, point in geometry["source_real_points"].items():
+        _draw_labeled_point(real_draw, point, offset=real_offset, label=label, fill=(255, 64, 64, 255))
+    real_path = debug_dir / f"{prefix}.01_source_real_3_points.png"
+    real_canvas.save(real_path)
+    paths["source_real_3_points"] = str(real_path)
+
+    detected_canvas, detected_offset = _source_debug_canvas(image, geometry=geometry)
+    detected_draw = ImageDraw.Draw(detected_canvas)
+    for label, point in geometry["source_real_points"].items():
+        _draw_labeled_point(detected_draw, point, offset=detected_offset, label=label, fill=(255, 64, 64, 255), radius=7)
+    for label, point in geometry["source_virtual_points"].items():
+        _draw_labeled_point(detected_draw, point, offset=detected_offset, label=label, fill=(64, 192, 255, 255), radius=8)
+    for label, point in geometry.get("source_support_points", {}).items():
+        if label == "top_plane_apex_opposite":
+            fill = (255, 96, 255, 255)
+            radius = 8
+        else:
+            fill = (255, 160, 64, 255)
+            radius = 7
+        _draw_labeled_point(detected_draw, point, offset=detected_offset, label=label, fill=fill, radius=radius)
+    detected_poly = [(point[0] + detected_offset[0], point[1] + detected_offset[1]) for point in geometry["source_polygon"]]
+    detected_draw.line(detected_poly + [detected_poly[0]], fill=(64, 192, 255, 255), width=3)
+    detected_path = debug_dir / f"{prefix}.01b_source_detected_geometry_points.png"
+    detected_canvas.save(detected_path)
+    paths["source_detected_geometry_points"] = str(detected_path)
+
+    virtual_canvas, virtual_offset = _source_debug_canvas(image, geometry=geometry)
+    virtual_draw = ImageDraw.Draw(virtual_canvas)
+    for line_label, (start, end) in geometry["extension_lines"].items():
+        virtual_draw.line(
+            (
+                start[0] + virtual_offset[0],
+                start[1] + virtual_offset[1],
+                end[0] + virtual_offset[0],
+                end[1] + virtual_offset[1],
+            ),
+            fill=(255, 220, 64, 255),
+            width=4,
+        )
+        mid = ((start[0] + end[0]) / 2.0 + virtual_offset[0], (start[1] + end[1]) / 2.0 + virtual_offset[1])
+        virtual_draw.text(mid, line_label, fill=(255, 220, 64, 255))
+    for label, point in geometry["source_real_points"].items():
+        _draw_labeled_point(virtual_draw, point, offset=virtual_offset, label=label, fill=(255, 64, 64, 255), radius=6)
+    for label, point in geometry.get("source_support_points", {}).items():
+        _draw_labeled_point(virtual_draw, point, offset=virtual_offset, label=label, fill=(255, 160, 64, 255), radius=7)
+    for label, point in geometry["source_virtual_points"].items():
+        _draw_labeled_point(virtual_draw, point, offset=virtual_offset, label=label, fill=(64, 192, 255, 255), radius=8)
+    source_poly = [(point[0] + virtual_offset[0], point[1] + virtual_offset[1]) for point in geometry["source_polygon"]]
+    virtual_draw.line(source_poly + [source_poly[0]], fill=(64, 192, 255, 255), width=3)
+    virtual_path = debug_dir / f"{prefix}.02_source_virtual_3_points_and_extension_lines.png"
+    virtual_canvas.save(virtual_path)
+    paths["source_virtual_3_points_and_extension_lines"] = str(virtual_path)
+
+    scale = 3
+    target_canvas = Image.new(
+        "RGBA",
+        (int(canonical_target["canvas_width"]) * scale, int(canonical_target["canvas_height"]) * scale),
+        (30, 30, 30, 255),
+    )
+    target_draw = ImageDraw.Draw(target_canvas)
+    target_poly = [(point[0] * scale, point[1] * scale) for point in geometry["target_polygon"]]
+    target_draw.polygon(target_poly, outline=(64, 255, 128, 255), fill=(64, 255, 128, 48))
+    target_draw.line(target_poly + [target_poly[0]], fill=(64, 255, 128, 255), width=4)
+    for label, point in geometry["target_points"].items():
+        if point is None:
+            continue
+        _draw_labeled_point(target_draw, (point[0] * scale, point[1] * scale), label=label, fill=(64, 255, 128, 255), radius=7)
+    target_path = debug_dir / f"{prefix}.03_target_game_iso_6_points.png"
+    target_canvas.save(target_path)
+    paths["target_game_iso_6_points"] = str(target_path)
+
+    mapped_path = debug_dir / f"{prefix}.04_mapped_full_6_polygon.png"
+    mapped.save(mapped_path)
+    paths["mapped_full_6_polygon"] = str(mapped_path)
+
+    mapped_detected_geometry: dict[str, Any] | None = None
+    try:
+        mapped_detected_geometry = _wall_mapping_geometry(
+            mapped,
+            canonical_target=canonical_target,
+            wall_side=_wall_side_from_target(canonical_target),
+        )
+        mapped_detected_canvas, mapped_detected_offset = _source_debug_canvas(mapped, geometry=mapped_detected_geometry)
+        mapped_detected_draw = ImageDraw.Draw(mapped_detected_canvas)
+        for label, point in mapped_detected_geometry["source_real_points"].items():
+            _draw_labeled_point(
+                mapped_detected_draw,
+                point,
+                offset=mapped_detected_offset,
+                label=label,
+                fill=(255, 64, 64, 255),
+                radius=7,
+            )
+        for label, point in mapped_detected_geometry["source_virtual_points"].items():
+            _draw_labeled_point(
+                mapped_detected_draw,
+                point,
+                offset=mapped_detected_offset,
+                label=label,
+                fill=(64, 192, 255, 255),
+                radius=8,
+            )
+        for label, point in mapped_detected_geometry.get("source_support_points", {}).items():
+            if label == "top_plane_apex_opposite":
+                fill = (255, 96, 255, 255)
+                radius = 8
+            else:
+                fill = (255, 160, 64, 255)
+                radius = 7
+            _draw_labeled_point(
+                mapped_detected_draw,
+                point,
+                offset=mapped_detected_offset,
+                label=label,
+                fill=fill,
+                radius=radius,
+            )
+        mapped_detected_poly = [
+            (point[0] + mapped_detected_offset[0], point[1] + mapped_detected_offset[1])
+            for point in mapped_detected_geometry["source_polygon"]
+        ]
+        mapped_detected_draw.line(mapped_detected_poly + [mapped_detected_poly[0]], fill=(64, 192, 255, 255), width=3)
+        mapped_detected_path = debug_dir / f"{prefix}.04b_mapped_detected_geometry_points.png"
+        mapped_detected_canvas.save(mapped_detected_path)
+        paths["mapped_detected_geometry_points"] = str(mapped_detected_path)
+    except VariantSelectorError as exc:
+        mapped_detected_geometry = {"error": str(exc)}
+
+    geometry_path = debug_dir / f"{prefix}.geometry.json"
+    write_json(
+        geometry_path,
+        {
+            "source_real_points": {key: _point_to_json(value) for key, value in geometry["source_real_points"].items()},
+            "source_support_points": {
+                key: _point_to_json(value) for key, value in geometry.get("source_support_points", {}).items()
+            },
+            "source_virtual_points": {key: _point_to_json(value) for key, value in geometry["source_virtual_points"].items()},
+            "source_polygon": [_point_to_json(point) for point in geometry["source_polygon"]],
+            "target_points": {
+                key: (_point_to_json(value) if value is not None else None)
+                for key, value in geometry["target_points"].items()
+            },
+            "target_polygon": [_point_to_json(point) for point in geometry["target_polygon"]],
+            "mapped_detected_geometry": (
+                {
+                    "source_real_points": {
+                        key: _point_to_json(value)
+                        for key, value in mapped_detected_geometry["source_real_points"].items()
+                    },
+                    "source_support_points": {
+                        key: _point_to_json(value)
+                        for key, value in mapped_detected_geometry.get("source_support_points", {}).items()
+                    },
+                    "source_virtual_points": {
+                        key: _point_to_json(value)
+                        for key, value in mapped_detected_geometry["source_virtual_points"].items()
+                    },
+                    "source_polygon": [
+                        _point_to_json(point) for point in mapped_detected_geometry["source_polygon"]
+                    ],
+                }
+                if mapped_detected_geometry is not None and "error" not in mapped_detected_geometry
+                else mapped_detected_geometry
+            ),
+            "plane_distort_points": {
+                "source": {
+                    key: _point_to_json(value)
+                    for key, value in geometry["plane_distort_points"]["source"].items()
+                },
+                "target": {
+                    key: _point_to_json(value)
+                    for key, value in geometry["plane_distort_points"]["target"].items()
+                },
+            },
+            "extension_lines": {
+                key: [_point_to_json(start), _point_to_json(end)]
+                for key, (start, end) in geometry["extension_lines"].items()
+            },
+            "source_bbox": list(geometry["source_bbox"]),
+            "face_axis_x": geometry.get("face_axis_x"),
+            "face_band": geometry.get("face_band"),
+            "outer_axis_x": geometry.get("outer_axis_x"),
+            "face_top_y": geometry["face_top_y"],
+            "desired_face_top_y": geometry["desired_face_top_y"],
+            "thickness_magnitude_source_p0p2": geometry.get("thickness_magnitude_source_p0p2"),
+            "thickness_vector_source": geometry.get("thickness_vector_source"),
+            "target_inner_bottom_support": (
+                _point_to_json(geometry["target_inner_bottom_support"])
+                if "target_inner_bottom_support" in geometry
+                else None
+            ),
+            "target_top_plane_apex_opposite": (
+                _point_to_json(geometry["target_top_plane_apex_opposite"])
+                if "target_top_plane_apex_opposite" in geometry
+                else None
+            ),
+            "target_thickness_vector": geometry.get("target_thickness_vector"),
+            "affine_target_to_source": geometry["affine_target_to_source"],
+            "canonical_target": {
+                "tile_key": canonical_target.get("tile_key"),
+                "canvas_width": canonical_target.get("canvas_width"),
+                "canvas_height": canonical_target.get("canvas_height"),
+            },
+        },
+    )
+    paths["geometry_json"] = str(geometry_path)
+    return paths
+
+
 
 def _render_wall_output(
     image: Image.Image,
     *,
     canonical_target: dict[str, Any],
+    debug_dir: Path | None = None,
+    debug_prefix: str = "wall_mapping",
 ) -> Image.Image:
-    """Fit a wall image to canonical game-iso geometry via backbone-first 6-point warp."""
+    """Fit a wall image to canonical game-iso geometry via per-plane distort."""
     canvas_width = int(canonical_target["canvas_width"])
     canvas_height = int(canonical_target["canvas_height"])
     wall_side = _wall_side_from_target(canonical_target)
-    source_polygon, target_polygon = _derive_wall_source_polygon(
+    geometry = _wall_mapping_geometry(
         image,
         canonical_target=canonical_target,
         wall_side=wall_side,
     )
-    warped = _warp_rgba_polygon(
+    target_polygon = geometry["target_polygon"]
+    warped = _render_wall_plane_distort(
         image,
-        source_polygon=source_polygon,
-        target_polygon=target_polygon,
+        geometry=geometry,
         output_size=(canvas_width, canvas_height),
     )
-    warped = _apply_polygon_mask(warped, [list(p) for p in _canonical_wall_body(canonical_target)])
-    placement = canonical_target.get("placement", {})
-    if isinstance(placement, dict):
-        warped = _apply_opaque_half_rule(warped, str(placement.get("opaque_half", "")).strip().lower())
+    warped = _apply_polygon_mask(warped, [list(p) for p in target_polygon])
+    if debug_dir is not None:
+        _save_wall_mapping_debug_images(
+            image,
+            geometry=geometry,
+            canonical_target=canonical_target,
+            debug_dir=debug_dir,
+            prefix=debug_prefix,
+            mapped=warped,
+        )
     return warped
 
 
@@ -1053,11 +1807,18 @@ def render_final_output(
     reference_path: Path,
     canonical_target: dict[str, Any] | None = None,
     target_size: int | None = None,
+    debug_dir: Path | None = None,
+    debug_prefix: str = "wall_mapping",
 ) -> Image.Image:
     reference_image = Image.open(reference_path).convert("RGBA")
     if canonical_target is not None:
         if canonical_target.get("tile_key", "").startswith("wall_"):
-            return _render_wall_output(image, canonical_target=canonical_target)
+            return _render_wall_output(
+                image,
+                canonical_target=canonical_target,
+                debug_dir=debug_dir,
+                debug_prefix=debug_prefix,
+            )
         target_bbox: EffectiveBBox = canonical_target["target_bbox"]
         canvas_width = int(canonical_target["canvas_width"])
         canvas_height = int(canonical_target["canvas_height"])
@@ -1328,12 +2089,20 @@ def score_candidate(
 ) -> dict[str, Any]:
     image = Image.open(candidate_path).convert("RGBA")
     candidate_alpha_mask = alpha_mask(image)
-    candidate_rgba_normalized = render_final_output(image, reference_path=reference_path, canonical_target=canonical_target)
+    debug_dir = output_dir / "wall_mapping_debug" / candidate_path.stem
+    debug_prefix = candidate_path.stem
+    candidate_rgba_normalized = render_final_output(
+        image,
+        reference_path=reference_path,
+        canonical_target=canonical_target,
+        debug_dir=debug_dir if canonical_target is not None and str(canonical_target.get("tile_key", "")).startswith("wall_") else None,
+        debug_prefix=debug_prefix,
+    )
     scoring_mask_source = candidate_alpha_mask
     if canonical_target is not None and str(canonical_target.get("tile_key", "")).startswith("wall_"):
         scoring_mask_source = ImageChops.multiply(
             alpha_mask(candidate_rgba_normalized),
-            _polygon_mask(candidate_rgba_normalized.size, [list(point) for point in _canonical_wall_body(canonical_target)]),
+            _polygon_mask(candidate_rgba_normalized.size, [list(point) for point in canonical_target["target_polygon"]]),
         )
     candidate_mask_normalized, bbox = normalize_mask(scoring_mask_source)
     candidate_anchors = mask_anchors(candidate_mask_normalized)
@@ -1372,6 +2141,10 @@ def score_candidate(
         "raw_mask_area": candidate_raw_area,
         "score": score,
         "anchors": {key: list(value) if value is not None else None for key, value in candidate_anchors.items()},
+        "wall_mapping_debug_paths": {
+            path.stem.split(f"{candidate_path.stem}.", 1)[-1]: str(path)
+            for path in sorted(debug_dir.glob(f"{candidate_path.stem}.*"))
+        } if debug_dir.exists() else {},
         "source_effective_bbox": {
             "left": source_bbox.left,
             "top": source_bbox.top,
@@ -1416,16 +2189,31 @@ def _export_selector_stage_artifacts(run_root: Path, *, variant: str, result: di
         overlay_copy = _copy_artifact(overlay_src, step_7_dir / f"s7_overlay.{variant}.{cleanup_id}.png") if overlay_src else None
 
         final_stage = candidate.get("final_stage", {}) if isinstance(candidate.get("final_stage", {}), dict) else {}
+        wall_debug_paths: dict[str, str] = {}
+        raw_debug_paths = candidate.get("wall_mapping_debug_paths", {})
+        if isinstance(raw_debug_paths, dict):
+            for debug_name, debug_path_raw in raw_debug_paths.items():
+                debug_path = Path(str(debug_path_raw))
+                if not debug_path.exists():
+                    continue
+                suffix = debug_path.suffix or ".png"
+                copied_debug = _copy_artifact(
+                    debug_path,
+                    step_6_dir / f"s6_debug.{variant}.{cleanup_id}.{debug_name}{suffix}",
+                )
+                if copied_debug:
+                    wall_debug_paths[str(debug_name)] = copied_debug
 
         mapping_candidates.append(
             {
                 "cleanup_id": cleanup_id,
                 "source_input_path": candidate.get("path"),
                 "mapped_output_path": mapped_copy or candidate.get("final_path"),
+                "wall_mapping_debug_paths": wall_debug_paths,
                 "canvas_size": result.get("canonical_target", {}),
                 "effective_bbox": candidate.get("effective_bbox"),
                 "mapping_status": "ok" if mapped_copy or candidate.get("final_path") else "missing_mapped_output",
-                "mapping_fail_reasons": final_stage.get("fail_reasons", []) if not final_stage.get("passed", False) else [],
+                "mapping_fail_reasons": [],
                 "mapping_diagnostics": {
                     "normalized_iou": candidate.get("normalized_iou"),
                     "anchor_error": candidate.get("anchor_error"),
@@ -1443,6 +2231,9 @@ def _export_selector_stage_artifacts(run_root: Path, *, variant: str, result: di
             "normalized_path": normalized_copy or candidate.get("normalized_path"),
             "mapping_score": candidate.get("score"),
             "final_stage": final_stage,
+            "validation_mode": final_stage.get("validation_mode"),
+            "edge_validation": final_stage.get("edge_validation"),
+            "legacy_diagnostics": final_stage.get("legacy_diagnostics"),
             "fail_reasons": candidate.get("fail_reasons", []),
             }
         )
@@ -1483,6 +2274,7 @@ def _export_selector_stage_artifacts(run_root: Path, *, variant: str, result: di
             "verified_candidate_id": selected_cleanup_id,
             "selected_output_path": selected_output_path or result.get("selected_final_output"),
             "verification": verification,
+            "validation_mode": verification.get("validation_mode") if isinstance(verification, dict) else None,
             "candidates": verification_candidates,
         },
     )
@@ -1507,10 +2299,35 @@ def _export_selector_stage_artifacts(run_root: Path, *, variant: str, result: di
 def evaluate_final_fit(
     candidate: dict[str, Any],
     *,
+    canonical_target: dict[str, Any] | None,
     reference_effective_bbox: EffectiveBBox,
     reference_anchors: dict[str, tuple[int, int] | None],
     fail_rules: dict[str, float | int],
 ) -> tuple[list[str], dict[str, Any]]:
+    if canonical_target is not None and str(canonical_target.get("tile_key", "")).startswith("wall_"):
+        edge_validation = _validate_wall_edge_alignment(
+            Path(str(candidate["final_path"])),
+            canonical_target=canonical_target,
+            fail_rules=fail_rules,
+        )
+        fail_reasons = list(edge_validation["fail_reasons"])
+        return fail_reasons, {
+            "passed": len(fail_reasons) == 0,
+            "fail_reasons": fail_reasons,
+            "validation_mode": edge_validation["validation_mode"],
+            "wall_side": edge_validation["wall_side"],
+            "edge_validation": {
+                "edges": edge_validation["edges"],
+                "error": edge_validation.get("error"),
+            },
+            "legacy_diagnostics": {
+                "normalized_iou": candidate["normalized_iou"],
+                "anchor_error": candidate["anchor_error"],
+                "effective_bbox": candidate["effective_bbox"],
+                "anchors": candidate["anchors"],
+            },
+        }
+
     fail_reasons: list[str] = []
 
     if candidate["normalized_iou"] < float(fail_rules["min_normalized_iou"]):
@@ -1560,6 +2377,7 @@ def evaluate_final_fit(
     return fail_reasons, {
         "passed": len(fail_reasons) == 0,
         "fail_reasons": fail_reasons,
+        "validation_mode": "mask_anchor_thresholds",
         "normalized_iou": candidate["normalized_iou"],
         "anchor_error": candidate["anchor_error"],
         "effective_bbox": candidate["effective_bbox"],
@@ -1592,7 +2410,7 @@ def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, A
     if canonical_target is not None and str(canonical_target.get("tile_key", "")).startswith("wall_"):
         reference_scoring_mask = _polygon_mask(
             (int(canonical_target["canvas_width"]), int(canonical_target["canvas_height"])),
-            [list(point) for point in _canonical_wall_body(canonical_target)],
+            [list(point) for point in canonical_target["target_polygon"]],
         )
     else:
         reference_scoring_mask = alpha_mask(reference_image)
@@ -1621,6 +2439,7 @@ def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, A
     )
     final_fail_reasons, final_stage = evaluate_final_fit(
         chosen_candidate,
+        canonical_target=canonical_target,
         reference_effective_bbox=reference_bbox,
         reference_anchors=reference_anchors,
         fail_rules=fail_rules,
@@ -1676,6 +2495,10 @@ def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, A
             "max_mid_inset": int(fail_rules["max_mid_inset"]),
             "max_bottom_tip_drift": int(fail_rules["max_bottom_tip_drift"]),
             "min_effective_scale_ratio": float(fail_rules["min_effective_scale_ratio"]),
+            "max_edge_angle_delta_degrees": float(fail_rules.get("max_edge_angle_delta_degrees", 0.0)),
+            "max_vertical_angle_delta_degrees": float(fail_rules.get("max_vertical_angle_delta_degrees", 0.0)),
+            "min_edge_points": int(fail_rules.get("min_edge_points", 0)),
+            "max_face_edge_offset_pixels": int(fail_rules.get("max_face_edge_offset_pixels", 0)),
             "top_boundary_scan_ratio": float(fail_rules["top_boundary_scan_ratio"]),
             "top_boundary_key_similarity_fail": float(fail_rules["top_boundary_key_similarity_fail"]),
             "top_boundary_key_pixel_ratio_fail": float(fail_rules["top_boundary_key_pixel_ratio_fail"]),

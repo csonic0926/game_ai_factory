@@ -220,8 +220,10 @@ For a Codex-side imagegen run:
 1. set `provider.mode` to `agent_handoff`
 2. set `provider.name` to `imagegen`
 3. run `prepare-reference-pair` first
-4. let the external Codex/imagegen step write raw PNGs into `agent_handoff/step_1_raw/<variant>.png`
-5. run `generate-reference-pair` to resume Step 3+
+4. read `request/imagegen_handoff.json`
+5. for each task, load `edit_target_image` into Codex with `view_image`, then run built-in imagegen in edit mode using `codex_prompt_text`
+6. copy the selected generated PNG into `agent_handoff/step_1_raw/<variant>.png`
+7. run `generate-reference-pair` to resume Step 3+
 
 ### Shared diagnostics
 

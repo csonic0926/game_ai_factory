@@ -555,6 +555,45 @@ def _agent_handoff_raw_output_path(run_root: Path, *, variant: str) -> Path:
     return run_root / "agent_handoff" / "step_1_raw" / f"{variant}.png"
 
 
+def _build_imagegen_codex_edit_prompt(
+    *,
+    variant: str,
+    request_payload: dict[str, Any],
+) -> str:
+    base_prompt = str(request_payload.get("prompts", {}).get(variant, "")).strip()
+    background = request_payload.get("background", {})
+    variant_profiles = request_payload.get("variant_profiles", {})
+    variant_profile = variant_profiles.get(variant, {}) if isinstance(variant_profiles, dict) else {}
+    wall_profile = variant_profile.get("wall_profile", {}) if isinstance(variant_profile, dict) else {}
+    wall_side = str(wall_profile.get("wall_side", "")).strip().lower() or str(variant).strip().lower()
+    height_units = wall_profile.get("height_units")
+    if wall_side in {"left", "right"}:
+        role_text = f"{wall_side}-facing"
+    else:
+        role_text = str(variant)
+    height_text = "2-tile-high" if height_units == 2 else "single-tile-high" if height_units == 1 else "isometric"
+    allowed_colors = []
+    if isinstance(background, dict) and background.get("mode") == "color_key":
+        allowed_colors = [str(background.get("prompt_color", "")).strip(), *[str(color).strip() for color in background.get("fallback_colors", [])]]
+        allowed_colors = [color for color in allowed_colors if color]
+    background_rule = (
+        f"Use one exact flat chroma background color outside the wall silhouette: {' or '.join(allowed_colors)}. "
+        "No gradients, no noise, no transparency outside the silhouette, and no cast shadow."
+        if allowed_colors
+        else "Keep the background outside the wall silhouette clean and uniform."
+    )
+    return (
+        "EDIT the currently visible reference image; do not generate a new wall from scratch. "
+        f"The visible image is the exact edit target for the {role_text} {height_text} wall. "
+        "Preserve the canvas size, framing, silhouette, handedness, occupied side, contact edge, perspective, and all transparent/background pixels exactly. "
+        "Only repaint the existing plain white/gray wall surface with pixel-art dungeon stone texture: readable stone block seams, subtle bevels, restrained gray shading. "
+        "Do not make the wall longer, wider, thicker, shorter, front-facing, corner-shaped, or horizontal. "
+        "Do not add a floor tile, props, border, text, watermark, glow, scene background, or shadow. "
+        f"{background_rule} "
+        f"Source factory prompt for style context: {base_prompt}"
+    ).strip()
+
+
 def _build_imagegen_handoff_task(
     *,
     run_root: Path,
@@ -563,9 +602,16 @@ def _build_imagegen_handoff_task(
     variants = request_payload.get("variants", [])
     tasks: dict[str, Any] = {}
     for variant in variants:
+        reference_images = list(request_payload["generation_inputs"][variant])
         tasks[str(variant)] = {
             "prompt_text": request_payload["prompts"][variant],
-            "reference_images": list(request_payload["generation_inputs"][variant]),
+            "codex_imagegen_mode": "edit",
+            "codex_prompt_text": _build_imagegen_codex_edit_prompt(
+                variant=str(variant),
+                request_payload=request_payload,
+            ),
+            "reference_images": reference_images,
+            "edit_target_image": reference_images[0] if reference_images else "",
             "output_path": str(_agent_handoff_raw_output_path(run_root, variant=str(variant))),
         }
     return {
@@ -578,13 +624,20 @@ def _build_imagegen_handoff_task(
         "contract": {
             "purpose": "External Codex imagegen execution for Step 1 raw generation.",
             "write_step": "step_1_raw only",
+            "codex_execution_protocol": [
+                "For each variant, load edit_target_image into the conversation with view_image immediately before invoking image_gen.",
+                "Invoke built-in image_gen in edit mode using codex_prompt_text; do not rely on the file path alone as an image input.",
+                "After image_gen saves its output under CODEX_HOME/generated_images, copy the selected PNG to output_path.",
+                "Do not run cleanup, selection, or final mapping in the Codex/imagegen step.",
+            ],
             "do_not_modify": [
                 "step_3_cleanup_pool semantics",
                 "selector/finalizer behavior",
             ],
             "requirements": [
                 "Write exactly one PNG per variant to the declared output_path.",
-                "Use the supplied reference image(s) as the geometry lock.",
+                "Use edit_target_image as an edit target, not just as a loose style reference.",
+                "Preserve the supplied reference image's canvas, silhouette, handedness, occupied side, contact edge, and proportions.",
                 "After staging raw PNGs, hand control back to the factory for Step 3+.",
             ],
         },
