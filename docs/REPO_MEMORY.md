@@ -350,3 +350,38 @@
 - The official wall Step 6 mapper is now the per-plane Photoshop-Distort-style mapper, not the whole-wall mesh warp.
 - Official mapped output should be written as `04_mapped_full_6_polygon.png`; `04b_mapped_detected_geometry_points.png` should re-detect geometry on that official mapped result.
 - Treat old mesh-warp/mean-value approaches as superseded for wall final rendering because they can preserve boundary points while distorting plane scale/content.
+
+## Wall Step 6 four-real-point inference experiment
+
+- A more robust future wall mapper should infer all planes from four structural real points instead of scanning for top/outer derived points that decorations can corrupt.
+- Required vectors:
+  - `P0P2` = wall width
+  - `P1P1'` = wall thickness / shortest line
+  - `P0P1` = wall height
+- `P1'` should be found from the bottommost opaque source pixels, tie-breaking closest to `P1`.
+- Derived source points:
+  - `P0' = P0 + (P1' - P1)`
+  - `P2' = P2 + (P1' - P1)`
+  - `N = P2' + (P1 - P0)`
+- Experimental artifacts:
+  - `*.04e_four_point_plane_distort_mapped.png`
+  - `*.04f_four_point_detected_geometry_points.png`
+
+## Wall Step 6 four-point target thickness rule
+
+- In the four-real-point inference experiment, do **not** map source `P1'` directly to canonical `P5`; that makes the wall as thick as the whole tile.
+- Correct target `P1'` rule:
+  - measure source thickness `|P1P1'|`
+  - scale by wall height ratio `|target P0P1| / |source P0P1|`
+  - place along the canonical game-iso thickness direction hinted by `target P1 -> target P5`
+- Then derive target `P0'`, `P2'`, and `N` from the resulting target depth vector.
+
+## Wall Step 6 four-point mapper promotion
+
+- The approved official wall Step 6 mapper is the four-real-point plane-distort mapper.
+- Official mapped output name remains `04_mapped_full_6_polygon.png`; do not rely on old experimental `04e` names for new runs.
+- Core inference:
+  - find real `P0`, `P1`, `P2`, and `P1'`
+  - `P0P2` = width, `P1P1'` = thickness, `P0P1` = height
+  - derive `P0'`, `P2'`, and `N`; do not scan `P2'`/`N` from outer/top pixels because decorations can corrupt them
+- Target `P1'` must preserve source wall thickness by scaling `|P1P1'|` into game iso along the canonical thickness direction; never map it directly to full-tile `P5`.

@@ -1036,6 +1036,28 @@ def _wall_outer_top_probe(mask: Image.Image, *, wall_side: str) -> tuple[float, 
     return (float(p2p_x), float(p2p_y))
 
 
+def _wall_global_bottom_point(mask: Image.Image, *, reference_point: tuple[float, float]) -> tuple[float, float]:
+    """Return the bottommost opaque structural point, tie-breaking near *reference_point*."""
+    bbox = mask.getbbox()
+    if bbox is None:
+        raise VariantSelectorError("Wall source image has no opaque pixels.")
+    pixels = mask.load()
+    max_y = None
+    candidates: list[tuple[int, int]] = []
+    for y in range(bbox[1], bbox[3]):
+        row_candidates = [(x, y) for x in range(bbox[0], bbox[2]) if pixels[x, y] > 0]
+        if not row_candidates:
+            continue
+        if max_y is None or y > max_y:
+            max_y = y
+            candidates = row_candidates
+    if not candidates:
+        raise VariantSelectorError("Wall source image has no bottom opaque point.")
+    ref_x, ref_y = reference_point
+    x, y = min(candidates, key=lambda point: (math.hypot(point[0] - ref_x, point[1] - ref_y), abs(point[0] - ref_x)))
+    return (float(x), float(y))
+
+
 def _wall_source_backbone_points(mask: Image.Image, *, wall_side: str) -> list[tuple[float, float]]:
     bbox = mask.getbbox()
     if bbox is None:
@@ -1453,9 +1475,10 @@ def _render_wall_plane_distort(
     *,
     geometry: dict[str, Any],
     output_size: tuple[int, int],
+    plane_points: dict[str, dict[str, tuple[float, float]]] | None = None,
 ) -> Image.Image:
     """Render a wall with PS-Distort-style per-plane perspective mapping."""
-    plane = geometry["plane_distort_points"]
+    plane = plane_points if plane_points is not None else geometry["plane_distort_points"]
     source = plane["source"]
     target = plane["target"]
     canvas = Image.new("RGBA", output_size, (0, 0, 0, 0))
@@ -1489,6 +1512,60 @@ def _render_wall_plane_distort(
         warped_piece.putalpha(ImageChops.multiply(alpha, target_mask))
         canvas.alpha_composite(warped_piece)
     return canvas
+
+
+def _wall_four_point_plane_distort_points(mask: Image.Image, geometry: dict[str, Any]) -> dict[str, dict[str, tuple[float, float]]]:
+    source_real = geometry["source_real_points"]
+    target = geometry["target_points"]
+    p0 = source_real["p0"]
+    p1 = source_real["p1"]
+    p2 = source_real["p2"]
+    p1_prime = _wall_global_bottom_point(mask, reference_point=p1)
+    depth_vec = (p1_prime[0] - p1[0], p1_prime[1] - p1[1])
+    height_vec = (p1[0] - p0[0], p1[1] - p0[1])
+    p0_prime = (p0[0] + depth_vec[0], p0[1] + depth_vec[1])
+    p2_prime = (p2[0] + depth_vec[0], p2[1] + depth_vec[1])
+    n_point = (p2_prime[0] + height_vec[0], p2_prime[1] + height_vec[1])
+
+    target_p0 = target["p0"]
+    target_p1 = target["p1"]
+    target_p2 = target["p2"]
+    source_height_len = max(1e-6, math.hypot(height_vec[0], height_vec[1]))
+    source_depth_len = math.hypot(depth_vec[0], depth_vec[1])
+    target_height_vec = (target_p1[0] - target_p0[0], target_p1[1] - target_p0[1])
+    target_height_len = max(1e-6, math.hypot(target_height_vec[0], target_height_vec[1]))
+    target_depth_hint = (target["p5"][0] - target_p1[0], target["p5"][1] - target_p1[1])
+    target_depth_hint_len = max(1e-6, math.hypot(target_depth_hint[0], target_depth_hint[1]))
+    target_depth_len = source_depth_len * (target_height_len / source_height_len)
+    target_depth_vec = (
+        target_depth_hint[0] / target_depth_hint_len * target_depth_len,
+        target_depth_hint[1] / target_depth_hint_len * target_depth_len,
+    )
+    target_p1_prime = (target_p1[0] + target_depth_vec[0], target_p1[1] + target_depth_vec[1])
+    target_p0_prime = (target_p0[0] + target_depth_vec[0], target_p0[1] + target_depth_vec[1])
+    target_p2_prime = (target_p2[0] + target_depth_vec[0], target_p2[1] + target_depth_vec[1])
+    target_n = (target_p2_prime[0] + target_height_vec[0], target_p2_prime[1] + target_height_vec[1])
+
+    return {
+        "source": {
+            "p0": p0,
+            "p1": p1,
+            "p2": p2,
+            "p1_prime": p1_prime,
+            "p0_prime": p0_prime,
+            "p2_prime": p2_prime,
+            "n": n_point,
+        },
+        "target": {
+            "p0": target_p0,
+            "p1": target_p1,
+            "p2": target_p2,
+            "p1_prime": target_p1_prime,
+            "p0_prime": target_p0_prime,
+            "p2_prime": target_p2_prime,
+            "n": target_n,
+        },
+    }
 
 
 def _point_to_json(point: tuple[float, float]) -> list[float]:
@@ -1684,6 +1761,8 @@ def _save_wall_mapping_debug_images(
     except VariantSelectorError as exc:
         mapped_detected_geometry = {"error": str(exc)}
 
+    official_plane_points = _wall_four_point_plane_distort_points(alpha_mask(image), geometry)
+
     geometry_path = debug_dir / f"{prefix}.geometry.json"
     write_json(
         geometry_path,
@@ -1723,11 +1802,11 @@ def _save_wall_mapping_debug_images(
             "plane_distort_points": {
                 "source": {
                     key: _point_to_json(value)
-                    for key, value in geometry["plane_distort_points"]["source"].items()
+                    for key, value in official_plane_points["source"].items()
                 },
                 "target": {
                     key: _point_to_json(value)
-                    for key, value in geometry["plane_distort_points"]["target"].items()
+                    for key, value in official_plane_points["target"].items()
                 },
             },
             "extension_lines": {
@@ -1783,10 +1862,12 @@ def _render_wall_output(
         wall_side=wall_side,
     )
     target_polygon = geometry["target_polygon"]
+    plane_points = _wall_four_point_plane_distort_points(alpha_mask(image), geometry)
     warped = _render_wall_plane_distort(
         image,
         geometry=geometry,
         output_size=(canvas_width, canvas_height),
+        plane_points=plane_points,
     )
     warped = _apply_polygon_mask(warped, [list(p) for p in target_polygon])
     if debug_dir is not None:

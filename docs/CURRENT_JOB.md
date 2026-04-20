@@ -841,3 +841,50 @@ Primary regression target:
 - Verification before commit:
   - `python3 -m py_compile pipeline/variant_selector.py pipeline/reference_pair_workflow.py`
   - `python3 -m unittest tests/test_variant_selector_wall_validation.py`
+
+## April 20 — four-real-point plane-distort experiment
+
+- User revised the wall plane inference to avoid top-side/outer-side decoration interference.
+- Added an experimental four-real-point plane-distort path without replacing the current official mapper:
+  - `*.04e_four_point_plane_distort_mapped.png`
+  - `*.04f_four_point_detected_geometry_points.png`
+- New source real points / vectors:
+  - `P0P2` = wall width
+  - `P1P1'` = wall thickness / shortest line
+  - `P0P1` = wall height
+  - `P1'` is found as the bottommost opaque source point, tie-breaking closest to `P1`
+- Derived source points:
+  - `P0' = P0 + (P1' - P1)`
+  - `P2' = P2 + (P1' - P1)`
+  - `N = P2' + (P1 - P0)`
+- Target points are derived from target `P0`, `P1`, `P2`, and `P1' = target P5`; this avoids scanning for target `P2'`/`N`.
+- Current test on Gemini Pro 2u clean wall generated good-looking left/right outputs; re-detected geometry lands close to canonical points.
+
+## April 20 — four-point target P1-prime mapping fix
+
+- Fixed the four-point experiment target-side thickness bug.
+- Previous experimental target used canonical `P5` as `P1'`, which made the wall as thick as the whole tile.
+- Updated target `P1'` to preserve source wall thickness:
+  - `target_depth_len = |source P1P1'| * (|target P0P1| / |source P0P1|)`
+  - direction comes from canonical `P1 -> P5` only as a game-iso thickness direction hint
+  - `target P1' = target P1 + unit(P1->P5) * target_depth_len`
+- New four-point outputs now match the previously approved plane-distort thickness while avoiding direct source `P2'`/`N` scans.
+
+## April 20 — four-point mapper promoted to official Step 6
+
+- User confirmed the `04e_four_point_plane_distort_mapped.png` outputs are the correct final geometry.
+- Promoted the four-real-point plane-distort mapper to the official Step 6 output path:
+  - official `04_mapped_full_6_polygon.png` now uses the four-point inference
+  - official `04b_mapped_detected_geometry_points.png` now re-detects geometry on that four-point output
+  - stopped writing separate `04e`/`04f` experimental aliases from new selector runs
+- Official source inference now uses:
+  - `P0P2` = wall width
+  - `P1P1'` = wall thickness
+  - `P0P1` = wall height
+  - `P1'` = bottommost opaque source point, tie-breaking closest to `P1`
+- Reran Gemini Pro 2u selectors after promotion:
+  - left: passes Step 7, selected `v_keyed.01_conservative`
+  - right: passes Step 7, selected `v_keyed.01_conservative`
+- Verification:
+  - `python3 -m py_compile pipeline/variant_selector.py pipeline/reference_pair_workflow.py`
+  - `python3 -m unittest tests/test_variant_selector_wall_validation.py`
