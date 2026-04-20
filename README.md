@@ -1,180 +1,12 @@
 # isometric_tile_factory
 
-Blender-first isometric tile factory for isometric floor and wall tile production.
+Blender-first isometric tile factory for **reference-pair generation, validation, and final selection** of floor and wall tiles.
 
-The repository has two primary workflows:
+## Use this workflow
 
-1. **Reference generation from Blender**
-   - render canonical reference images
-   - define the target camera and silhouette
-   - provide stable geometric input for downstream image generation
-2. **Gemini/Nano Banana tile generation**
-   - send the canonical references to the model
-   - receive styled tile images
-   - remove chroma-key backgrounds when configured
-   - validate generated geometry against the canonical references
-   - select a normalized final export
+For almost all tile-art work, use the **reference-pair workflow**.
 
-## Main workflow
-
-Use the reference-pair workflow when the objective is to generate final tile art from Gemini/Nano Banana while preserving the Blender-defined geometry.
-
-Primary commands:
-
-- `prepare-reference-pair`
-- `generate-reference-pair`
-- `validate-reference-pair`
-- `select-reference-pair-variant`
-
-See:
-
-- `docs/REFERENCE_PAIR_WORKFLOW.md` — workflow index / router
-- `docs/FLOOR_REFERENCE_PAIR_WORKFLOW.md` — floor-only workflow
-- `docs/WALL_REFERENCE_PAIR_WORKFLOW.md` — wall-only workflow
-- `docs/BLENDER_WORKFLOW.md`
-- `docs/SAMPLE_SCENE.md`
-
-### Diagnostic artifact convention
-
-Reference-pair runs now keep both:
-
-- legacy runtime folders for compatibility:
-  - `generated/`
-  - `processed/`
-  - `validation/`
-  - `selection/`
-  - `final/`
-- step-oriented diagnostic folders for review:
-  - `step_1_raw/`
-  - `step_3_cleanup_pool/`
-  - `step_4_gate/`
-  - `step_6_mapping/`
-  - `step_7_selection/`
-  - `deliverables/`
-
-Start run triage with:
-
-- `artifact_status.json`
-- then the corresponding `step_*` folder
-
-Preferred artifact naming:
-
-- PNG: `s<step>_<kind>.<variant>[.vXX_<cleanup_name>].png`
-- JSON: `s<step>_<kind>.<variant>.json`
-
-Examples:
-
-- `s1_raw.left.png`
-- `s3_cleanup.left.v01_conservative.png`
-- `s4_gate.left.json`
-- `s6_mapped.left.v01_conservative.png`
-- `s7_selected.left.png`
-- `deliverable.left.png`
-
-## Core CLI
-
-```bash
-python3 itf.py --help
-```
-
-Available commands:
-
-- `validate`
-- `render`
-- `build-atlas`
-- `inspect-manifest`
-- `create-sample-scene`
-- `sample-regression`
-- `smoke-sample`
-- `prepare-reference-pair`
-- `generate-reference-pair`
-- `generate-wall-reference-pair`
-- `validate-reference-pair`
-
-## Runtime
-
-- Blender 4.5.x LTS on macOS Apple Silicon is the current stable baseline
-- Python 3.11+
-
-Install dependencies:
-
-```bash
-python3 -m pip install -r requirements.txt
-```
-
-## Canonical sample scene
-
-Stable fixture:
-
-- `examples/sample_factory.blend`
-
-Canonical floor reference pair:
-
-- `001_floor_plain` = full-height reference
-- `002_floor_half` = half-height reference
-
-Current sample reference-pair specs point at manually corrected scaled references:
-
-- `examples/workflow_references/floor_height_pair/floor_full_k_scaled.png`
-- `examples/workflow_references/floor_height_pair/floor_half_k_scaled.png`
-
-This allows the Gemini-generation workflow to use artist-adjusted framing instead of the raw Blender render when needed.
-
-Canonical wall reference pair example:
-
-- `examples/golden/sample_factory/images/101_wall_straight_rot0.png`
-- `examples/golden/sample_factory/images/101_wall_straight_rot90.png`
-
-Canonical handedness mapping for 1u walls:
-
-- `left wall` -> `101_wall_straight_rot90.png`
-- `right wall` -> `101_wall_straight_rot0.png`
-
-Canonical 2-unit wall reference pair example:
-
-- `examples/golden/sample_factory/images/102_wall_straight_2u_rot0.png`
-- `examples/golden/sample_factory/images/102_wall_straight_2u_rot90.png`
-
-Canonical handedness mapping for 2u walls:
-
-- `left wall` -> `102_wall_straight_2u_rot90.png`
-- `right wall` -> `102_wall_straight_2u_rot0.png`
-
-## Low-level Blender commands
-
-Validate the sample scene:
-
-```bash
-python3 itf.py validate \
-  --scene examples/sample_factory.blend \
-  --config examples/config.json \
-  --sample-scene
-```
-
-Render the sample scene:
-
-```bash
-python3 itf.py render --scene examples/sample_factory.blend --config examples/config.json
-```
-
-## Reference-pair workflow
-
-Floor and wall workflow docs are now intentionally split.
-
-Use:
-
-- `docs/FLOOR_REFERENCE_PAIR_WORKFLOW.md` for:
-  - `full` / `half` floor runs
-  - transform mode
-  - floor validation / selection
-- `docs/WALL_REFERENCE_PAIR_WORKFLOW.md` for:
-  - `left` / `right` wall runs
-  - wall preprocessing gate
-  - wall mapping / verification
-
-Keep `docs/REFERENCE_PAIR_WORKFLOW.md` as the shared router / index only.
-
-### Common reference-pair commands
+Main commands:
 
 ```bash
 python3 itf.py prepare-reference-pair --spec /absolute/path/to/spec.json
@@ -192,82 +24,44 @@ python3 itf.py generate-wall-reference-pair --height 2 --variant left
 python3 itf.py generate-wall-reference-pair --variant right
 ```
 
-### Shared prompt rule
+## Workflow docs
 
-Reference images are the geometry source of truth.
+Use these docs as the real workflow entry points:
 
-Prefer structured prompt parts:
+- `/Users/hunglingki/git_projects/tools/isometric_tile_factory/docs/REFERENCE_PAIR_WORKFLOW.md`
+- `/Users/hunglingki/git_projects/tools/isometric_tile_factory/docs/FLOOR_REFERENCE_PAIR_WORKFLOW.md`
+- `/Users/hunglingki/git_projects/tools/isometric_tile_factory/docs/WALL_REFERENCE_PAIR_WORKFLOW.md`
 
-- `prompt_parts.style`
-- `prompt_parts.material`
-- `prompt_parts.decoration`
-- `prompt_parts.negative_constraints[]`
+## What to inspect first in a run
 
-Avoid geometry prose that restates canonical structure already encoded by the references.
+Start with:
 
-### Shared provider note
+- `artifact_status.json`
 
-For a real Gemini/Nano Banana run:
-
-1. set `provider.name` to `nano_banana` or `nano_banana_pro`
-2. provide `GEMINI_API_KEY` in process env or this repo's `.env`
-3. run the same `generate-reference-pair` command
-
-If this factory is called from another repo, export the caller repo's key into the current process env before invoking `itf.py`.
-
-For a Codex-side imagegen run:
-
-1. set `provider.mode` to `agent_handoff`
-2. set `provider.name` to `imagegen`
-3. run `prepare-reference-pair` first
-4. read `request/imagegen_handoff.json`
-5. for each task, load `edit_target_image` into Codex with `view_image`, then run built-in imagegen in edit mode using `codex_prompt_text`
-6. copy the selected generated PNG into `agent_handoff/step_1_raw/<variant>.png`
-7. run `generate-reference-pair` to resume Step 3+
-
-### Shared diagnostics
-
-Use `artifact_status.json` first, then inspect the matching `step_*` folder.
-
-Primary step-oriented folders:
+Then inspect the relevant step folder:
 
 - `step_1_raw/`
 - `step_3_cleanup_pool/`
-- `step_4_gate/` when the workflow has that step
-- `step_6_mapping/` when the workflow has that step
+- `step_4_gate/`
+- `step_6_mapping/`
 - `step_7_selection/`
 - `deliverables/`
 
-## Regression
+## Runtime
 
-Refresh the committed baseline:
+- Blender 4.5.x LTS on macOS Apple Silicon
+- Python 3.11+
 
-```bash
-python3 itf.py sample-regression --update
-```
-
-Verify current output against the baseline:
+Install dependencies:
 
 ```bash
-python3 itf.py sample-regression
+python3 -m pip install -r requirements.txt
 ```
 
-Run the sample smoke flow:
+## Other CLI
+
+If needed:
 
 ```bash
-python3 itf.py smoke-sample
+python3 itf.py --help
 ```
-
-## Direction
-
-This repository is intentionally no longer organized around:
-
-- AI texture cache orchestration
-- square-mode product surfaces
-- generic external orchestration contracts
-
-It is organized around:
-
-- Blender-generated canonical references
-- Gemini-driven tile generation
-- reference-based geometric validation

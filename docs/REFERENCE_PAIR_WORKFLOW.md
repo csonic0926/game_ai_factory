@@ -1,49 +1,38 @@
 # Reference Pair Workflow
 
-This file is now a **router / index**.
-
-The repository no longer treats floor and wall as one shared workflow document.
+This file is the **router**.
 
 Use:
 
-- `docs/FLOOR_REFERENCE_PAIR_WORKFLOW.md` for:
-  - `full` / `half` floor runs
-  - floor transform mode
-  - floor validation / selection
-- `docs/WALL_REFERENCE_PAIR_WORKFLOW.md` for:
-  - `left` / `right` wall runs
-  - wall preprocessing gate
-  - wall mapping / verification
+- `/Users/hunglingki/git_projects/tools/isometric_tile_factory/docs/FLOOR_REFERENCE_PAIR_WORKFLOW.md` for `full` / `half` floor runs
+- `/Users/hunglingki/git_projects/tools/isometric_tile_factory/docs/WALL_REFERENCE_PAIR_WORKFLOW.md` for `left` / `right` wall runs
 
-## Shared command surface
+## Shared commands
 
-The core CLI entry points are still:
+```bash
+python3 itf.py prepare-reference-pair --spec /absolute/path/to/spec.json
+python3 itf.py generate-reference-pair --spec /absolute/path/to/spec.json
+python3 itf.py validate-reference-pair --run-root /absolute/path/to/run_root
+python3 itf.py select-reference-pair-variant --run-root /absolute/path/to/run_root --variant full
+```
 
-- `prepare-reference-pair`
-- `generate-reference-pair`
-- `validate-reference-pair`
-- `select-reference-pair-variant`
-- `generate-wall-reference-pair`
+Wall helper:
 
-## Shared diagnostic convention
+```bash
+python3 itf.py generate-wall-reference-pair
+```
 
-Both floor and wall runs use the same high-level artifact convention:
+## Shared run triage
 
-- legacy runtime folders are kept for compatibility:
-  - `generated/`
-  - `processed/`
-  - `validation/`
-  - `selection/`
-  - `final/`
-- step-oriented folders are the preferred diagnostic interface:
-  - `step_1_raw/`
-  - `step_3_cleanup_pool/`
-  - `step_4_gate/` when that step exists for the workflow
-  - `step_6_mapping/` when that step exists for the workflow
-  - `step_7_selection/`
-  - `deliverables/`
-
-Start run review with:
+Start with:
 
 - `artifact_status.json`
-- then the workflow-specific document above
+
+Then inspect the relevant step folder:
+
+- `step_1_raw/`
+- `step_3_cleanup_pool/`
+- `step_4_gate/` when that step exists
+- `step_6_mapping/` when that step exists
+- `step_7_selection/`
+- `deliverables/`
