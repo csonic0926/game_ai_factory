@@ -888,3 +888,35 @@ Primary regression target:
 - Verification:
   - `python3 -m py_compile pipeline/variant_selector.py pipeline/reference_pair_workflow.py`
   - `python3 -m unittest tests/test_variant_selector_wall_validation.py`
+
+## April 21 — floor distort target geometry supplied
+
+- User supplied the floor game-iso target as 7 points, not 8.
+- Full target:
+  - `p0=[0,32]`, `p1=[0,96]`, `p2=[64,0]`, `p3=[128,32]`, `p4=[128,96]`, `p5=[64,128]`, `p6=[64,64]`
+- Half target:
+  - `p0=[0,64]`, `p1=[0,96]`, `p2=[64,32]`, `p3=[128,64]`, `p4=[128,96]`, `p5=[64,128]`, `p6=[64,96]`
+- Shared face mapping:
+  - top = `[p0,p2,p3,p6]`
+  - left = `[p0,p6,p5,p1]`
+  - right = `[p6,p3,p4,p5]`
+- Next floor Step 6 direction: replace bbox-only floor final placement with per-face plane distort; source should directly detect the six outer points and infer `p6`.
+
+## April 21 — floor three-plane distort implemented
+
+- Added canonical `floor_half` to `examples/workflow_references/canonical_tile_spec.json`.
+- Floor final output no longer uses bbox-only final placement when a canonical floor target is available.
+- New floor Step 6 path in `pipeline/variant_selector.py`:
+  - detect source `p0..p5` directly from alpha bands / top / bottom extremes
+  - infer `p6` from the left/right side vectors
+  - map the three planes independently with perspective distort:
+    - top = `[p0,p2,p3,p6]`
+    - left = `[p0,p6,p5,p1]`
+    - right = `[p6,p3,p4,p5]`
+- Added floor mapping debug outputs under the mapping debug folder for:
+  - source detected 7 points
+  - target game-iso 7 points
+  - per-face mapped outputs
+  - final mapped floor
+- Selector scoring for canonical floor targets now scores the mapped final floor alpha instead of the raw source alpha, and uses canonical floor target masks for reference normalization.
+- Added `tests/test_variant_selector_floor_mapping.py` to verify reference full/half floor mapping.

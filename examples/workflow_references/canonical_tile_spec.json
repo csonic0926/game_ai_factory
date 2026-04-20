@@ -58,6 +58,61 @@
         ]
       }
     },
+    "floor_half": {
+      "kind": "floor",
+      "canvas": {
+        "width": 128,
+        "height": 128
+      },
+      "placement": {
+        "opaque_half": "both",
+        "contact_role": "base_tile",
+        "height_units": 0.5
+      },
+      "faces": {
+        "top": [
+          [0, 64],
+          [64, 32],
+          [128, 64],
+          [64, 96]
+        ],
+        "left": [
+          [0, 64],
+          [64, 96],
+          [64, 128],
+          [0, 96]
+        ],
+        "right": [
+          [64, 96],
+          [128, 64],
+          [128, 96],
+          [64, 128]
+        ]
+      },
+      "anchors": {
+        "top_tip": [64, 32],
+        "left_tip": [0, 64],
+        "right_tip": [128, 64],
+        "center": [64, 96],
+        "bottom_left": [0, 96],
+        "bottom_tip": [64, 128],
+        "bottom_right": [128, 96]
+      },
+      "contact_edges": {
+        "wall_left_base": [
+          [0, 96],
+          [64, 96]
+        ],
+        "wall_right_base": [
+          [64, 96],
+          [128, 96]
+        ]
+      },
+      "derived_from": {
+        "base_variant": "floor_full",
+        "rule": "same full tile footprint with the top face lowered by half a tile unit"
+      }
+    },
     "wall_left_1u": {
       "kind": "wall",
       "canvas": {

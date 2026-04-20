@@ -385,3 +385,28 @@
   - `P0P2` = width, `P1P1'` = thickness, `P0P1` = height
   - derive `P0'`, `P2'`, and `N`; do not scan `P2'`/`N` from outer/top pixels because decorations can corrupt them
 - Target `P1'` must preserve source wall thickness by scaling `|P1P1'|` into game iso along the canonical thickness direction; never map it directly to full-tile `P5`.
+
+## Floor Step 6 target geometry rule
+
+- Floor Step 6 should use the user's 7-point game-iso target geometry, not bbox-only scaling.
+- Full floor target points:
+  - `p0 = [0, 32]`
+  - `p1 = [0, 96]`
+  - `p2 = [64, 0]`
+  - `p3 = [128, 32]`
+  - `p4 = [128, 96]`
+  - `p5 = [64, 128]`
+  - `p6 = [64, 64]`
+- Half floor target points:
+  - `p0 = [0, 64]`
+  - `p1 = [0, 96]`
+  - `p2 = [64, 32]`
+  - `p3 = [128, 64]`
+  - `p4 = [128, 96]`
+  - `p5 = [64, 128]`
+  - `p6 = [64, 96]`
+- Face quads for both full and half:
+  - `top = [p0, p2, p3, p6]`
+  - `left = [p0, p6, p5, p1]`
+  - `right = [p6, p3, p4, p5]`
+- Source detection should follow the same spirit as wall Step 6: most outer structural points are directly measurable from alpha, while `p6` is the center / inner junction point that may need to be inferred.

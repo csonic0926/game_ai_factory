@@ -205,6 +205,15 @@ def canonical_target_for_variant(*, variant: str, selector_profile: str, variant
             wall_side="left" if "_left_" in tile_key else "right",
             target_tile=tile,
         )
+    elif str(tile_key).startswith("floor_"):
+        floor_points = _floor_target_points(
+            {
+                "tile_key": tile_key,
+                "canvas_width": int(canvas.get("width", TARGET_SIZE)),
+                "canvas_height": int(canvas.get("height", TARGET_SIZE)),
+            }
+        )
+        target_polygon = _floor_outer_polygon(floor_points)
     target_bbox = polygon_bbox(target_polygon)
     return {
         "tile_key": tile_key,
@@ -336,6 +345,14 @@ def _opaque_half_mask(size: tuple[int, int], opaque_half: str) -> Image.Image:
     else:
         draw.rectangle((midpoint, 0, size[0], size[1]), fill=255)
     return mask
+
+
+def _floor_target_mask(canonical_target: dict[str, Any]) -> Image.Image:
+    points = _floor_target_points(canonical_target)
+    return _alpha_mask_for_polygon(
+        (int(canonical_target["canvas_width"]), int(canonical_target["canvas_height"])),
+        _floor_outer_polygon(points),
+    )
 
 
 def _wall_side_from_target(canonical_target: dict[str, Any]) -> str:
@@ -1514,6 +1531,321 @@ def _render_wall_plane_distort(
     return canvas
 
 
+def _floor_target_points(canonical_target: dict[str, Any]) -> dict[str, tuple[float, float]]:
+    tile_key = str(canonical_target.get("tile_key", ""))
+    spec = canonical_tile_spec()
+    tile = spec.get("tiles", {}).get(tile_key)
+    if not isinstance(tile, dict):
+        raise VariantSelectorError(f"Cannot load canonical floor tile: {tile_key}")
+    anchors = tile.get("anchors")
+    if not isinstance(anchors, dict):
+        raise VariantSelectorError(f"Canonical floor tile is missing anchors: {tile_key}")
+    # User naming convention:
+    #   top  = [p0, p2, p3, p6]
+    #   left = [p0, p6, p5, p1]
+    #   right= [p6, p3, p4, p5]
+    width = int(canonical_target["canvas_width"])
+    height = int(canonical_target["canvas_height"])
+
+    def anchor_point(name: str) -> tuple[float, float]:
+        raw = anchors.get(name)
+        if not (isinstance(raw, list) and len(raw) == 2):
+            raise VariantSelectorError(f"Canonical floor tile anchor is missing or invalid: {tile_key}.{name}")
+        return _clamp_point_to_canvas((float(raw[0]), float(raw[1])), width=width, height=height)
+
+    return {
+        "p0": anchor_point("left_tip"),
+        "p1": anchor_point("bottom_left"),
+        "p2": anchor_point("top_tip"),
+        "p3": anchor_point("right_tip"),
+        "p4": anchor_point("bottom_right"),
+        "p5": anchor_point("bottom_tip"),
+        "p6": anchor_point("center"),
+    }
+
+
+def _floor_target_faces(points: dict[str, tuple[float, float]]) -> dict[str, list[tuple[float, float]]]:
+    return {
+        "top": [points["p0"], points["p2"], points["p3"], points["p6"]],
+        "left": [points["p0"], points["p6"], points["p5"], points["p1"]],
+        "right": [points["p6"], points["p3"], points["p4"], points["p5"]],
+    }
+
+
+def _floor_outer_polygon(points: dict[str, tuple[float, float]]) -> list[tuple[float, float]]:
+    return [points["p0"], points["p2"], points["p3"], points["p4"], points["p5"], points["p1"]]
+
+
+def _floor_side_band_points(
+    mask: Image.Image,
+    *,
+    side: str,
+    bbox: tuple[int, int, int, int],
+    tolerance: int,
+) -> tuple[tuple[float, float], tuple[float, float], tuple[int, int]]:
+    pixels = mask.load()
+    if side == "left":
+        x_start = bbox[0]
+        x_end = min(bbox[2] - 1, bbox[0] + tolerance)
+
+        def side_distance(x: int) -> int:
+            return x - bbox[0]
+
+        def tie_x(x: int) -> int:
+            return x
+    elif side == "right":
+        x_start = max(bbox[0], bbox[2] - 1 - tolerance)
+        x_end = bbox[2] - 1
+
+        def side_distance(x: int) -> int:
+            return (bbox[2] - 1) - x
+
+        def tie_x(x: int) -> int:
+            return -x
+    else:
+        raise VariantSelectorError(f"Unsupported floor side band: {side}")
+
+    candidates: list[tuple[int, int]] = []
+    for y in range(bbox[1], bbox[3]):
+        for x in range(x_start, x_end + 1):
+            if pixels[x, y] > 0:
+                candidates.append((x, y))
+    if not candidates:
+        raise VariantSelectorError(f"Floor source {side} side band has no opaque pixels.")
+    min_y = min(y for _x, y in candidates)
+    max_y = max(y for _x, y in candidates)
+    top_point = min((p for p in candidates if p[1] == min_y), key=lambda p: (side_distance(p[0]), tie_x(p[0])))
+    bottom_point = min((p for p in candidates if p[1] == max_y), key=lambda p: (side_distance(p[0]), tie_x(p[0])))
+    return (float(top_point[0]), float(top_point[1])), (float(bottom_point[0]), float(bottom_point[1])), (x_start, x_end)
+
+
+def _floor_axis_extreme_point(
+    mask: Image.Image,
+    *,
+    axis: str,
+    bbox: tuple[int, int, int, int],
+    tolerance: int,
+) -> tuple[float, float]:
+    pixels = mask.load()
+    candidates: list[tuple[int, int]] = []
+    if axis == "top":
+        y_start = bbox[1]
+        y_end = min(bbox[3] - 1, bbox[1] + tolerance)
+        for y in range(y_start, y_end + 1):
+            for x in range(bbox[0], bbox[2]):
+                if pixels[x, y] > 0:
+                    candidates.append((x, y))
+        if not candidates:
+            raise VariantSelectorError("Floor source top band has no opaque pixels.")
+        extreme_y = min(y for _x, y in candidates)
+        row = [p for p in candidates if p[1] == extreme_y]
+    elif axis == "bottom":
+        y_start = max(bbox[1], bbox[3] - 1 - tolerance)
+        y_end = bbox[3] - 1
+        for y in range(y_start, y_end + 1):
+            for x in range(bbox[0], bbox[2]):
+                if pixels[x, y] > 0:
+                    candidates.append((x, y))
+        if not candidates:
+            raise VariantSelectorError("Floor source bottom band has no opaque pixels.")
+        extreme_y = max(y for _x, y in candidates)
+        row = [p for p in candidates if p[1] == extreme_y]
+    else:
+        raise VariantSelectorError(f"Unsupported floor axis: {axis}")
+    return ((min(x for x, _y in row) + max(x for x, _y in row)) / 2.0, float(extreme_y))
+
+
+def _floor_source_points(mask: Image.Image) -> dict[str, Any]:
+    bbox = mask.getbbox()
+    if bbox is None:
+        raise VariantSelectorError("Floor source image has no opaque pixels.")
+    tolerance = max(2, min(6, int(round(max(mask.width, mask.height) * 0.006))))
+    p0, p1, left_band = _floor_side_band_points(mask, side="left", bbox=bbox, tolerance=tolerance)
+    p3, p4, right_band = _floor_side_band_points(mask, side="right", bbox=bbox, tolerance=tolerance)
+    p2 = _floor_axis_extreme_point(mask, axis="top", bbox=bbox, tolerance=tolerance)
+    p5 = _floor_axis_extreme_point(mask, axis="bottom", bbox=bbox, tolerance=tolerance)
+
+    p6_from_left = (p0[0] + (p5[0] - p1[0]), p0[1] + (p5[1] - p1[1]))
+    p6_from_right = (p3[0] + (p5[0] - p4[0]), p3[1] + (p5[1] - p4[1]))
+    p6 = ((p6_from_left[0] + p6_from_right[0]) / 2.0, (p6_from_left[1] + p6_from_right[1]) / 2.0)
+    points = {
+        "p0": p0,
+        "p1": p1,
+        "p2": p2,
+        "p3": p3,
+        "p4": p4,
+        "p5": p5,
+        "p6": p6,
+    }
+    return {
+        "points": points,
+        "faces": _floor_target_faces(points),
+        "outer_polygon": _floor_outer_polygon(points),
+        "bbox": bbox,
+        "tolerance": tolerance,
+        "left_band": left_band,
+        "right_band": right_band,
+        "p6_inference": {
+            "from_left": p6_from_left,
+            "from_right": p6_from_right,
+        },
+    }
+
+
+def _render_floor_plane_distort(
+    image: Image.Image,
+    *,
+    source_geometry: dict[str, Any],
+    target_points: dict[str, tuple[float, float]],
+    output_size: tuple[int, int],
+    debug_dir: Path | None = None,
+    prefix: str = "floor_mapping",
+) -> Image.Image:
+    source_faces = source_geometry["faces"]
+    target_faces = _floor_target_faces(target_points)
+    canvas = Image.new("RGBA", output_size, (0, 0, 0, 0))
+    face_outputs: dict[str, Image.Image] = {}
+    for face_name in ("top", "left", "right"):
+        source_quad = source_faces[face_name]
+        target_quad = target_faces[face_name]
+        source_piece = _extract_polygon_rgba(image, source_quad)
+        warped_piece = _perspective_warp_unpadded(
+            source_piece,
+            source_corners=source_quad,
+            target_corners=target_quad,
+            output_size=output_size,
+        )
+        target_mask = _alpha_mask_for_polygon(output_size, target_quad)
+        alpha = warped_piece.getchannel("A")
+        warped_piece.putalpha(ImageChops.multiply(alpha, target_mask))
+        face_outputs[face_name] = warped_piece
+        canvas.alpha_composite(warped_piece)
+
+    final_mask = _alpha_mask_for_polygon(output_size, _floor_outer_polygon(target_points))
+    alpha = canvas.getchannel("A")
+    canvas.putalpha(ImageChops.multiply(alpha, final_mask))
+
+    if debug_dir is not None:
+        _save_floor_mapping_debug_images(
+            image,
+            source_geometry=source_geometry,
+            target_points=target_points,
+            target_faces=target_faces,
+            face_outputs=face_outputs,
+            mapped=canvas,
+            debug_dir=debug_dir,
+            prefix=prefix,
+        )
+    return canvas
+
+
+def _save_floor_mapping_debug_images(
+    image: Image.Image,
+    *,
+    source_geometry: dict[str, Any],
+    target_points: dict[str, tuple[float, float]],
+    target_faces: dict[str, list[tuple[float, float]]],
+    face_outputs: dict[str, Image.Image],
+    mapped: Image.Image,
+    debug_dir: Path,
+    prefix: str,
+) -> dict[str, str]:
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    paths: dict[str, str] = {}
+
+    source_canvas = image.convert("RGBA").copy()
+    source_draw = ImageDraw.Draw(source_canvas)
+    face_colors = {
+        "top": (64, 220, 255, 210),
+        "left": (255, 190, 64, 210),
+        "right": (160, 255, 96, 210),
+    }
+    for face_name, quad in source_geometry["faces"].items():
+        source_draw.line(quad + [quad[0]], fill=face_colors.get(face_name, (255, 255, 255, 210)), width=3)
+    for label, point in source_geometry["points"].items():
+        fill = (255, 64, 64, 255) if label != "p6" else (255, 64, 255, 255)
+        _draw_labeled_point(source_draw, point, label=label, fill=fill, radius=5)
+    source_path = debug_dir / f"{prefix}.01_source_detected_7_points.png"
+    source_canvas.save(source_path)
+    paths["source_detected_7_points"] = str(source_path)
+
+    target_scale = 3
+    target_canvas = Image.new("RGBA", (mapped.width * target_scale, mapped.height * target_scale), (30, 30, 30, 255))
+    target_draw = ImageDraw.Draw(target_canvas)
+    for face_name, quad in target_faces.items():
+        scaled_quad = [(x * target_scale, y * target_scale) for x, y in quad]
+        target_draw.polygon(scaled_quad, fill=face_colors.get(face_name, (255, 255, 255, 210))[:3] + (40,))
+        target_draw.line(scaled_quad + [scaled_quad[0]], fill=face_colors.get(face_name, (255, 255, 255, 210)), width=4)
+    for label, point in target_points.items():
+        fill = (64, 255, 128, 255) if label != "p6" else (255, 64, 255, 255)
+        _draw_labeled_point(target_draw, (point[0] * target_scale, point[1] * target_scale), label=label, fill=fill, radius=7)
+    target_path = debug_dir / f"{prefix}.02_target_game_iso_7_points.png"
+    target_canvas.save(target_path)
+    paths["target_game_iso_7_points"] = str(target_path)
+
+    for face_name, face_image in face_outputs.items():
+        face_path = debug_dir / f"{prefix}.03_{face_name}_face_mapped.png"
+        face_image.save(face_path)
+        paths[f"{face_name}_face_mapped"] = str(face_path)
+
+    mapped_path = debug_dir / f"{prefix}.04_mapped_3_plane_floor.png"
+    mapped.save(mapped_path)
+    paths["mapped_3_plane_floor"] = str(mapped_path)
+
+    geometry_path = debug_dir / f"{prefix}.geometry.json"
+    write_json(
+        geometry_path,
+        {
+            "source_points": {key: _point_to_json(value) for key, value in source_geometry["points"].items()},
+            "source_faces": {
+                key: [_point_to_json(point) for point in quad]
+                for key, quad in source_geometry["faces"].items()
+            },
+            "source_outer_polygon": [_point_to_json(point) for point in source_geometry["outer_polygon"]],
+            "source_bbox": list(source_geometry["bbox"]),
+            "source_tolerance": source_geometry["tolerance"],
+            "source_left_band": list(source_geometry["left_band"]),
+            "source_right_band": list(source_geometry["right_band"]),
+            "p6_inference": {
+                key: _point_to_json(value)
+                for key, value in source_geometry["p6_inference"].items()
+            },
+            "target_points": {key: _point_to_json(value) for key, value in target_points.items()},
+            "target_faces": {
+                key: [_point_to_json(point) for point in quad]
+                for key, quad in target_faces.items()
+            },
+            "target_outer_polygon": [_point_to_json(point) for point in _floor_outer_polygon(target_points)],
+        },
+    )
+    paths["geometry_json"] = str(geometry_path)
+    return paths
+
+
+def _render_floor_output(
+    image: Image.Image,
+    *,
+    canonical_target: dict[str, Any],
+    debug_dir: Path | None = None,
+    debug_prefix: str = "floor_mapping",
+) -> Image.Image:
+    canvas_width = int(canonical_target["canvas_width"])
+    canvas_height = int(canonical_target["canvas_height"])
+    source_geometry = _floor_source_points(alpha_mask(image))
+    target_points = _floor_target_points(canonical_target)
+    mapped = _render_floor_plane_distort(
+        image,
+        source_geometry=source_geometry,
+        target_points=target_points,
+        output_size=(canvas_width, canvas_height),
+        debug_dir=debug_dir,
+        prefix=debug_prefix,
+    )
+    target_bbox: EffectiveBBox = canonical_target["target_bbox"]
+    mapped = _align_canvas_bbox(mapped, target_left=target_bbox.left, target_top=target_bbox.top)
+    return mapped
+
+
 def _wall_four_point_plane_distort_points(mask: Image.Image, geometry: dict[str, Any]) -> dict[str, dict[str, tuple[float, float]]]:
     source_real = geometry["source_real_points"]
     target = geometry["target_points"]
@@ -1900,6 +2232,13 @@ def render_final_output(
                 debug_dir=debug_dir,
                 debug_prefix=debug_prefix,
             )
+        if canonical_target.get("tile_key", "").startswith("floor_"):
+            return _render_floor_output(
+                image,
+                canonical_target=canonical_target,
+                debug_dir=debug_dir,
+                debug_prefix=debug_prefix,
+            )
         target_bbox: EffectiveBBox = canonical_target["target_bbox"]
         canvas_width = int(canonical_target["canvas_width"])
         canvas_height = int(canonical_target["canvas_height"])
@@ -2170,27 +2509,32 @@ def score_candidate(
 ) -> dict[str, Any]:
     image = Image.open(candidate_path).convert("RGBA")
     candidate_alpha_mask = alpha_mask(image)
-    debug_dir = output_dir / "wall_mapping_debug" / candidate_path.stem
+    debug_dir = output_dir / "mapping_debug" / candidate_path.stem
     debug_prefix = candidate_path.stem
+    tile_key = str(canonical_target.get("tile_key", "")) if canonical_target is not None else ""
     candidate_rgba_normalized = render_final_output(
         image,
         reference_path=reference_path,
         canonical_target=canonical_target,
-        debug_dir=debug_dir if canonical_target is not None and str(canonical_target.get("tile_key", "")).startswith("wall_") else None,
+        debug_dir=debug_dir if canonical_target is not None and (tile_key.startswith("wall_") or tile_key.startswith("floor_")) else None,
         debug_prefix=debug_prefix,
     )
     scoring_mask_source = candidate_alpha_mask
-    if canonical_target is not None and str(canonical_target.get("tile_key", "")).startswith("wall_"):
+    source_bbox = effective_bbox(candidate_alpha_mask)
+    if canonical_target is not None and tile_key.startswith("wall_"):
         scoring_mask_source = ImageChops.multiply(
             alpha_mask(candidate_rgba_normalized),
             _polygon_mask(candidate_rgba_normalized.size, [list(point) for point in canonical_target["target_polygon"]]),
         )
+        source_bbox = effective_bbox(scoring_mask_source)
+    elif canonical_target is not None and tile_key.startswith("floor_"):
+        scoring_mask_source = alpha_mask(candidate_rgba_normalized)
+        source_bbox = effective_bbox(scoring_mask_source)
     candidate_mask_normalized, bbox = normalize_mask(scoring_mask_source)
     candidate_anchors = mask_anchors(candidate_mask_normalized)
     candidate_iou = iou(reference_mask_normalized, candidate_mask_normalized)
     candidate_anchor_error = anchor_error(candidate_anchors, reference_anchors)
     candidate_raw_area = mask_area(candidate_alpha_mask)
-    source_bbox = effective_bbox(candidate_alpha_mask)
     source_nontransparent_canvas = (
         source_bbox.left == 0
         and source_bbox.top == 0
@@ -2222,7 +2566,7 @@ def score_candidate(
         "raw_mask_area": candidate_raw_area,
         "score": score,
         "anchors": {key: list(value) if value is not None else None for key, value in candidate_anchors.items()},
-        "wall_mapping_debug_paths": {
+        "mapping_debug_paths": {
             path.stem.split(f"{candidate_path.stem}.", 1)[-1]: str(path)
             for path in sorted(debug_dir.glob(f"{candidate_path.stem}.*"))
         } if debug_dir.exists() else {},
@@ -2271,7 +2615,7 @@ def _export_selector_stage_artifacts(run_root: Path, *, variant: str, result: di
 
         final_stage = candidate.get("final_stage", {}) if isinstance(candidate.get("final_stage", {}), dict) else {}
         wall_debug_paths: dict[str, str] = {}
-        raw_debug_paths = candidate.get("wall_mapping_debug_paths", {})
+        raw_debug_paths = candidate.get("mapping_debug_paths", {})
         if isinstance(raw_debug_paths, dict):
             for debug_name, debug_path_raw in raw_debug_paths.items():
                 debug_path = Path(str(debug_path_raw))
@@ -2290,7 +2634,7 @@ def _export_selector_stage_artifacts(run_root: Path, *, variant: str, result: di
                 "cleanup_id": cleanup_id,
                 "source_input_path": candidate.get("path"),
                 "mapped_output_path": mapped_copy or candidate.get("final_path"),
-                "wall_mapping_debug_paths": wall_debug_paths,
+                "mapping_debug_paths": wall_debug_paths,
                 "canvas_size": result.get("canonical_target", {}),
                 "effective_bbox": candidate.get("effective_bbox"),
                 "mapping_status": "ok" if mapped_copy or candidate.get("final_path") else "missing_mapped_output",
@@ -2488,11 +2832,14 @@ def select_variant_pool(run_root: Path, *, variant: str = "full") -> dict[str, A
         variant_profile=variant_profile if isinstance(variant_profile, dict) else {},
     )
     reference_image = Image.open(reference_path).convert("RGBA")
-    if canonical_target is not None and str(canonical_target.get("tile_key", "")).startswith("wall_"):
+    tile_key = str(canonical_target.get("tile_key", "")) if canonical_target is not None else ""
+    if canonical_target is not None and tile_key.startswith("wall_"):
         reference_scoring_mask = _polygon_mask(
             (int(canonical_target["canvas_width"]), int(canonical_target["canvas_height"])),
             [list(point) for point in canonical_target["target_polygon"]],
         )
+    elif canonical_target is not None and tile_key.startswith("floor_"):
+        reference_scoring_mask = _floor_target_mask(canonical_target)
     else:
         reference_scoring_mask = alpha_mask(reference_image)
     reference_mask_normalized, reference_bbox = normalize_mask(reference_scoring_mask)
