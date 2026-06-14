@@ -1,0 +1,22 @@
+{
+  "schema_version": "tile_reskin_workflow_v1",
+  "run_id": "village_road_mock",
+  "output_root": "../../output/tile_reskin_runs",
+  "provider": { "name": "mock", "mode": "mock" },
+  "model": { "name": "mock" },
+  "tile_size": 64,
+  "source_tiles": {
+    "dir": "/Users/hunglingki/git_projects/web_projects/doodi_world_demo/client/public/assets/village/standard/overlay",
+    "prefix": "road"
+  },
+  "materials": [
+    { "id": "grass", "generate": { "prompt": "flat grass field", "size": "256x256", "mock_color": "#4e8a3c" } },
+    { "id": "road",  "generate": { "prompt": "flat cobblestone field", "size": "256x256", "mock_color": "#b9b9c8" } }
+  ],
+  "reskin": {
+    "regions": [
+      { "match": "green", "material": "grass", "soft": true },
+      { "match": "else",  "material": "road",  "modulate_luma": true }
+    ]
+  }
+}

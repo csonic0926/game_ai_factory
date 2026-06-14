@@ -1,0 +1,21 @@
+{
+  "schema_version": "tile_reskin_workflow_v1",
+  "run_id": "house_walls",
+  "output_root": "../../output/tile_reskin_runs",
+  "provider": { "name": "gpt_image", "mode": "direct" },
+  "model": { "name": "gpt-image-2" },
+  "tile_size": 64,
+  "source_tiles": { "dir": "/tmp/orig_house", "prefix": "wall" },
+  "materials": [
+    { "id": "brick", "field": "/Users/hunglingki/git_projects/web_projects/doodi_world_demo/tmp/std_regen/_tiles/brick_field.png" },
+    { "id": "wood",  "field": "/Users/hunglingki/git_projects/web_projects/doodi_world_demo/tmp/std_regen/_tiles/wood_field.png" }
+  ],
+  "reskin": {
+    "comment": "warm brick redesign: structural black kept; cream panel -> brick; wood frame -> wood with luma",
+    "regions": [
+      { "match": "dark",  "keep": true },
+      { "match": "cream", "material": "brick" },
+      { "match": "else",  "material": "wood", "modulate_luma": true }
+    ]
+  }
+}

@@ -6,6 +6,7 @@ import argparse
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from pipeline.build_atlas import build_atlas
@@ -13,8 +14,20 @@ from pipeline.inspect_manifest import build_summary
 from pipeline.reference_pair_workflow import (
     ReferencePairWorkflowError,
     generate_reference_pair,
+    load_and_validate_spec,
     prepare_reference_pair_run,
     validate_reference_pair_run,
+)
+from pipeline.prop_asset_workflow import (
+    PropAssetWorkflowError,
+    generate_prop_assets,
+    prepare_prop_asset_run,
+    validate_prop_asset_run,
+)
+from pipeline.tile_reskin_workflow import (
+    TileReskinWorkflowError,
+    generate_tile_reskin,
+    prepare_tile_reskin_run,
 )
 from pipeline.sample_regression import snapshot_baseline, verify_baseline
 from pipeline.variant_selector import VariantSelectorError, select_variant_pool
@@ -32,7 +45,7 @@ REFERENCE_PAIR_EXAMPLES_ROOT = REPO_ROOT / "examples" / "reference_pair_workflow
 
 
 def parse_arguments() -> argparse.Namespace:
-    argument_parser = argparse.ArgumentParser(description="isometric_tile_factory repo CLI")
+    argument_parser = argparse.ArgumentParser(description="game_asset_factory repo CLI")
     subparsers = argument_parser.add_subparsers(dest="command", required=True)
 
     validate_parser = subparsers.add_parser("validate", help="Validate config, manifest, or Blender scene")
@@ -144,7 +157,12 @@ def parse_arguments() -> argparse.Namespace:
     wall_generate_parser.add_argument(
         "--provider",
         default="mock",
-        help="Provider name to place in the generated spec (mock, nano_banana, nano_banana_pro, or imagegen for agent handoff)",
+        help="Provider/backend name to place in the generated spec (canonical: mock, gemini_cli, cliproxyapi, agent_handoff; legacy aliases remain accepted)",
+    )
+    wall_generate_parser.add_argument(
+        "--model",
+        default="",
+        help="Optional model name for the chosen provider/backend (for example: nano-banana-2, nano-banana-pro, gpt-image-2)",
     )
     wall_generate_parser.add_argument(
         "--run-id",
@@ -181,6 +199,52 @@ def parse_arguments() -> argparse.Namespace:
     select_variant_parser.add_argument("--run-root", required=True, help="Prepared reference-pair run root")
     select_variant_parser.add_argument("--variant", default="full", help="Variant to score")
 
+    prop_prepare_parser = subparsers.add_parser(
+        "prepare-prop-assets",
+        help="Prepare a prop/object asset workflow run with prompts for requested states",
+    )
+    prop_prepare_parser.add_argument("--spec", required=True, help="Path to prop asset workflow spec JSON")
+
+    prop_generate_parser = subparsers.add_parser(
+        "generate-prop-assets",
+        help="Generate, validate, and emit deliverables for a prop/object asset workflow spec",
+    )
+    prop_generate_parser.add_argument("--spec", required=True, help="Path to prop asset workflow spec JSON")
+    prop_generate_parser.add_argument("--provider", help="Override prop provider, e.g. gpt_image")
+    prop_generate_parser.add_argument(
+        "--transparent-background",
+        choices=["true", "false"],
+        help="Deprecated for gpt-image-2 prop runs; use false/color-key because native transparent background is not supported by that model.",
+    )
+    prop_generate_parser.add_argument("--out", help="Override run root for this prop run")
+
+    tile_reskin_prepare_parser = subparsers.add_parser(
+        "prepare-tile-reskin",
+        help="Prepare a tile re-skin run (re-texture an existing geometrically-correct tile set)",
+    )
+    tile_reskin_prepare_parser.add_argument("--spec", required=True, help="Path to tile_reskin_workflow_v1 spec JSON")
+
+    tile_reskin_generate_parser = subparsers.add_parser(
+        "generate-tile-reskin",
+        help="Generate materials, re-skin every source tile variant, and emit deliverables",
+    )
+    tile_reskin_generate_parser.add_argument("--spec", required=True, help="Path to tile_reskin_workflow_v1 spec JSON")
+    tile_reskin_generate_parser.add_argument("--provider", help="Override provider, e.g. mock / gpt_image / gemini_cli")
+    tile_reskin_generate_parser.add_argument("--out", help="Override run root for this tile re-skin run")
+
+    prop_validate_parser = subparsers.add_parser(
+        "validate-prop-assets",
+        help="Validate generated prop/object asset PNGs against the prepared prop workflow run",
+    )
+    prop_validate_parser.add_argument("--run-root", help="Prepared prop asset run root")
+    prop_validate_parser.add_argument("--run", help="Alias for --run-root")
+    prop_validate_parser.add_argument(
+        "--image",
+        action="append",
+        default=[],
+        help="Override image path for an asset using asset_id=/absolute/path.png",
+    )
+
     return argument_parser.parse_args()
 
 
@@ -201,6 +265,7 @@ def build_wall_reference_pair_spec(
     height_units: int,
     variants: list[str],
     provider_name: str,
+    model_name: str,
     output_root: Path,
     run_id: str,
 ) -> dict:
@@ -208,7 +273,7 @@ def build_wall_reference_pair_spec(
     height_label = "1u" if height_units == 1 else "2u"
     theme = f"pixel stone wall {height_label}"
     provider_payload = {"name": provider_name}
-    if provider_name == "imagegen":
+    if provider_name in {"imagegen_handoff", "agent_handoff"}:
         provider_payload["mode"] = "agent_handoff"
         provider_payload["agent_tool"] = "imagegen"
     return {
@@ -218,6 +283,7 @@ def build_wall_reference_pair_spec(
         "output_root": str(output_root),
         "variants": variants,
         "provider": provider_payload,
+        "model": {"name": model_name},
         "background": {
             "mode": "color_key",
             "prompt_color": "#FF00FF",
@@ -595,6 +661,7 @@ def command_generate_wall_reference_pair(arguments: argparse.Namespace) -> int:
             height_units=height_units,
             variants=variants,
             provider_name=str(arguments.provider).strip() or "mock",
+            model_name=str(arguments.model).strip() or "",
             output_root=Path(arguments.output_root).expanduser().resolve(),
             run_id=run_id,
         )
@@ -605,8 +672,9 @@ def command_generate_wall_reference_pair(arguments: argparse.Namespace) -> int:
         )
         spec_out.parent.mkdir(parents=True, exist_ok=True)
         spec_out.write_text(json.dumps(spec, indent=2) + "\n", encoding="utf-8")
-        provider_name = str(arguments.provider).strip().lower() or "mock"
-        if provider_name == "imagegen":
+        normalized_spec, _ = load_and_validate_spec(spec_out)
+        provider_mode = str(normalized_spec.get("provider", {}).get("mode", "direct")).strip().lower() or "direct"
+        if provider_mode == "agent_handoff":
             result = prepare_reference_pair_run(spec_out)
             mode = "generate-wall-reference-pair.prepare-agent-handoff"
         else:
@@ -655,6 +723,112 @@ def command_validate_reference_pair(arguments: argparse.Namespace) -> int:
         return 1
 
 
+def command_prepare_prop_assets(arguments: argparse.Namespace) -> int:
+    try:
+        result = prepare_prop_asset_run(Path(arguments.spec).expanduser().resolve())
+        print(json.dumps({"ok": True, "mode": "prepare-prop-assets", "result": result}, indent=2))
+        return 0
+    except PropAssetWorkflowError as error:
+        print(json.dumps({"ok": False, "mode": "prepare-prop-assets", "error": str(error)}, indent=2))
+        return 1
+
+
+def command_generate_prop_assets(arguments: argparse.Namespace) -> int:
+    try:
+        spec_path = Path(arguments.spec).expanduser().resolve()
+        if arguments.provider or arguments.transparent_background or arguments.out:
+            spec = json.loads(spec_path.read_text(encoding="utf-8"))
+            if arguments.provider:
+                provider_name = str(arguments.provider).strip().lower()
+                if provider_name in {"gpt_image", "gpt_image_transparent_prop"}:
+                    spec["provider"] = {"name": "gpt_image", "mode": "gpt_image_prop_color_key"}
+                    spec.setdefault("model", {"name": "gpt-image-2"})
+                    spec["model"]["name"] = spec["model"].get("name") or "gpt-image-2"
+                    spec["background"] = {"mode": "color_key", "prompt_color": "#FF00FF", "fallback_colors": ["#00FF00"], "tolerance": 24}
+                else:
+                    spec["provider"] = {"name": provider_name, "mode": "direct"}
+            if arguments.transparent_background == "true":
+                raise PropAssetWorkflowError(
+                    "--transparent-background true is not supported for gpt-image-2 prop runs; use color-key background and cleanup scoring."
+                )
+            elif arguments.transparent_background == "false":
+                spec["background"] = {"mode": "color_key", "prompt_color": "#FF00FF", "fallback_colors": ["#00FF00"], "tolerance": 24}
+            if arguments.out:
+                run_root = Path(arguments.out).expanduser().resolve()
+                spec["output_root"] = str(run_root.parent)
+                spec["run_id"] = run_root.name
+            with tempfile.NamedTemporaryFile("w", suffix=".prop.spec.json", delete=False, encoding="utf-8") as temp_file:
+                json.dump(spec, temp_file, indent=2)
+                temp_file.write("\n")
+                spec_path = Path(temp_file.name)
+        result = generate_prop_assets(spec_path)
+        print(json.dumps({"ok": result["ok"], "mode": "generate-prop-assets", "result": result}, indent=2))
+        return 0 if result["ok"] else 1
+    except (PropAssetWorkflowError, ReferencePairWorkflowError) as error:
+        print(json.dumps({"ok": False, "mode": "generate-prop-assets", "error": str(error)}, indent=2))
+        return 1
+
+
+def command_prepare_tile_reskin(arguments: argparse.Namespace) -> int:
+    try:
+        result = prepare_tile_reskin_run(Path(arguments.spec).expanduser().resolve())
+        print(json.dumps({"ok": True, "mode": "prepare-tile-reskin", "result": result}, indent=2))
+        return 0
+    except TileReskinWorkflowError as error:
+        print(json.dumps({"ok": False, "mode": "prepare-tile-reskin", "error": str(error)}, indent=2))
+        return 1
+
+
+def command_generate_tile_reskin(arguments: argparse.Namespace) -> int:
+    try:
+        spec_path = Path(arguments.spec).expanduser().resolve()
+        if arguments.provider or arguments.out:
+            spec = json.loads(spec_path.read_text(encoding="utf-8"))
+            if arguments.provider:
+                provider_name = str(arguments.provider).strip().lower()
+                mode = "mock" if provider_name == "mock" else "direct"
+                spec["provider"] = {"name": provider_name, "mode": mode}
+            if arguments.out:
+                run_root = Path(arguments.out).expanduser().resolve()
+                spec["output_root"] = str(run_root.parent)
+                spec["run_id"] = run_root.name
+            with tempfile.NamedTemporaryFile("w", suffix=".tile_reskin.spec.json", delete=False, encoding="utf-8") as temp_file:
+                json.dump(spec, temp_file, indent=2)
+                temp_file.write("\n")
+                spec_path = Path(temp_file.name)
+        result = generate_tile_reskin(spec_path)
+        print(json.dumps({"ok": result["ok"], "mode": "generate-tile-reskin", "result": result}, indent=2))
+        return 0 if result["ok"] else 1
+    except TileReskinWorkflowError as error:
+        print(json.dumps({"ok": False, "mode": "generate-tile-reskin", "error": str(error)}, indent=2))
+        return 1
+
+
+def command_validate_prop_assets(arguments: argparse.Namespace) -> int:
+    try:
+        run_root_value = arguments.run_root or arguments.run
+        if not run_root_value:
+            raise PropAssetWorkflowError("validate-prop-assets requires --run-root or --run")
+        asset_paths: dict[str, Path] = {}
+        for raw_item in arguments.image:
+            if "=" not in raw_item:
+                raise PropAssetWorkflowError(f"Invalid --image value '{raw_item}'. Expected asset_id=/path/to/image.png")
+            asset_id, path_value = raw_item.split("=", 1)
+            normalized_asset_id = asset_id.strip()
+            if not normalized_asset_id or not path_value.strip():
+                raise PropAssetWorkflowError(f"Invalid --image value '{raw_item}'. Expected asset_id=/path/to/image.png")
+            asset_paths[normalized_asset_id] = Path(path_value).expanduser().resolve()
+        result = validate_prop_asset_run(
+            Path(run_root_value).expanduser().resolve(),
+            asset_paths=asset_paths or None,
+        )
+        print(json.dumps({"ok": result["ok"], "mode": "validate-prop-assets", "result": result}, indent=2))
+        return 0 if result["ok"] else 1
+    except PropAssetWorkflowError as error:
+        print(json.dumps({"ok": False, "mode": "validate-prop-assets", "error": str(error)}, indent=2))
+        return 1
+
+
 def main() -> None:
     arguments = parse_arguments()
 
@@ -682,6 +856,16 @@ def main() -> None:
         raise SystemExit(command_validate_reference_pair(arguments))
     if arguments.command == "select-reference-pair-variant":
         raise SystemExit(command_select_reference_pair_variant(arguments))
+    if arguments.command == "prepare-prop-assets":
+        raise SystemExit(command_prepare_prop_assets(arguments))
+    if arguments.command == "generate-prop-assets":
+        raise SystemExit(command_generate_prop_assets(arguments))
+    if arguments.command == "validate-prop-assets":
+        raise SystemExit(command_validate_prop_assets(arguments))
+    if arguments.command == "prepare-tile-reskin":
+        raise SystemExit(command_prepare_tile_reskin(arguments))
+    if arguments.command == "generate-tile-reskin":
+        raise SystemExit(command_generate_tile_reskin(arguments))
 
     raise SystemExit(f"Unknown command: {arguments.command}")
 

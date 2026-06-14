@@ -1,0 +1,74 @@
+{
+  "schema_version": "tile_reskin_workflow_v1",
+  "output_root": "../../output/tile_reskin_runs",
+  "provider": {
+    "name": "gpt_image",
+    "mode": "direct"
+  },
+  "model": {
+    "name": "gpt-image-2"
+  },
+  "tile_size": 64,
+  "source_tiles": {
+    "dir": "/tmp/orig_th",
+    "variants": [
+      "wall_bottom",
+      "wall_center",
+      "wall_corner_lb",
+      "wall_corner_lt",
+      "wall_corner_rb",
+      "wall_corner_rt",
+      "wall_door_left",
+      "wall_door_left_seed",
+      "wall_door_right",
+      "wall_door_right_seed",
+      "wall_edge_bottom",
+      "wall_edge_left",
+      "wall_edge_right",
+      "wall_edge_top",
+      "wall_lb",
+      "wall_left",
+      "wall_lt",
+      "wall_rb",
+      "wall_right",
+      "wall_rt",
+      "wall_top_center"
+    ]
+  },
+  "run_id": "th_walls",
+  "materials": [
+    {
+      "id": "plaster",
+      "field": "/Users/hunglingki/git_projects/web_projects/doodi_world_demo/tmp/std_regen/_tiles/plaster_field.png"
+    },
+    {
+      "id": "stone",
+      "field": "/Users/hunglingki/git_projects/web_projects/doodi_world_demo/tmp/std_regen/_tiles/stonefloor_field.png"
+    },
+    {
+      "id": "wood",
+      "field": "/Users/hunglingki/git_projects/web_projects/doodi_world_demo/tmp/std_regen/_tiles/wood_field.png"
+    }
+  ],
+  "reskin": {
+    "regions": [
+      {
+        "match": "dark",
+        "keep": true
+      },
+      {
+        "match": "cream",
+        "material": "plaster"
+      },
+      {
+        "match": "gray",
+        "material": "stone"
+      },
+      {
+        "match": "else",
+        "material": "wood",
+        "modulate_luma": true
+      }
+    ]
+  }
+}

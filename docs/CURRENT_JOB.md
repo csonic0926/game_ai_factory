@@ -1,5 +1,17 @@
 # CURRENT_JOB.md
 
+## June 3 — Cross-repo requirement intake process
+
+Status: done.
+
+- Added `requirement_from_other_repo/` as the canonical folder for requirements submitted by other repositories.
+- Added source-repo Codex guidance and a request template:
+  - `requirement_from_other_repo/README.md`
+  - `requirement_from_other_repo/REQUEST_TEMPLATE.md`
+  - `requirement_from_other_repo/EXAMPLE_PROP_REQUEST.md`
+- Updated root `AGENTS.md` so future Codex agents know to use this intake process.
+- Updated `docs/REPO_MEMORY.md` with the durable rule that new cross-repo requests use singular `requirement_from_other_repo/`; older `requirement_from_others/` mentions are historical.
+
 ## Job
 
 Shift the tile factory from raw-render-driven final placement toward **game-facing 2D canonical placement rules**, starting with walls.
@@ -18,7 +30,7 @@ Shift the tile factory from raw-render-driven final placement toward **game-faci
   - height extension rule
 - Raw Blender renders are not canonical truth for final placement.
 - `1 tile unit = 128 x 128`.
-- `wall 2u` final canvas should be `128 x 256`.
+- `wall 2u` final canvas should be `128 x 192`.
 
 ## Active plan
 
@@ -40,11 +52,11 @@ Shift the tile factory from raw-render-driven final placement toward **game-faci
 
 - Added `examples/workflow_references/canonical_tile_spec.json`.
 - Started wiring `pipeline/variant_selector.py` to read canonical wall targets.
-- `wall 2u` final export now uses `128 x 256` canvas.
+- `wall 2u` final export now uses `128 x 192` canvas.
 - Reframed the canonical spec toward pure 2D factory fields (`attach_edge`, `opaque_half`, `transparent_half`, `height_units`).
 - Added a wall-specific fitter path that maps the source wall alpha bbox into the canonical wall bbox before polygon/half masking.
 - Wall final alpha is now driven directly by the canonical polygon + half mask instead of the raw source alpha silhouette.
-- Current left-2u test now lands at canonical size/bbox (`128x256`, bbox near `0,0,65,225`).
+- Current left-2u test now lands at canonical size/bbox (`128x192`, old target y-values above 64 shifted upward by 64).
 - Confirmed the wall generation helper had left/right reference images swapped for Gemini input (`rot0` vs `rot90`) and corrected the mapping in `itf.py`.
 - Remaining issue: validate left/right naming and contact-edge semantics, then run the same fitter path on the right-wall case.
 
@@ -184,6 +196,151 @@ Shift the tile factory from raw-render-driven final placement toward **game-faci
   - `wall_left_2u` -> bbox `(0, 0, 65, 225)`
   - `wall_right_2u` -> bbox `(64, 0, 128, 225)`
 - This is good enough to treat the six-point mapping as a successful trial for now; next refinement can be about whether the hexagon should be tuned further, not whether the approach is viable.
+
+## April 24 — prop asset factory vertical slice planning
+
+- New direction: add a separate **prop/object asset workflow** for engineering-spec-driven isometric game art assets.
+- First case study should stay narrow: IMT `flame_relay_brazier` pair only.
+  - `imt_flame_source_brazier_active`
+  - `imt_flame_target_brazier_unlit`
+- Proposed boundary:
+  - do not modify the existing floor/wall `reference_pair_workflow_v1` contract first
+  - add a new `prop_asset_workflow_v1` schema and prop validator
+  - keep floor/wall prompt, selection, and canonical geometry behavior unchanged
+- Prop validation should initially judge only engineering usability, not art quality:
+  - RGBA
+  - `128x256`
+  - clean alpha background
+  - bbox not touching top/left/right canvas edges
+  - bottom close to bottom-center anchor `(64,255)`
+  - x center close to `64`
+  - no baked floor tile
+  - no text/watermark heuristic
+  - source/target bbox pair consistency
+- Desired first deliverables:
+  - `deliverables/imt_flame_source_brazier_active.png`
+  - `deliverables/imt_flame_target_brazier_unlit.png`
+  - `deliverables/prop_asset_manifest.json`
+  - `deliverables/validation_summary.json`
+  - `deliverables/preview_sheet.png`
+
+## April 24 — prop asset factory vertical slice implemented
+
+- Added additive prop workflow modules:
+  - `pipeline/prop_asset_workflow.py`
+  - `pipeline/prop_validator.py`
+- Added CLI commands:
+  - `prepare-prop-assets`
+  - `generate-prop-assets`
+  - `validate-prop-assets`
+- Added first case-study spec:
+  - `examples/prop_asset_workflow/flame_relay_brazier_pair.spec.json`
+- Added workflow doc:
+  - `docs/PROP_ASSET_WORKFLOW.md`
+- The first prop workflow is intentionally separate from `reference_pair_workflow_v1`; floor/wall prompt, selector, and canonical placement behavior were not routed through prop code.
+- Mock flame relay run now succeeds and writes:
+  - `output/prop_asset_runs/imt_flame_relay_brazier_pair/deliverables/imt_flame_source_brazier_active.png`
+  - `output/prop_asset_runs/imt_flame_relay_brazier_pair/deliverables/imt_flame_target_brazier_unlit.png`
+  - `output/prop_asset_runs/imt_flame_relay_brazier_pair/deliverables/prop_asset_manifest.json`
+  - `output/prop_asset_runs/imt_flame_relay_brazier_pair/deliverables/validation_summary.json`
+  - `output/prop_asset_runs/imt_flame_relay_brazier_pair/deliverables/preview_sheet.png`
+  - optional `prop_asset_atlas.png` and `prop_asset_atlas_metadata.json`
+- Added `tests/test_prop_asset_workflow.py`.
+- Verification:
+  - `python3 -m unittest tests/test_reference_pair_workflow_provider.py tests/test_prop_asset_workflow.py`
+  - `python3 -m unittest discover -s tests`
+  - `python3 itf.py generate-prop-assets --spec examples/prop_asset_workflow/flame_relay_brazier_pair.spec.json`
+
+## April 26 — prop generation canvas adapter implemented
+
+- Added provider-neutral prop `generation_canvas` derivation to `pipeline/prop_asset_workflow.py`.
+  - default remains implicit when omitted:
+    - `strategy = derive_from_final_canvas`
+    - `target_long_edge = 1024`
+    - `preserve_aspect_ratio = true`
+  - current derived example:
+    - final `128x256` -> source hint `512x1024` with aspect ratio `1:2`
+- Prop prompts now describe **high-resolution source generation for a final engineering canvas** instead of claiming the provider output itself must already be the final `128x256`.
+- Added prop provider adapters:
+  - GPT Image / CLIProxyAPI path now derives a legal GPT size and records fallback decisions
+  - Gemini / Nano Banana path now derives closest supported aspect ratio / image size and records fallback decisions
+- Provider request snapshots now include:
+  - `generation_canvas`
+  - `adapter_decision`
+  - `provider_generation_args`
+- Shared `generate_with_provider()` now accepts prop-side overrides for:
+  - `size`
+  - `aspect_ratio`
+  - `image_size`
+  while preserving existing wall/floor defaults when omitted
+- Mock prop generation now simulates a more realistic high-res source:
+  - keep the prop as a smaller bottom-anchored cutout on a larger source canvas
+  - do not stretch the final sprite to fill the provider canvas
+- Updated example prop specs and `docs/PROP_ASSET_WORKFLOW.md` to document the generation-canvas contract.
+
+## April 26 — verification after adapter work
+
+- Passed:
+  - `python3 -m unittest tests/test_prop_asset_workflow.py`
+  - `python3 -m unittest tests/test_reference_pair_workflow_provider.py`
+  - `python3 -m unittest discover -s tests`
+- Added coverage for:
+  - generation-canvas derivation (`128x256 -> 512x1024`, `128x128 -> 1024x1024`)
+  - GPT adapter fallback to supported portrait size
+  - Gemini adapter fallback to closest supported tall ratio
+  - request snapshot metadata (`generation_canvas`, `adapter_decision`, `provider_generation_args`)
+  - scorer-selected cleanup candidate becoming the normalized final asset
+  - final deliverable remaining exactly `128x256` even when raw source is high-res
+  - `python3 itf.py validate-prop-assets --run-root output/prop_asset_runs/imt_flame_relay_brazier_pair`
+
+## April 25 — prop real-provider + IMT handoff update
+
+- Kept scope to IMT `flame_relay_brazier` pair only:
+  - `imt_flame_target_brazier_unlit`
+  - `imt_flame_source_brazier_active`
+- Added real direct provider support to `prop_asset_workflow_v1` without changing reference-pair workflow:
+  - `cliproxyapi` + `gpt-image-2` spec added at `examples/prop_asset_workflow/flame_relay_brazier_pair.cliproxyapi.spec.json`
+  - `gemini_cli` + `nano-banana-pro` spec added at `examples/prop_asset_workflow/flame_relay_brazier_pair.gemini_pro.spec.json`
+- `edit_from` routing now writes provider request snapshots and uses the cleaned/normalized source asset as the reference image for the active source state.
+- Prop cleanup now:
+  - preserves raw outputs in `step_1_raw/`
+  - preserves cleanup variants in `step_3_cleanup_pool/`
+  - samples corner background colors for real provider outputs that ignore the requested chroma key
+  - normalizes the cleaned object onto the requested `128x256` bottom-center canvas
+- Added IMT deliverable:
+  - `deliverables/imt_prop_handoff.json`
+  - contains relative deliverable paths, atlas rects, anchor, footprint, and validation status.
+- `agent_handoff` for prop workflow is explicitly documented as intentionally unsupported for v1; prepare writes an unsupported packet for clarity, but generation errors out.
+- Real Gemini run succeeded:
+  - command: `python3 itf.py generate-prop-assets --spec examples/prop_asset_workflow/flame_relay_brazier_pair.gemini_pro.spec.json`
+  - run root: `output/prop_asset_runs/imt_flame_relay_brazier_pair_real_gemini_pro`
+  - validation status: pass
+  - preview: `output/prop_asset_runs/imt_flame_relay_brazier_pair_real_gemini_pro/deliverables/preview_sheet.png`
+- The earlier `cliproxyapi` real attempt failed on edit mode before validation:
+  - category: provider API contract / endpoint mismatch
+  - error: `/images/edits` returned HTTP 400 saying request content type was not multipart/form-data
+  - raw target artifacts were still preserved for debugging.
+- Verification:
+  - `python3 -m unittest discover -s tests`
+  - `python3 itf.py generate-prop-assets --spec examples/prop_asset_workflow/flame_relay_brazier_pair.spec.json`
+  - `python3 itf.py generate-prop-assets --spec examples/prop_asset_workflow/flame_relay_brazier_pair.gemini_pro.spec.json`
+
+## April 25–26 — GPT Image prop workflow correction
+
+- Initial native-transparent GPT Image prop path was attempted for `flame_relay_brazier`, but `gpt-image-2` rejects native transparent background: `Transparent background is not supported for this model.`
+- The repo direction has been corrected: GPT Image prop runs now use a flat chroma-key source background, not native alpha.
+- Supported GPT Image prop contract:
+  - `provider.name = "gpt_image"`
+  - `provider.mode = "gpt_image_prop_color_key"`
+  - `model.name = "gpt-image-2"`
+  - `background.mode = "color_key"` with `#FF00FF` primary and `#00FF00` fallback.
+- `gpt_image_transparent_prop` is now intentionally rejected for this model with a clear error.
+- CLI additions remain:
+  - `generate-prop-assets --provider`
+  - `generate-prop-assets --out <run_root>`
+  - `validate-prop-assets --run <run_root>` alias
+  - `--transparent-background true` is now rejected for GPT Image prop runs.
+- IMT handoff keeps the same shape and still includes `generation_provider`, `background_mode`, and `alpha_validated`.
 
 ## April 11 rollback note
 
@@ -920,3 +1077,222 @@ Primary regression target:
   - final mapped floor
 - Selector scoring for canonical floor targets now scores the mapped final floor alpha instead of the raw source alpha, and uses canonical floor target masks for reference normalization.
 - Added `tests/test_variant_selector_floor_mapping.py` to verify reference full/half floor mapping.
+
+## April 22 — wall 2u target-height correction
+
+- Reconfirmed that Step 6 source-side Gemini/raw point measurement was already correct.
+- The real error was the 2u wall target definition: it was encoded as `128 x 256` but should be `128 x 192`.
+- Target-side correction rule for the old 2u coordinates:
+  - keep target points with `y <= 64` unchanged
+  - for target points with `y > 64`, use `y - 64`
+- `top_plane_apex_opposite = [64, 64]` stays unchanged.
+- Updated canonical wall 2u tiles accordingly:
+  - left body/contact now end at `y=160/128` instead of `224/192`
+  - right body/contact now end at `y=160/128` instead of `224/192`
+
+## April 23 — right-wall Step 7 sampling correction
+
+- The mapped right 2u wall looked visually correct, but Step 7 was failing with `wall_bottom_edge_angle_mismatch`.
+- Root cause was validator sampling, not the mapped wall itself:
+  - right-wall bottom-edge extraction included an isolated bottom/thickness outlier near the left end
+  - that single point skewed the fitted bottom angle enough to exceed the threshold
+- Fix:
+  - keep top/bottom edge handling mirrored for left/right walls
+  - after raw top/bottom per-column extraction, keep the largest consistent edge run before fitting the line
+- Result:
+  - right wall now passes Step 7 again
+  - `classic_dungeon_stone_wall_match_floor_2u_right_magenta_20260421` now produces `final/selected_right.png`
+
+## April 23 — direct CLIProxyAPI GPT Image 2 provider reintroduced with capability guard
+
+- Reintroduced a normal in-repo direct provider target for local CLIProxyAPI-backed GPT Image 2 instead of only the old Codex handoff shape.
+- Current provider contract:
+  - canonical public interface is now `provider.name` + `model.name`
+  - `provider.name = "cliproxyapi"` + `model.name = "gpt-image-2"` = direct CLIProxyAPI-backed GPT Image 2
+  - `provider.name = "gemini_cli"` + `model.name = "nano-banana-2"` / `nano-banana-pro`
+  - `provider.name = "agent_handoff"` + `model.name = "gpt-image-2"` = old Codex built-in imagegen handoff path
+  - legacy provider aliases still normalize into those canonical contracts for backward compatibility
+- Implementation details:
+  - direct GPT Image 2 requests now call local OpenAI-compatible endpoints:
+    - `/images/edits` when a variant has exactly one reference image
+    - `/images/generations` when a variant has no reference image
+  - endpoint/key resolve from env first, then `~/.cli-proxy-api/config.yaml`, then fallback to `http://127.0.0.1:8317/v1` and `local-dev-image-key`
+- Repo limitation currently left explicit:
+  - direct GPT Image 2 wrapper supports at most one reference image per variant
+  - multi-reference transform runs still need Gemini/Nano Banana or a later adapter
+- Verification status on this machine (`2026-04-23`, Homebrew `cliproxyapi 6.9.30`):
+  - unit coverage added for direct-provider normalization and direct edit-response file writing
+  - real server probe succeeded at `/` and `/v1/models`
+  - real server root currently advertises only:
+    - `POST /v1/chat/completions`
+    - `POST /v1/completions`
+    - `GET /v1/models`
+  - real `/v1/images/generations` and `/v1/images/edits` both returned `404 page not found`
+- Repo behavior was updated accordingly:
+  - direct GPT Image 2 path now fails fast with a clear capability error when the running CLIProxyAPI server does not expose image routes
+  - next actual runtime step is on the service side: upgrade / reconfigure CLIProxyAPI to a build that exposes image endpoints, or use a different proxy path that does
+
+## April 23 — local CLIProxyAPI image-route fix completed
+
+- Confirmed upstream `CLIProxyAPI main` now contains image handlers:
+  - `internal/api/server.go` mounts `/v1/images/generations` and `/v1/images/edits`
+  - `sdk/api/handlers/openai/openai_images_handlers.go` bridges GPT Image calls through Responses/tools
+- Local blocker was not repo code; it was the installed Homebrew binary.
+  - Homebrew `cliproxyapi 6.9.30` on this machine returned `404` for both image routes.
+  - Upstream `main` required Go `1.26.0`; local Go `1.21.11` was bypassed successfully with `GOTOOLCHAIN=auto`.
+- Built a new local binary from upstream `main` and switched the LaunchAgent to:
+  - `/Users/hunglingki/.local/bin/cliproxyapi-main`
+  - with `-config /opt/homebrew/etc/cliproxyapi.conf`
+- Live verification after the switch:
+  - `POST /v1/images/generations` returns `200 OK` with `b64_json`
+  - `POST /v1/images/edits` returns `200 OK` with `b64_json`
+- Important implementation note for repo wrapper:
+  - `GET /` still advertises only text routes even on the working upstream build
+  - therefore provider probing must not hard-fail only because root endpoint advertisement omits `/v1/images/*`
+- Repo-side provider wrapper was relaxed accordingly so it now trusts real route calls instead of stale root advertisement.
+
+## April 23 — factory-facing handoff contract cleanup
+
+- Updated the repo root `README.md` so GPT Image 2 support is documented as part of the factory's public order contract instead of only in internal workflow notes.
+- Added explicit `model` handling to the spec normalization path so external callers can state both:
+  - which backend the factory should use
+  - which model that backend should run
+- Updated wall helper CLI/docs/skill docs to prefer canonical combinations like:
+  - `--provider cliproxyapi --model gpt-image-2`
+  - `--provider gemini_cli --model nano-banana-2`
+- Fixed the wall helper execution branch so it no longer treats direct `imagegen` as implicit handoff mode; handoff now depends on normalized `provider.mode`, not the raw CLI alias string.
+
+
+## April 26 — prop cleanup scoring after GPT Image transparency rejection
+
+- User confirmed `gpt-image-2` rejects native transparent output: `Transparent background is not supported for this model.`
+- Current prop direction is therefore GPT Image color-key generation, not native transparent generation.
+- Added `gpt_image_prop_color_key` as the GPT Image prop mode; `gpt_image_transparent_prop` is now rejected with a clear error.
+- GPT Image prop prompts now require a flat solid `#FF00FF` chroma-key background with `#00FF00` fallback, one centered prop, no scene/floor/frame/text/watermark.
+- Added `pipeline/prop_cleanup_scorer.py` to compare raw pixels against cleanup candidates and select the best candidate by engineering signals:
+  - remove border-connected key background
+  - preserve non-background object pixels
+  - preserve object RGB
+  - penalize key-color fringe
+  - penalize missing/touching/full-canvas bbox
+- Prop Step 3 now writes `step_3_cleanup_pool/prop_cleanup_score.<asset_id>.json` and uses the selected candidate for normalization/deliverables instead of always using fixed `03_balanced`.
+- Scope remains only `flame_relay_brazier` pair.
+
+## April 26 — prop provider-adapted prompt fix
+
+- Fixed prop prompt wording so it uses the provider-adapted source composition instead of always saying the derived final-canvas ratio.
+- For GPT Image `128x256`, prompt now says provider composition `2:3` at about `1024x1536` while preserving suitability for final `1:2 128x256`.
+- For Gemini/Nano Banana `128x256`, tests assert prompt uses fallback `9:16` while preserving final `1:2 128x256` intent.
+- Verification:
+  - `python3 -m unittest tests/test_prop_asset_workflow.py`
+  - `python3 -m unittest discover -s tests`
+  - `python3 itf.py prepare-prop-assets --spec examples/prop_asset_workflow/flame_relay_brazier_pair.gpt_image.spec.json`
+
+## April 26 — prop color-key internal-hole cleanup fix
+
+- Latest GPT Image brazier probe showed the active/source brazier contains enclosed `#FF00FF` ring holes.
+- The previous cleanup only flood-filled key pixels connected to canvas edges, so enclosed chroma-key holes stayed opaque after cleanup.
+- Updated prop cleanup to remove all key-colored pixels for prop color-key runs while keeping reference-pair default behavior border-connected.
+- Updated the prop cleanup scorer so enclosed key-colored pixels are classified as background, not as deleted object pixels.
+- Added unit coverage for enclosed prop key holes.
+- Verification:
+  - `python3 -m unittest tests/test_prop_asset_workflow.py`
+  - `python3 -m unittest tests/test_reference_pair_workflow_provider.py`
+  - `python3 -m unittest discover -s tests`
+
+## April 26 — GPT Image brazier base-probe output regenerated for IMT handoff
+
+- Reprocessed saved GPT Image raw files under:
+  - `output/prop_asset_runs/imt_flame_relay_brazier_pair_gpt_image_base_probe/generated/`
+- Did not call GPT Image again; reused saved raw files.
+- Prop cleanup now removed enclosed `#FF00FF` key-color holes from the active brazier rings.
+- Validator refinement: prop background corner-alpha failure now checks top corners only; bottom corners remain diagnostic because bottom-anchored props may legitimately have base/legs near bottom corners. Text/watermark detection was already top-corner-only.
+- Regenerated deliverables under:
+  - `output/prop_asset_runs/imt_flame_relay_brazier_pair_gpt_image_base_probe/deliverables/`
+- Validation now passes via:
+  - `python3 itf.py validate-prop-assets --run-root /Users/hunglingki/git_projects/tools/isometric_asset_factory/output/prop_asset_runs/imt_flame_relay_brazier_pair_gpt_image_base_probe`
+- Deliverables include both PNGs, `prop_asset_atlas.png`, `prop_asset_atlas_metadata.json`, `imt_prop_handoff.json`, `prop_asset_manifest.json`, `validation_summary.json`, and `preview_sheet.png`.
+- Pixel check: final deliverables have `0` opaque near-`#FF00FF` pixels.
+- Verification:
+  - `python3 -m unittest tests/test_prop_asset_workflow.py`
+  - `python3 -m unittest tests/test_reference_pair_workflow_provider.py`
+  - `python3 -m unittest discover -s tests`
+
+## April 27 — repo rename cleanup
+
+- Agreed repo scope has outgrown `isometric_tile_factory` because the factory now covers reference-pair tile workflows plus prop/object asset workflows.
+- Renamed public-facing repo references to `isometric_asset_factory` in README/docs/CLI descriptions and updated absolute-path examples.
+- Local directory rename target: `/Users/hunglingki/git_projects/tools/isometric_asset_factory`.
+- Remote URL remains unchanged until the GitHub repository itself is renamed.
+
+## June 2 — IMT field-cooking campfire-pot prop order completed
+
+- Read `requirement_from_others/2026-06-02_imt_field_cooking_assets.md` and converted it into a durable prop spec:
+  - `examples/prop_asset_workflow/field_cooking_campfire_pot.gpt_image.spec.json`
+  - `asset_family = field_cooking_campfire_pot`
+  - states `imt_field_cooking_pot_unlit` and `imt_field_cooking_pot_active`
+  - `target_project_folder = img/generated/field_cooking_campfire_pot/`
+- Fixed the direct GPT Image edit route used by prop `edit_from` states:
+  - `/v1/images/generations` succeeded on the local CLIProxyAPI main build
+  - multipart `/v1/images/edits` failed with `request Content-Type isn't multipart/form-data`
+  - repo now sends JSON data-URL edit payloads for CLIProxyAPI image edits
+- Generalized prop active/unlit prompt constraints so field-cooking pots are not described as brazier bodies.
+- Added optional `target_project_folder` propagation into `prop_asset_manifest.json` and `imt_prop_handoff.json`.
+- Mock prop generation now draws a deterministic tripod campfire pot for `field_cooking` / `campfire_pot` asset families.
+- Real GPT Image color-key run succeeded:
+  - command used `CLI_PROXY_API_BASE_URL=http://127.0.0.1:8318/v1 CLI_PROXY_API_KEY=local-dev-image-key python3 itf.py generate-prop-assets --spec /private/tmp/imt_field_cooking_campfire_pot.gpt_image.spec.json --provider gpt_image --out /private/tmp/imt_prop_asset_runs/imt_field_cooking_campfire_pot_gpt_image_20260602`
+  - run root `/private/tmp/imt_prop_asset_runs/imt_field_cooking_campfire_pot_gpt_image_20260602`
+  - deliverables directory `/private/tmp/imt_prop_asset_runs/imt_field_cooking_campfire_pot_gpt_image_20260602/deliverables`
+  - validation status `pass`
+  - preview sheet visually shows unlit and active tripod cooking-pot states.
+- Verification completed:
+  - `python3 -m py_compile pipeline/reference_pair_workflow.py pipeline/prop_asset_workflow.py pipeline/prop_cleanup_scorer.py pipeline/prop_validator.py itf.py`
+  - `python3 -m unittest tests/test_reference_pair_workflow_provider.py tests/test_prop_asset_workflow.py`
+  - `python3 -m unittest discover -s tests`
+  - required deliverable file audit passed with no missing files.
+
+## June 2 — local CLIProxyAPI default endpoint restored
+
+- The old Homebrew LaunchAgent process on port `8317` still lacked image routes and reproduced the original 404 failure.
+- Updated `/Users/hunglingki/Library/LaunchAgents/homebrew.mxcl.cliproxyapi.plist` to run the existing image-route-capable binary:
+  - `/Users/hunglingki/.local/bin/cliproxyapi-main -config /opt/homebrew/etc/cliproxyapi.conf`
+- Backup plist:
+  - `/Users/hunglingki/Library/LaunchAgents/homebrew.mxcl.cliproxyapi.plist.backup.isometric_asset_factory_20260602`
+- Verified default port `8317` image route existence without generating images:
+  - `/v1/images/generations` returns HTTP 400 `prompt is required`, not 404
+  - `/v1/images/edits` returns HTTP 400 `prompt is required`, not 404
+
+## June 2 — repo/folder rename to game_asset_factory
+
+- User requested another repo/folder rename from the prior `isometric_asset_factory` direction to `game_asset_factory`.
+- GitHub repository was renamed to `csonic0926/game_asset_factory` and local `origin` was updated to `https://github.com/csonic0926/game_asset_factory.git`.
+- Public-facing repo names, CLI descriptions, docs, and current absolute-path examples now use `game_asset_factory` and `/Users/hunglingki/git_projects/tools/game_asset_factory`.
+- Local directory rename completed at `/Users/hunglingki/git_projects/tools/game_asset_factory`.
+- Historical run notes and old generated provenance may still mention prior names if they describe past runs or actual old backup filenames.
+
+## June 13 — tile re-skin workflow added (cross-repo request: doodi_world_demo)
+
+- Implemented `tile_reskin_workflow_v1` end-to-end: re-skin an existing
+  geometrically-correct tile/autotile set into a new material look.
+- New/changed: `pipeline/tile_reskin_workflow.py`, `itf.py` (+2 subcommands and
+  imports), `docs/TILE_RESKIN_WORKFLOW.md`, README workflow section, 5 example
+  specs in `examples/tile_reskin_workflow/`.
+- Tested: mock provider end-to-end (road, 13 variants); real re-skin of doodi
+  village road/sand/water/fence from git-HEAD originals using supplied material
+  fields — output matches the hand-built doodi scripts (connectivity + straight
+  man-made road edges + natural sand/water fringes + fence rails all correct).
+- Out of scope (future): generating geometrically-correct tile sets from scratch.
+- Next: when that future workflow is wanted, add a sibling
+  `tile_geometry_workflow` rather than overloading this re-skin one.
+
+## June 13 (cont.) — generic classifiers + house base/overlay run
+
+- Extended tile_reskin classifiers: added `dark`, `cream`, `light`, plus an
+  HSV-range object match form `{hue,sat,val}` so interior/any-scene surfaces are
+  expressible (named outdoor classifiers were insufficient for house walls).
+- Ran house floor (1 tile) + house walls (22 variants) for doodi via factory:
+  floor `else→floor`; walls `dark→keep, cream→plaster, else→wood(luma)`. Black
+  structural wall regions preserved. Shipped to doodi house/standard/base, atlas
+  repacked, build green.
+- Example specs: examples/tile_reskin_workflow/house_floor.spec.json,
+  house_walls.spec.json.

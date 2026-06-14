@@ -1,5 +1,12 @@
 # REPO_MEMORY.md
 
+## Cross-repo requirement intake
+
+- Canonical intake folder for requirements from other repos is `requirement_from_other_repo/`.
+- Other-repo Codex agents should create one dated Markdown request file there using `REQUEST_TEMPLATE.md`.
+- Factory-side Codex should treat the request file as the source of truth, implement the smallest factory-side change that satisfies it, and append a short factory response to the same request file.
+- Older notes that mention `requirement_from_others/` are historical; use the singular `requirement_from_other_repo/` for new requests.
+
 ## Render visibility gotcha
 
 - In Blender, **collection `hide_render` can effectively override object-level renderability** for this pipeline.
@@ -79,6 +86,24 @@
 - Preserve per-attempt artifacts under `run_root/attempts/attempt_XX/` so failed retries remain debuggable instead of being overwritten in place.
 - A raw validation pass is not enough by itself; the run should still leave a concrete final handoff artifact for each variant.
 
+## Wall 2u target-height correction
+
+- Corrected wall Step 6 target contract: **2u wall mapping uses a `128 x 192` target canvas**, not `128 x 256`.
+- Source-side Gemini/raw cleanup point extraction can remain unchanged when it is already correct.
+- The fix is on the **target mapping points only**:
+  - for the old 2u target coordinates, keep points at `y <= 64` unchanged
+  - for target points with `y > 64`, subtract `64` from `y`
+- Keep `top_plane_apex_opposite = (64, 64)` unchanged; it is exactly the boundary between unchanged and shifted target rows.
+
+## Wall Step 7 edge-sampling note
+
+- A visually correct mapped wall can still fail Step 7 if bottom-edge sampling picks an isolated thickness/taper outlier instead of the main contact-edge run.
+- Current fix:
+  - keep top/bottom sampling mirror-symmetric for left/right walls
+  - after raw top/bottom edge extraction, keep the **largest consistent per-column edge run**
+  - this prevents a single stray endpoint sample from skewing the fitted angle
+- Use this before loosening wall angle thresholds; the failure mode is often sampling contamination, not wrong wall geometry.
+
 ## Wall pipeline gotchas
 
 - For wall jobs, **height and handedness must exist as structured fields all the way through the pipeline**.
@@ -132,6 +157,49 @@
   - `deliverables/`
 - Prefer reviewing `artifact_status.json` first when triaging a run.
 - Prefer `s<step>_<kind>...` artifact names over ambiguous names like bare `final` when adding new diagnostic outputs.
+
+## Prop asset workflow boundary
+
+- Prop/object asset work should be added as a separate workflow/schema instead of stretching `reference_pair_workflow_v1`.
+- Preserve existing floor/wall reference-pair behavior; new prop code should be additive and should not change wall/floor selector thresholds, canonical wall/floor targets, or reference-pair prompt assembly.
+- For the first prop vertical slice, optimize for **engineering handoff correctness**:
+  - fixed RGBA canvas
+  - clean transparent background
+  - bottom-center anchor
+  - bbox margins / center / bottom-contact checks
+  - no baked-in floor tile
+  - no text/watermark
+  - pair consistency across state variants
+- Use the step-oriented artifact style for prop diagnostics too, but do not force wall-only Step 6 mapping semantics onto props.
+- For real-provider prop runs:
+  - keep `mock` and `direct` providers additive; do not route prop generation through reference-pair selector/finalizer.
+  - `edit_from` prop states must use the already-cleaned/normalized source asset PNG as the reference image.
+  - write provider request snapshots under `request/provider_request_{asset_id}.json` and `request/provider_requests.json`.
+  - preserve raw provider output in `step_1_raw/` and cleanup candidates in `step_3_cleanup_pool/`.
+  - provider outputs may arrive as 1024px opaque-background images; prop cleanup now samples corner background colors and then normalizes the cleaned object onto the requested prop canvas.
+  - bottom-corner opaque pixels are valid for prop legs/bases; text/watermark heuristics should focus on top-corner marks unless a future case proves otherwise.
+  - broad brazier bowls can trip floor-diamond heuristics if the threshold is too low; use both side-floor occupancy and near-anchor span, and keep true floor tiles rejected by full-width span.
+  - `imt_prop_handoff.json` is the IMT-facing contract; paths inside it should be relative to `deliverables/`.
+- For GPT Image prop runs:
+  - `gpt-image-2` rejects native transparent background, so do **not** use `gpt_image_transparent_prop` for this model.
+  - use `provider.name = "gpt_image"`, `provider.mode = "gpt_image_prop_color_key"`, `model.name = "gpt-image-2"`, and `background.mode = "color_key"`.
+  - prompt for a flat solid `#FF00FF` background, with `#00FF00` as fallback; do not ask the model to output alpha.
+  - Step 3 should keep every cleanup candidate and write `prop_cleanup_score.<asset_id>.json`.
+  - Cleanup selection should compare the raw image to each cleaned candidate: reward removal of border-connected key background, reward preservation of non-background object pixels/RGB, and penalize retained key fringe or object deletion.
+  - The selected cleanup candidate is then normalized, validated, and handed off to IMT; the validator remains pass/fail and should not become the candidate selector.
+  - Treat `canvas` as the **final deliverable canvas**, not the provider source canvas.
+  - Prop specs may include `generation_canvas`, but the default is already:
+    - `strategy = derive_from_final_canvas`
+    - `target_long_edge = 1024`
+    - `preserve_aspect_ratio = true`
+  - Current derived example:
+    - final `128x256` -> source hint `512x1024` with aspect ratio `1:2`
+  - Provider adapters must record `generation_canvas`, `adapter_decision`, and `provider_generation_args` in request snapshots so debug review can distinguish:
+    1. caller final canvas
+    2. factory-derived source geometry
+    3. actual provider-facing fallback
+  - For mock/high-res prop generation, do **not** stretch the final 128x256 sprite to fill the provider canvas.
+    - Keep the prop as a smaller bottom-anchored cutout inside the larger source canvas, so normalization/validation behavior stays representative of real provider output.
 
 ## Step 0 review checkpoint
 
@@ -197,6 +265,33 @@
   - write one PNG per variant to `agent_handoff/step_1_raw/<variant>.png`
   - do not perform Step 3 cleanup / selection there
 - After those raw PNGs are staged, the factory resumes with `generate-reference-pair` and ingests them into the normal Step 3+ workflow.
+
+## CLIProxyAPI GPT Image 2 provider
+
+- The repo now exposes a **public provider/model split** for Step 1 execution.
+- Canonical external contract:
+  - `provider.name = "cliproxyapi"` + `model.name = "gpt-image-2"` for direct local CLIProxyAPI execution
+  - `provider.name = "gemini_cli"` + `model.name = "nano-banana-2"` or `nano-banana-pro`
+  - `provider.name = "agent_handoff"` + `model.name = "gpt-image-2"` for Codex handoff mode
+- Legacy aliases remain accepted but should be treated as compatibility input only:
+  - `gpt_image_2`
+  - direct `imagegen`
+  - `nano_banana`
+  - `nano_banana_pro`
+  - `imagegen_handoff`
+- Direct GPT Image 2 provider resolution order:
+  1. `CLI_PROXY_API_BASE_URL` / `CLI_PROXY_API_KEY`
+  2. `CLIPROXYAPI_BASE_URL` / `CLIPROXYAPI_API_KEY`
+  3. `~/.cli-proxy-api/config.yaml`
+  4. fallback defaults `http://127.0.0.1:8317/v1` and `local-dev-image-key`
+- Current repo limitation: direct GPT Image 2 backend supports **0 or 1 reference image** per variant in this repo wrapper.
+  - single-reference variants use `/images/edits`
+  - zero-reference variants use `/images/generations`
+  - multi-reference variants should still use Gemini/Nano Banana or a future dedicated mapping layer
+- CLIProxyAPI service compatibility note:
+  - Homebrew `cliproxyapi 6.9.30` on this machine exposed only text routes even though upstream `main` already had image handlers.
+  - Root endpoint advertisement can be stale/incomplete; do **not** treat missing `/v1/images/*` in `GET /` as proof that image routes are unavailable.
+  - Real truth is whether `/v1/images/generations` and `/v1/images/edits` return non-404.
 
 ## Codex imagegen wall run gotchas
 
@@ -410,3 +505,82 @@
   - `left = [p0, p6, p5, p1]`
   - `right = [p6, p3, p4, p5]`
 - Source detection should follow the same spirit as wall Step 6: most outer structural points are directly measurable from alpha, while `p6` is the center / inner junction point that may need to be inferred.
+
+## April 26 — prop color-key internal-hole rule
+
+- For prop color-key GPT Image runs, treat requested chroma-key colors as reserved background colors everywhere in the source image, not only along border-connected regions.
+- Reason: brazier-like props may have enclosed openings/rings that show the `#FF00FF` background through the object; border-only flood fill leaves those holes opaque.
+- Keep this prop-specific behavior separate from existing floor/wall reference-pair cleanup defaults, because wall/floor workflows may still rely on border-connected cleanup semantics.
+- Prop cleanup scoring should also classify enclosed key-colored pixels as background so a correctly transparent internal opening is not penalized as deleted object content.
+
+## April 26 — prop validator corner rule refinement
+
+- For bottom-anchored prop assets, do not fail engineering validation solely because the bottom-left/bottom-right 32px corner regions contain alpha.
+- Reason: legitimate prop bases, legs, or bottom contact silhouettes can occupy the lower corners after final `128x256` normalization.
+- Keep top-corner alpha checks strict to catch opaque canvas backgrounds, UI/text/watermark, and failed background cleanup.
+- Keep bottom-corner alpha values in diagnostics, but use baked-floor heuristics and bbox/anchor checks for bottom-region failures.
+
+## Repo name
+
+- Canonical repo/folder name is now `game_asset_factory`.
+- Use `/Users/hunglingki/git_projects/tools/game_asset_factory` in new docs, specs, command examples, and local handoff notes.
+- Prior public names were `isometric_tile_factory` and then `isometric_asset_factory`; treat old generated run metadata, historical notes, and OS backup filenames with those names as snapshot provenance unless the run/file must be reused after the rename.
+
+## CLIProxyAPI GPT Image edit route note
+
+- Local CLIProxyAPI GPT Image generation may expose `/v1/images/generations` and `/v1/images/edits` even when `GET /` only advertises text routes; do not trust root endpoint advertisement as the image-route capability source.
+- For this factory's direct GPT Image edit path, prefer JSON data-URL edit payloads to `/v1/images/edits` instead of multipart uploads.
+  - The 2026-06-02 field-cooking run proved `/v1/images/generations` worked, while multipart `/v1/images/edits` failed with `request Content-Type isn't multipart/form-data`.
+  - JSON edit payloads with `images: [{ image_url: data:image/png;base64,... }]` succeeded and preserved the `edit_from` prop workflow.
+
+## IMT field-cooking prop order
+
+- The field-cooking campfire-pot order is now represented by:
+  - `examples/prop_asset_workflow/field_cooking_campfire_pot.gpt_image.spec.json`
+  - asset family `field_cooking_campfire_pot`
+  - assets `imt_field_cooking_pot_unlit` and `imt_field_cooking_pot_active`
+  - IMT target folder `img/generated/field_cooking_campfire_pot/`
+- Verified real GPT Image color-key run:
+  - run root `/private/tmp/imt_prop_asset_runs/imt_field_cooking_campfire_pot_gpt_image_20260602`
+  - deliverables include the two state PNGs, atlas PNG/metadata, preview sheet, validation summary, manifest, and `imt_prop_handoff.json`
+  - validation status `pass`
+- The spec's `target_project_folder` should be copied into `imt_prop_handoff.json` so IMT import tooling can know the intended generated-image folder.
+
+## Local CLIProxyAPI service setup
+
+- On 2026-06-02 the default LaunchAgent was still pointing at the Homebrew `cliproxyapi` binary, which returned `404 page not found` for `/v1/images/generations`.
+- Switched `/Users/hunglingki/Library/LaunchAgents/homebrew.mxcl.cliproxyapi.plist` to run:
+  - `/Users/hunglingki/.local/bin/cliproxyapi-main -config /opt/homebrew/etc/cliproxyapi.conf`
+- A backup was written at:
+  - `/Users/hunglingki/Library/LaunchAgents/homebrew.mxcl.cliproxyapi.plist.backup.isometric_asset_factory_20260602`
+- Route probe after restart:
+  - `POST /v1/images/generations` with empty JSON returns HTTP 400 `prompt is required` instead of 404
+  - `POST /v1/images/edits` with empty JSON returns HTTP 400 `prompt is required` instead of 404
+
+## Tile re-skin workflow (tile_reskin_workflow_v1)
+
+- Added 2026-06-13. Module `pipeline/tile_reskin_workflow.py`, CLI
+  `prepare-tile-reskin` / `generate-tile-reskin`, doc
+  `docs/TILE_RESKIN_WORKFLOW.md`, examples in `examples/tile_reskin_workflow/`.
+- Scope: re-texture an EXISTING geometrically-correct tile/autotile set into a
+  new material look. It does NOT generate tile geometry — that is deliberately a
+  separate future workflow.
+- Core rule: never re-shape, only re-skin. Geometry/alpha of each source variant
+  is preserved, so seamless tiling + autotile connectivity hold by construction.
+- Pipeline: flat-lit material FIELD (generated via `generate_with_provider`, or
+  supplied) -> seamless tile (toroidal offset + narrow feather, `seal_band`
+  default 0.25, `crop_frac` 0.2) -> per-variant re-skin by classifying the
+  ORIGINAL pixel colours into regions and remapping to new materials, optionally
+  `modulate_luma` to keep curbs/foam/3D shading.
+- Region classifiers: green/blue/sandy/foam/brown/gray/else; region list must end
+  with an `else` catch-all; `keep:true` preserves original pixels (water foam).
+- Validated family recipes (doodi village standard): road `green→grass(soft),
+  else→road(luma)`; sand `green→grass(soft), else→sand`; water `foam→keep,
+  sandy→sand(luma), green→grass(soft), brown→grass(luma), else→water`; fence
+  `green→grass(soft), else→wood(luma)`.
+- Pure Pillow (no numpy). `--provider mock` makes flat-colour fields so the full
+  pipeline runs offline (used by manual checks/tests).
+- Gotcha: feed PRISTINE source tiles (e.g. target repo git-HEAD), not a prior
+  re-skin. For man-made surfaces (road) the straight/rounded boundary is ALREADY
+  in the original's own green/gray regions — classify those; do not synthesize a
+  grass band or borrow another family's organic jagged mask.

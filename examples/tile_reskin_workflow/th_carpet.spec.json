@@ -1,0 +1,58 @@
+{
+  "schema_version": "tile_reskin_workflow_v1",
+  "output_root": "../../output/tile_reskin_runs",
+  "provider": {
+    "name": "gpt_image",
+    "mode": "direct"
+  },
+  "model": {
+    "name": "gpt-image-2"
+  },
+  "tile_size": 64,
+  "source_tiles": {
+    "dir": "/tmp/orig_th",
+    "variants": [
+      "red_carpet",
+      "red_carpet_top",
+      "red_carpet_bottom",
+      "red_carpet_left",
+      "red_carpet_right",
+      "red_carpet_corner_tl",
+      "red_carpet_corner_rt",
+      "red_carpet_corner_lb",
+      "red_carpet_corner_rb"
+    ]
+  },
+  "run_id": "th_carpet",
+  "materials": [
+    {
+      "id": "carpet",
+      "field": "/Users/hunglingki/git_projects/web_projects/doodi_world_demo/tmp/std_regen/_tiles/carpet_field.png"
+    }
+  ],
+  "reskin": {
+    "regions": [
+      {
+        "match": {
+          "hue": [
+            15,
+            50
+          ],
+          "sat": [
+            0.35,
+            1.0
+          ],
+          "val": [
+            0.45,
+            1.0
+          ]
+        },
+        "keep": true
+      },
+      {
+        "match": "else",
+        "material": "carpet"
+      }
+    ]
+  }
+}
