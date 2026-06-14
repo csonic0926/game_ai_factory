@@ -1,0 +1,22 @@
+{
+  "schema_version": "tile_reskin_workflow_v1",
+  "run_id": "th_panel_plaster_atlas",
+  "output_root": "../../output/tile_reskin_runs",
+  "provider": { "name": "gpt_image", "mode": "direct" },
+  "model": { "name": "gpt-image-2" },
+  "tile_size": 64,
+  "source_tiles": { "dir": "/Users/hunglingki/git_projects/web_projects/doodi_world_demo/tmp/th_atlas_walls", "prefix": "wall" },
+  "materials": [
+    { "id": "panel", "tile": "/Users/hunglingki/git_projects/web_projects/doodi_world_demo/tmp/std_regen/_tiles/th_panel_plaster_tile64.png" }
+  ],
+  "reskin": {
+    "comment": "improve only the greige panel; keep wood, stone, structural black (reskin atlas frames directly)",
+    "regions": [
+      { "match": "dark",  "keep": true },
+      { "match": "brown", "keep": true },
+      { "match": "gray",  "keep": true },
+      { "match": "cream", "material": "panel" },
+      { "match": "else",  "keep": true }
+    ]
+  }
+}
