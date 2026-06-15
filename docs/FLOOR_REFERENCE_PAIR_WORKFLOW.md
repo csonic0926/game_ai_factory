@@ -8,8 +8,8 @@ Use this document for:
 
 ## Canonical references
 
-- `/Users/hunglingki/git_projects/tools/isometric_tile_factory/examples/workflow_references/floor_height_pair/floor_full_k_scaled.png`
-- `/Users/hunglingki/git_projects/tools/isometric_tile_factory/examples/workflow_references/floor_height_pair/floor_half_k_scaled.png`
+- `/Users/hunglingki/git_projects/tools/game_asset_factory/examples/workflow_references/floor_height_pair/floor_full_k_scaled.png`
+- `/Users/hunglingki/git_projects/tools/game_asset_factory/examples/workflow_references/floor_height_pair/floor_half_k_scaled.png`
 
 ## Main commands
 

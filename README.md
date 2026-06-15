@@ -59,6 +59,7 @@ python3 itf.py generate-prop-assets --spec examples/prop_asset_workflow/flame_re
 python3 itf.py generate-prop-assets --spec examples/prop_asset_workflow/flame_relay_brazier_pair.cliproxyapi.spec.json
 python3 itf.py generate-prop-assets --spec examples/prop_asset_workflow/flame_relay_brazier_pair.gemini_pro.spec.json
 python3 itf.py generate-prop-assets --spec examples/prop_asset_workflow/flame_relay_brazier_pair.gpt_image.spec.json --provider gpt_image --out output/prop_asset_runs/imt_flame_relay_brazier_pair_gpt_image
+python3 itf.py generate-prop-assets --spec examples/prop_asset_workflow/flame_relay_brazier_pair.spec.json --provider gemini_cli --model nano-banana-pro
 python3 itf.py validate-prop-assets --run output/prop_asset_runs/imt_flame_relay_brazier_pair_gpt_image
 python3 itf.py generate-prop-assets --spec examples/prop_asset_workflow/field_cooking_campfire_pot.gpt_image.spec.json --provider gpt_image
 ```

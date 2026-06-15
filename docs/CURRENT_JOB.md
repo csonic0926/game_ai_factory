@@ -1296,3 +1296,15 @@ Primary regression target:
   repacked, build green.
 - Example specs: examples/tile_reskin_workflow/house_floor.spec.json,
   house_walls.spec.json.
+
+## June 15 — prop provider cleanup before commit
+
+- Reviewed the uncommitted prop/provider feature set and cleaned accidental artifacts from the worktree (`.DS_Store`, scratch generated reference specs, unused PDF, tmp plan file).
+- Fixed `generate-prop-assets --provider ...` so provider overrides from mock specs also choose a compatible default `model.name`, unless `--model` is explicitly supplied.
+- Added `--model` to prop generation CLI overrides and covered the override path in tests.
+- Reconciled prop workflow docs with validator behavior: top corners are strict alpha/text guards; bottom corners remain diagnostic for bottom-anchored props.
+- Verification completed:
+  - `python3 -m py_compile itf.py pipeline/reference_pair_workflow.py pipeline/prop_asset_workflow.py pipeline/prop_cleanup_scorer.py pipeline/prop_validator.py pipeline/variant_selector.py pipeline/validate.py`
+  - `python3 -m unittest tests/test_reference_pair_workflow_provider.py tests/test_prop_asset_workflow.py`
+  - `/tmp/gaf_pytest_venv/bin/python -m unittest discover -s tests`
+  - `python3 itf.py generate-prop-assets --spec examples/prop_asset_workflow/flame_relay_brazier_pair.spec.json`

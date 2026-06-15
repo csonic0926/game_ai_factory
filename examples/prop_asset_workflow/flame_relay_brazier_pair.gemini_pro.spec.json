@@ -1,0 +1,93 @@
+{
+  "schema_version": "prop_asset_workflow_v1",
+  "asset_family": "flame_relay_brazier",
+  "run_id": "imt_flame_relay_brazier_pair_real_gemini_pro",
+  "output_root": "../../output/prop_asset_runs",
+  "provider": {
+    "name": "gemini_cli",
+    "mode": "direct"
+  },
+  "model": {
+    "name": "nano-banana-pro"
+  },
+  "background": {
+    "mode": "color_key",
+    "prompt_color": "#FF00FF",
+    "fallback_colors": [
+      "#00FF00"
+    ],
+    "tolerance": 24
+  },
+  "canvas": {
+    "width": 128,
+    "height": 256
+  },
+  "generation_canvas": {
+    "strategy": "derive_from_final_canvas",
+    "target_long_edge": 1024,
+    "preserve_aspect_ratio": true
+  },
+  "projection_mode": "isometric",
+  "anchor": {
+    "type": "bottom_center",
+    "x": 64,
+    "y": 255
+  },
+  "footprint": {
+    "tile_width": 1,
+    "tile_height": 1
+  },
+  "states": [
+    {
+      "asset_id": "imt_flame_target_brazier_unlit",
+      "role": "target_unlit",
+      "generation": {
+        "mode": "base"
+      }
+    },
+    {
+      "asset_id": "imt_flame_source_brazier_active",
+      "role": "source_active",
+      "generation": {
+        "mode": "edit_from",
+        "source_asset_id": "imt_flame_target_brazier_unlit",
+        "prompt_delta": "add a compact active magical flame while preserving the same brazier base, anchor, and footprint"
+      }
+    }
+  ],
+  "constraints": {
+    "transparent_background": true,
+    "no_text": true,
+    "no_watermark": true,
+    "no_floor_tile_baked_in": true,
+    "no_large_cast_shadow": true
+  },
+  "prompt_parts": {
+    "style": "IMT prototype-friendly isometric pixel art dungeon prop",
+    "material": "aged bronze brazier with dark iron rim, soot, ember glow, restrained contrast",
+    "decoration": "single compact 1x1 interactable object, no environment, no baked floor",
+    "negative_constraints": [
+      "no text",
+      "no watermark",
+      "no baked-in floor tile",
+      "no large cast shadow",
+      "no scene background",
+      "no extra props"
+    ]
+  },
+  "validation": {
+    "profile": "prop_engineering_v1",
+    "min_side_margin_px": 3,
+    "min_top_margin_px": 3,
+    "bottom_anchor_tolerance_px": 8,
+    "center_x_tolerance_px": 12,
+    "max_pair_width_delta_ratio": 0.28,
+    "max_pair_height_delta_ratio": 0.35,
+    "max_pair_center_delta_px": 12,
+    "max_pair_bottom_delta_px": 8
+  },
+  "atlas": {
+    "enabled": true,
+    "padding": 0
+  }
+}

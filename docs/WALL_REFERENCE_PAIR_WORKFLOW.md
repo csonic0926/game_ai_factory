@@ -9,10 +9,10 @@ Use this document for:
 
 ## Canonical references
 
-- `1u left -> /Users/hunglingki/git_projects/tools/isometric_tile_factory/examples/golden/sample_factory/images/101_wall_straight_rot90.png`
-- `1u right -> /Users/hunglingki/git_projects/tools/isometric_tile_factory/examples/golden/sample_factory/images/101_wall_straight_rot0.png`
-- `2u left -> /Users/hunglingki/git_projects/tools/isometric_tile_factory/examples/golden/sample_factory/images/102_wall_straight_2u_rot90.png`
-- `2u right -> /Users/hunglingki/git_projects/tools/isometric_tile_factory/examples/golden/sample_factory/images/102_wall_straight_2u_rot0.png`
+- `1u left -> /Users/hunglingki/git_projects/tools/game_asset_factory/examples/golden/sample_factory/images/101_wall_straight_rot90.png`
+- `1u right -> /Users/hunglingki/git_projects/tools/game_asset_factory/examples/golden/sample_factory/images/101_wall_straight_rot0.png`
+- `2u left -> /Users/hunglingki/git_projects/tools/game_asset_factory/examples/golden/sample_factory/images/102_wall_straight_2u_rot90.png`
+- `2u right -> /Users/hunglingki/git_projects/tools/game_asset_factory/examples/golden/sample_factory/images/102_wall_straight_2u_rot0.png`
 
 Canonical handedness:
 
@@ -26,7 +26,21 @@ python3 itf.py generate-wall-reference-pair
 python3 itf.py generate-wall-reference-pair --height 2
 python3 itf.py generate-wall-reference-pair --height 2 --variant left
 python3 itf.py generate-wall-reference-pair --variant right
+python3 itf.py generate-wall-reference-pair --provider cliproxyapi --model gpt-image-2
+python3 itf.py generate-wall-reference-pair --provider gemini_cli --model nano-banana-2
 ```
+
+Provider notes:
+
+- canonical public contract is:
+  - `provider.name = cliproxyapi`, `model.name = gpt-image-2`
+  - `provider.name = gemini_cli`, `model.name = nano-banana-2` or `nano-banana-pro`
+  - `provider.name = agent_handoff`, `model.name = gpt-image-2`
+- legacy aliases remain accepted for compatibility:
+  - `gpt_image_2` / direct `imagegen`
+  - `nano_banana`
+  - `nano_banana_pro`
+  - `imagegen_handoff`
 
 ## Main workflow commands
 

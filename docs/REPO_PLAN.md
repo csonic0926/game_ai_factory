@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`isometric_tile_factory` exists to provide one stable production loop:
+`game_asset_factory` exists to provide one stable production loop:
 
 1. render canonical tile references from Blender
 2. use those references to drive Gemini/Nano Banana tile generation

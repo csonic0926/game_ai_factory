@@ -668,6 +668,77 @@ def _line_angle_delta_degrees(actual: float, expected: float) -> float:
     return min(delta, abs(180.0 - delta))
 
 
+def _point_to_segment_projection(
+    point: tuple[float, float],
+    segment: tuple[tuple[float, float], tuple[float, float]],
+) -> tuple[float, float]:
+    start, end = segment
+    dx = end[0] - start[0]
+    dy = end[1] - start[1]
+    length_sq = dx * dx + dy * dy
+    if length_sq <= 1e-9:
+        return (0.0, math.hypot(point[0] - start[0], point[1] - start[1]))
+    t = ((point[0] - start[0]) * dx + (point[1] - start[1]) * dy) / length_sq
+    closest_x = start[0] + t * dx
+    closest_y = start[1] + t * dy
+    distance = math.hypot(point[0] - closest_x, point[1] - closest_y)
+    return (t, distance)
+
+
+def _filter_edge_points_to_expected_segment(
+    points: list[tuple[float, float]],
+    segment: tuple[tuple[float, float], tuple[float, float]],
+    *,
+    min_points: int,
+) -> list[tuple[float, float]]:
+    if len(points) < min_points:
+        return points
+    start, end = segment
+    segment_length = math.hypot(end[0] - start[0], end[1] - start[1])
+    if segment_length <= 1e-6:
+        return points
+
+    corridor_pixels = max(3.0, segment_length * 0.06)
+    tangent_slack_pixels = max(2.0, segment_length * 0.08)
+    tangent_slack_t = tangent_slack_pixels / segment_length
+
+    filtered = [
+        point
+        for point in points
+        if (
+            (projection := _point_to_segment_projection(point, segment))[0] >= -tangent_slack_t
+            and projection[0] <= 1.0 + tangent_slack_t
+            and projection[1] <= corridor_pixels
+        )
+    ]
+    return filtered if len(filtered) >= min_points else points
+
+
+def _largest_consistent_edge_run(
+    points: list[tuple[float, float]],
+    *,
+    min_points: int,
+    max_step_y: float = 3.0,
+) -> list[tuple[float, float]]:
+    if len(points) < min_points:
+        return points
+    ordered = sorted(points, key=lambda point: (point[0], point[1]))
+    runs: list[list[tuple[float, float]]] = []
+    current_run = [ordered[0]]
+    for point in ordered[1:]:
+        prev = current_run[-1]
+        dx = point[0] - prev[0]
+        dy = abs(point[1] - prev[1])
+        if dx <= 2.0 and dy <= max_step_y:
+            current_run.append(point)
+        else:
+            runs.append(current_run)
+            current_run = [point]
+    runs.append(current_run)
+    best_run = max(runs, key=lambda run: (len(run), run[-1][0] - run[0][0]))
+    return best_run if len(best_run) >= min_points else points
+
+
 def _canonical_wall_edge_segments(canonical_target: dict[str, Any]) -> dict[str, tuple[tuple[float, float], tuple[float, float]]]:
     body = _canonical_wall_body(canonical_target)
     if len(body) != 4:
@@ -709,6 +780,13 @@ def _validate_wall_edge_alignment(
         fail_reasons: list[str] = []
 
         for edge_name, points in edge_pixels.items():
+            if edge_name in {"top", "bottom"}:
+                points = _filter_edge_points_to_expected_segment(
+                    points,
+                    expected_segments[edge_name],
+                    min_points=min_edge_points,
+                )
+                points = _largest_consistent_edge_run(points, min_points=min_edge_points)
             fitted_line = _fit_line(points)
             actual_angle = _line_angle_degrees(fitted_line)
             expected_angle = _segment_angle_degrees(*expected_segments[edge_name])

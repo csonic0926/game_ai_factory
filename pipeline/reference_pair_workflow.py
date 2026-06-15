@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import shutil
 import subprocess
+import urllib.error
+import urllib.request
+from email.generator import _make_boundary
 from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -18,20 +22,125 @@ from pipeline.credentials import CredentialError, build_gemini_provider_env
 REPO_ROOT = Path(__file__).resolve().parents[1]
 NANO_BANANA_ROOT = (REPO_ROOT.parent / "nano_banana").resolve()
 NANO_BANANA_SCRIPT = NANO_BANANA_ROOT / "scripts" / "generate_image.js"
+CLI_PROXY_API_CONFIG_PATH = Path("~/.cli-proxy-api/config.yaml").expanduser()
+CLI_PROXY_DEFAULT_BASE_URL = "http://127.0.0.1:8317/v1"
+CLI_PROXY_DEFAULT_API_KEY = "local-dev-image-key"
+CLI_PROXY_DEFAULT_MODEL = "gpt-image-2"
 SCHEMA_VERSION = "reference_pair_workflow_v1"
-SUPPORTED_DIRECT_PROVIDERS = {"mock", "nano_banana", "nano_banana_pro"}
-SUPPORTED_AGENT_HANDOFF_PROVIDERS = {"imagegen"}
+SUPPORTED_DIRECT_PROVIDERS = {"mock", "gemini_cli", "cliproxyapi", "nano_banana", "nano_banana_pro", "gpt_image_2", "imagegen"}
+SUPPORTED_AGENT_HANDOFF_PROVIDERS = {"agent_handoff", "imagegen", "imagegen_handoff"}
 SUPPORTED_PROVIDER_MODES = {"direct", "agent_handoff"}
 SUPPORTED_CONVERSION_MODES = {"none", "transform"}
-PROVIDER_MODELS = {
-    "nano_banana": "nano-banana-2",
-    "nano_banana_pro": "nano-banana-pro",
+PROVIDER_MODEL_FAMILIES = {
+    "mock": {"mock"},
+    "gemini_cli": {"nano-banana-2", "nano-banana-pro"},
+    "cliproxyapi": {CLI_PROXY_DEFAULT_MODEL},
+    "agent_handoff": {CLI_PROXY_DEFAULT_MODEL},
+}
+LEGACY_PROVIDER_DEFAULTS = {
+    "mock": ("mock", "mock"),
+    "nano_banana": ("gemini_cli", "nano-banana-2"),
+    "nano_banana_pro": ("gemini_cli", "nano-banana-pro"),
+    "gpt_image_2": ("cliproxyapi", CLI_PROXY_DEFAULT_MODEL),
+    "imagegen": ("cliproxyapi", CLI_PROXY_DEFAULT_MODEL),
+    "imagegen_handoff": ("agent_handoff", CLI_PROXY_DEFAULT_MODEL),
 }
 ALPHA_THRESHOLD = 32
 
 
 class ReferencePairWorkflowError(RuntimeError):
     pass
+
+
+def _allowed_models_for_provider(*, provider_name: str, provider_mode: str) -> set[str]:
+    if provider_mode == "direct":
+        if provider_name == "mock":
+            return PROVIDER_MODEL_FAMILIES["mock"]
+        if provider_name == "gemini_cli":
+            return PROVIDER_MODEL_FAMILIES["gemini_cli"]
+        if provider_name == "cliproxyapi":
+            return PROVIDER_MODEL_FAMILIES["cliproxyapi"]
+    if provider_mode == "agent_handoff" and provider_name == "agent_handoff":
+        return PROVIDER_MODEL_FAMILIES["agent_handoff"]
+    raise ReferencePairWorkflowError(f"Unsupported provider contract provider.mode={provider_mode!r} provider.name={provider_name!r}.")
+
+
+def _normalize_provider_contract(
+    *,
+    provider_name_raw: str,
+    provider_mode: str,
+    requested_model_name: str,
+    provider_agent_tool: str,
+) -> tuple[dict[str, str], dict[str, str], list[str]]:
+    warnings: list[str] = []
+    provider_name = provider_name_raw.lower()
+    model_name = requested_model_name.strip().lower()
+    canonical_provider_name = provider_name
+
+    if provider_mode == "direct":
+        if provider_name not in SUPPORTED_DIRECT_PROVIDERS:
+            raise ReferencePairWorkflowError(
+                f"Unsupported direct provider.name '{provider_name}'. Expected one of: {', '.join(sorted(SUPPORTED_DIRECT_PROVIDERS))}"
+            )
+        if provider_name in LEGACY_PROVIDER_DEFAULTS:
+            canonical_provider_name, default_model_name = LEGACY_PROVIDER_DEFAULTS[provider_name]
+            if provider_name != canonical_provider_name:
+                warnings.append(
+                    f"Legacy provider.name='{provider_name}' was normalized to canonical direct backend '{canonical_provider_name}'."
+                )
+        elif provider_name == "gemini_cli":
+            default_model_name = "nano-banana-2"
+        elif provider_name == "cliproxyapi":
+            default_model_name = CLI_PROXY_DEFAULT_MODEL
+        else:
+            default_model_name = "mock"
+        if not model_name:
+            model_name = default_model_name
+        if provider_agent_tool:
+            warnings.append(f"provider.agent_tool='{provider_agent_tool}' was ignored because provider.mode=direct.")
+    else:
+        if provider_name not in SUPPORTED_AGENT_HANDOFF_PROVIDERS:
+            raise ReferencePairWorkflowError(
+                f"Unsupported agent_handoff provider.name '{provider_name}'. Expected one of: {', '.join(sorted(SUPPORTED_AGENT_HANDOFF_PROVIDERS))}"
+            )
+        if provider_name in LEGACY_PROVIDER_DEFAULTS:
+            canonical_provider_name, default_model_name = LEGACY_PROVIDER_DEFAULTS[provider_name]
+            if canonical_provider_name != "agent_handoff":
+                canonical_provider_name = "agent_handoff"
+                default_model_name = CLI_PROXY_DEFAULT_MODEL
+            if provider_name != canonical_provider_name:
+                warnings.append(
+                    f"Legacy provider.name='{provider_name}' was normalized to canonical handoff backend '{canonical_provider_name}'."
+                )
+        else:
+            canonical_provider_name = "agent_handoff"
+            default_model_name = CLI_PROXY_DEFAULT_MODEL
+        normalized_agent_tool = provider_agent_tool or "imagegen"
+        if normalized_agent_tool != "imagegen":
+            raise ReferencePairWorkflowError("provider.agent_tool must be 'imagegen' for provider.mode=agent_handoff.")
+        provider_agent_tool = normalized_agent_tool
+        if not model_name:
+            model_name = default_model_name
+
+    allowed_models = _allowed_models_for_provider(
+        provider_name=canonical_provider_name,
+        provider_mode=provider_mode,
+    )
+    if model_name not in allowed_models:
+        raise ReferencePairWorkflowError(
+            f"Unsupported model.name '{model_name}' for provider.name='{canonical_provider_name}' and provider.mode='{provider_mode}'. "
+            f"Expected one of: {', '.join(sorted(allowed_models))}"
+        )
+
+    return (
+        {
+            "name": canonical_provider_name,
+            "mode": provider_mode,
+            "agent_tool": provider_agent_tool if provider_mode == "agent_handoff" else "",
+        },
+        {"name": model_name},
+        warnings,
+    )
 
 
 def _normalize_text_list(value: Any, *, field_name: str) -> list[str]:
@@ -260,6 +369,293 @@ def _copy_artifact(source: Path | None, destination: Path) -> str | None:
     return str(destination)
 
 
+def _strip_wrapped_yaml_scalar(value: str) -> str:
+    text = str(value).strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in {"'", '"'}:
+        return text[1:-1]
+    return text
+
+
+def _load_cli_proxy_api_config(path: Path = CLI_PROXY_API_CONFIG_PATH) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    host = ""
+    port = ""
+    api_key = ""
+    in_api_keys = False
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.startswith("host:"):
+            host = _strip_wrapped_yaml_scalar(stripped.split(":", 1)[1])
+            in_api_keys = False
+            continue
+        if stripped.startswith("port:"):
+            port = _strip_wrapped_yaml_scalar(stripped.split(":", 1)[1])
+            in_api_keys = False
+            continue
+        if stripped.startswith("api-keys:"):
+            in_api_keys = True
+            continue
+        if in_api_keys:
+            if stripped.startswith("- "):
+                api_key = _strip_wrapped_yaml_scalar(stripped[2:])
+                continue
+            if not raw_line.startswith((" ", "\t")):
+                in_api_keys = False
+    payload: dict[str, str] = {}
+    if host:
+        payload["host"] = host
+    if port:
+        payload["port"] = port
+    if api_key:
+        payload["api_key"] = api_key
+    return payload
+
+
+def _resolve_cli_proxy_api_settings(base_env: dict[str, str] | None = None) -> dict[str, str]:
+    env = dict(base_env if base_env is not None else os.environ)
+    config_payload = _load_cli_proxy_api_config()
+    base_url = (
+        env.get("CLI_PROXY_API_BASE_URL", "").strip()
+        or env.get("CLIPROXYAPI_BASE_URL", "").strip()
+    )
+    if not base_url:
+        host = config_payload.get("host", "").strip()
+        port = config_payload.get("port", "").strip()
+        if host and port:
+            base_url = f"http://{host}:{port}/v1"
+    if not base_url:
+        base_url = CLI_PROXY_DEFAULT_BASE_URL
+    api_key = (
+        env.get("CLI_PROXY_API_KEY", "").strip()
+        or env.get("CLIPROXYAPI_API_KEY", "").strip()
+        or config_payload.get("api_key", "").strip()
+        or CLI_PROXY_DEFAULT_API_KEY
+    )
+    return {
+        "base_url": base_url.rstrip("/"),
+        "api_key": api_key,
+        "config_path": str(CLI_PROXY_API_CONFIG_PATH),
+    }
+
+
+def _probe_cli_proxy_api_capabilities(*, base_url: str, api_key: str, timeout: int) -> dict[str, Any]:
+    probe_root = base_url.rsplit("/v1", 1)[0] if base_url.endswith("/v1") else base_url
+    request = urllib.request.Request(
+        probe_root,
+        headers={"Authorization": f"Bearer {api_key}"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return {}
+    if isinstance(payload, dict):
+        return payload
+    return {}
+
+
+def _save_cli_proxy_api_response(payload: dict[str, Any], output_path: Path) -> Path:
+    data = payload.get("data") or []
+    if not isinstance(data, list) or not data:
+        raise ReferencePairWorkflowError("CLIProxyAPI returned no image data.")
+    item = data[0]
+    if not isinstance(item, dict):
+        raise ReferencePairWorkflowError("CLIProxyAPI returned an unexpected image payload.")
+    if "b64_json" in item:
+        raw_bytes = base64.b64decode(str(item["b64_json"]))
+    elif "url" in item and str(item["url"]).startswith("data:"):
+        raw_bytes = base64.b64decode(str(item["url"]).split(",", 1)[1])
+    else:
+        raise ReferencePairWorkflowError("CLIProxyAPI returned an unsupported image payload.")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(raw_bytes)
+    return output_path
+
+
+def _multipart_form_request(
+    *,
+    url: str,
+    api_key: str,
+    fields: dict[str, str],
+    file_field_name: str,
+    file_path: Path,
+    timeout: int,
+) -> dict[str, Any]:
+    boundary = _make_boundary()
+    body = bytearray()
+    for key, value in fields.items():
+        body.extend(f"--{boundary}\r\n".encode("utf-8"))
+        body.extend(f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode("utf-8"))
+        body.extend(str(value).encode("utf-8"))
+        body.extend(b"\r\n")
+    body.extend(f"--{boundary}\r\n".encode("utf-8"))
+    body.extend(
+        (
+            f'Content-Disposition: form-data; name="{file_field_name}"; '
+            f'filename="{file_path.name}"\r\n'
+        ).encode("utf-8")
+    )
+    body.extend(b"Content-Type: image/png\r\n\r\n")
+    body.extend(file_path.read_bytes())
+    body.extend(b"\r\n")
+    body.extend(f"--{boundary}--\r\n".encode("utf-8"))
+    request = urllib.request.Request(
+        url,
+        data=bytes(body),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        error_body = error.read().decode("utf-8", errors="replace")
+        raise ReferencePairWorkflowError(
+            f"CLIProxyAPI edit request failed with HTTP {error.code}: {error_body}"
+        ) from error
+    except urllib.error.URLError as error:
+        raise ReferencePairWorkflowError(f"CLIProxyAPI edit request failed: {error}") from error
+
+
+def _image_file_to_data_url(image_path: Path) -> str:
+    image_bytes = image_path.read_bytes()
+    media_type = "image/png"
+    suffix = image_path.suffix.lower()
+    if suffix in {".jpg", ".jpeg"}:
+        media_type = "image/jpeg"
+    elif suffix == ".webp":
+        media_type = "image/webp"
+    return f"data:{media_type};base64,{base64.b64encode(image_bytes).decode('ascii')}"
+
+
+def _json_post_request(
+    *,
+    url: str,
+    api_key: str,
+    payload: dict[str, Any],
+    timeout: int,
+    error_label: str,
+) -> dict[str, Any]:
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        error_body = error.read().decode("utf-8", errors="replace")
+        raise ReferencePairWorkflowError(
+            f"{error_label} failed with HTTP {error.code}: {error_body}"
+        ) from error
+    except urllib.error.URLError as error:
+        raise ReferencePairWorkflowError(f"{error_label} failed: {error}") from error
+
+
+def _generate_with_cli_proxy_api(
+    *,
+    provider_name: str,
+    model_name: str,
+    prompt_text: str,
+    reference_images: Sequence[Path],
+    output_path: Path,
+    transparent_background: bool = False,
+    size_override: str | None = None,
+    timeout: int = 300,
+) -> dict[str, Any]:
+    settings = _resolve_cli_proxy_api_settings()
+    capabilities = _probe_cli_proxy_api_capabilities(
+        base_url=settings["base_url"],
+        api_key=settings["api_key"],
+        timeout=timeout,
+    )
+    advertised_endpoints = capabilities.get("endpoints", []) if isinstance(capabilities, dict) else []
+    advertised_text = " | ".join(str(item) for item in advertised_endpoints) if isinstance(advertised_endpoints, list) else ""
+    normalized_reference_images = [Path(path) for path in reference_images]
+    if len(normalized_reference_images) > 1:
+        raise ReferencePairWorkflowError(
+            "CLIProxyAPI GPT Image 2 backend currently supports at most one reference image per variant in this repo."
+        )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if normalized_reference_images:
+        # Local CLIProxyAPI builds since the GPT Image route migration accept a
+        # JSON edit body with data URLs. Prefer that shape over multipart
+        # because older proxy/Responses bridges can reject multipart while still
+        # supporting image edits through JSON.
+        response_payload = _json_post_request(
+            url=f"{settings['base_url']}/images/edits",
+            api_key=settings["api_key"],
+            payload={
+                "model": model_name,
+                "prompt": prompt_text,
+                "response_format": "b64_json",
+                "images": [{"image_url": _image_file_to_data_url(normalized_reference_images[0])}],
+                **({"size": size_override} if size_override else {}),
+                **({"background": "transparent", "output_format": "png"} if transparent_background else {}),
+            },
+            timeout=timeout,
+            error_label="CLIProxyAPI edit request",
+        )
+        request_mode = "edit"
+    else:
+        body = json.dumps(
+            {
+                "model": model_name,
+                "prompt": prompt_text,
+                "size": size_override or "1024x1024",
+                "response_format": "b64_json",
+                **({"background": "transparent", "output_format": "png"} if transparent_background else {}),
+            }
+        ).encode("utf-8")
+        request = urllib.request.Request(
+            f"{settings['base_url']}/images/generations",
+            data=body,
+            headers={
+                "Authorization": f"Bearer {settings['api_key']}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                response_payload = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as error:
+            error_body = error.read().decode("utf-8", errors="replace")
+            raise ReferencePairWorkflowError(
+                "CLIProxyAPI generation request failed "
+                f"(HTTP {error.code}). "
+                f"base_url={settings['base_url']} "
+                + (f"advertised_endpoints={advertised_text} " if advertised_text else "")
+                + f"body={error_body}"
+            ) from error
+        except urllib.error.URLError as error:
+            raise ReferencePairWorkflowError(f"CLIProxyAPI generation request failed: {error}") from error
+        request_mode = "generate"
+    _save_cli_proxy_api_response(response_payload, output_path)
+    return {
+        "provider": provider_name,
+        "provider_alias": provider_name,
+        "model": model_name,
+        "request_mode": request_mode,
+        "size": size_override or "1024x1024",
+        "base_url": settings["base_url"],
+        "config_path": settings["config_path"],
+        "reference_images": [str(path) for path in normalized_reference_images],
+    }
+
+
 def load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -300,25 +696,24 @@ def load_and_validate_spec(spec_path: Path) -> tuple[dict[str, Any], list[str]]:
             f"Unsupported provider.mode '{provider_mode}'. Expected one of: {', '.join(sorted(SUPPORTED_PROVIDER_MODES))}"
         )
     provider_agent_tool = str(provider_data.get("agent_tool", "")).strip().lower()
-    if provider_mode == "direct":
-        if provider_name not in SUPPORTED_DIRECT_PROVIDERS:
-            raise ReferencePairWorkflowError(
-                f"Unsupported direct provider.name '{provider_name}'. Expected one of: {', '.join(sorted(SUPPORTED_DIRECT_PROVIDERS))}"
-            )
-        if provider_agent_tool:
-            warnings = [f"provider.agent_tool='{provider_agent_tool}' was ignored because provider.mode=direct."]
-        else:
-            warnings = []
-    else:
-        if provider_name not in SUPPORTED_AGENT_HANDOFF_PROVIDERS:
-            raise ReferencePairWorkflowError(
-                f"Unsupported agent_handoff provider.name '{provider_name}'. Expected one of: {', '.join(sorted(SUPPORTED_AGENT_HANDOFF_PROVIDERS))}"
-            )
-        normalized_agent_tool = provider_agent_tool or provider_name
-        if normalized_agent_tool != "imagegen":
-            raise ReferencePairWorkflowError("provider.agent_tool must be 'imagegen' for provider.mode=agent_handoff.")
-        provider_agent_tool = normalized_agent_tool
-        warnings = []
+    model_data = raw.get("model", {})
+    if model_data is None:
+        model_data = {}
+    if not isinstance(model_data, dict):
+        raise ReferencePairWorkflowError("model must be an object when provided.")
+    legacy_provider_model_name = str(provider_data.get("model", "")).strip().lower()
+    requested_model_name = str(model_data.get("name", "")).strip().lower()
+    warnings: list[str] = []
+    if not requested_model_name and legacy_provider_model_name:
+        requested_model_name = legacy_provider_model_name
+        warnings.append("Legacy provider.model was mapped to model.name; prefer the top-level model object.")
+    normalized_provider, normalized_model, provider_warnings = _normalize_provider_contract(
+        provider_name_raw=provider_name,
+        provider_mode=provider_mode,
+        requested_model_name=requested_model_name,
+        provider_agent_tool=provider_agent_tool,
+    )
+    warnings.extend(provider_warnings)
 
     reference_pair = raw.get("reference_pair")
     if not isinstance(reference_pair, dict):
@@ -453,11 +848,8 @@ def load_and_validate_spec(spec_path: Path) -> tuple[dict[str, Any], list[str]]:
         "run_id": run_id,
         "output_root": str(output_root),
         "variants": variants,
-        "provider": {
-            "name": provider_name,
-            "mode": provider_mode,
-            "agent_tool": provider_agent_tool if provider_mode == "agent_handoff" else "",
-        },
+        "provider": normalized_provider,
+        "model": normalized_model,
         "reference_pair": normalized_reference_pair,
         "variant_profiles": variant_profiles,
         "conversion": {
@@ -489,12 +881,20 @@ def load_and_validate_spec(spec_path: Path) -> tuple[dict[str, Any], list[str]]:
             "pair_height_ratio_hard_fail": float(validation_data.get("pair_height_ratio_hard_fail", 0.16)),
         },
     }
-    if provider_mode == "direct" and provider_name != "mock":
+    canonical_provider_name = normalized_provider["name"]
+    canonical_model_name = normalized_model["name"]
+    if provider_mode == "direct" and canonical_provider_name == "gemini_cli":
         spec_warnings.append("Provider execution requires GEMINI_API_KEY in process env or repo .env.")
+    if provider_mode == "direct" and canonical_provider_name == "cliproxyapi":
+        spec_warnings.append(
+            "Direct GPT Image 2 execution uses local CLIProxyAPI at CLI_PROXY_API_BASE_URL/CLI_PROXY_API_KEY or ~/.cli-proxy-api/config.yaml; defaults are http://127.0.0.1:8317/v1 and local-dev-image-key."
+        )
     if provider_mode == "agent_handoff":
         spec_warnings.append(
             "agent_handoff mode does not call a provider itself; an external Codex agent must write Step 1 raw PNGs into the declared handoff paths before generate-reference-pair can continue."
         )
+    if canonical_provider_name == "cliproxyapi" and canonical_model_name != CLI_PROXY_DEFAULT_MODEL:
+        raise ReferencePairWorkflowError(f"CLIProxyAPI direct provider currently supports only model.name='{CLI_PROXY_DEFAULT_MODEL}'.")
     return normalized, spec_warnings
 
 
@@ -617,6 +1017,7 @@ def _build_imagegen_handoff_task(
     return {
         "mode": "agent_handoff",
         "agent_tool": "imagegen",
+        "model": request_payload.get("model", {}),
         "run_root": str(run_root),
         "background": request_payload.get("background", {}),
         "variants": variants,
@@ -969,6 +1370,7 @@ def prepare_reference_pair_run(spec_path: Path) -> dict[str, Any]:
         "theme": spec["theme"],
         "variants": variants,
         "provider": spec["provider"],
+        "model": spec["model"],
         "conversion": spec["conversion"],
         "references": {
             **copied_references,
@@ -1008,8 +1410,10 @@ def prepare_reference_pair_run(spec_path: Path) -> dict[str, Any]:
     }
 
 
-def provider_env_for_generation(provider_name: str) -> dict[str, str]:
+def provider_env_for_generation(provider_name: str, model_name: str) -> dict[str, str]:
     if provider_name == "mock":
+        return dict(os.environ)
+    if provider_name == "cliproxyapi":
         return dict(os.environ)
     try:
         return build_gemini_provider_env()
@@ -1020,13 +1424,28 @@ def provider_env_for_generation(provider_name: str) -> dict[str, str]:
 def generate_with_provider(
     *,
     provider_name: str,
+    model_name: str,
     prompt_text: str,
     reference_images: Sequence[Path],
     output_path: Path,
+    transparent_background: bool = False,
+    size_override: str | None = None,
+    aspect_ratio_override: str | None = None,
+    image_size_override: str | None = None,
 ) -> dict[str, Any]:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if provider_name == "mock":
         return {"provider": "mock", "model": "mock", "stdout": "mock mode skips external generation"}
+    if provider_name == "cliproxyapi":
+        return _generate_with_cli_proxy_api(
+            provider_name=provider_name,
+            model_name=model_name,
+            prompt_text=prompt_text,
+            reference_images=reference_images,
+            output_path=output_path,
+            transparent_background=transparent_background,
+            size_override=size_override,
+        )
     if not NANO_BANANA_SCRIPT.exists():
         raise ReferencePairWorkflowError(f"Nano Banana CLI not found: {NANO_BANANA_SCRIPT}")
 
@@ -1040,16 +1459,16 @@ def generate_with_provider(
         f"--prompt={prompt_text}",
         f"--out={output_path}",
         "--key=company",
-        f"--model={PROVIDER_MODELS[provider_name]}",
-        "--aspect-ratio=1:1",
-        "--image-size=1K",
+        f"--model={model_name}",
+        f"--aspect-ratio={aspect_ratio_override or '1:1'}",
+        f"--image-size={image_size_override or '1K'}",
     ]
     for reference_image in normalized_reference_images:
         command.append(f"--image={reference_image}")
     completed = subprocess.run(
         command,
         cwd=NANO_BANANA_ROOT,
-        env=provider_env_for_generation(provider_name),
+        env=provider_env_for_generation(provider_name, model_name),
         capture_output=True,
         text=True,
         timeout=180,
@@ -1061,7 +1480,7 @@ def generate_with_provider(
         details = [
             "Gemini provider failed.",
             f"provider={provider_name}",
-            f"model={PROVIDER_MODELS[provider_name]}",
+            f"model={model_name}",
             "reference_images=" + ",".join(str(path) for path in normalized_reference_images),
             f"output_path={output_path}",
             f"cwd={NANO_BANANA_ROOT}",
@@ -1078,7 +1497,9 @@ def generate_with_provider(
         raise ReferencePairWorkflowError(" | ".join(details))
     return {
         "provider": provider_name,
-        "model": PROVIDER_MODELS[provider_name],
+        "model": model_name,
+        "aspect_ratio": aspect_ratio_override or "1:1",
+        "image_size": image_size_override or "1K",
         "stdout": completed.stdout.strip(),
     }
 
@@ -1374,6 +1795,8 @@ def generate_reference_pair(spec_path: Path, *, max_attempts: int = 3) -> dict[s
     provider_payload = request_payload["provider"]
     provider_name = provider_payload["name"]
     provider_mode = str(provider_payload.get("mode", "direct")).strip().lower() or "direct"
+    model_payload = request_payload.get("model", {})
+    model_name = str(model_payload.get("name", "")).strip().lower() or "mock"
     variants: list[str] = request_payload.get("variants", ["full", "half"])
     background = request_payload.get("background", {"mode": "transparent"})
     variant_profiles = request_payload.get("variant_profiles", {})
@@ -1436,6 +1859,7 @@ def generate_reference_pair(spec_path: Path, *, max_attempts: int = 3) -> dict[s
             else:
                 generation_logs[variant] = generate_with_provider(
                     provider_name=provider_name,
+                    model_name=model_name,
                     prompt_text=prompt_text,
                     reference_images=generation_input_paths,
                     output_path=raw_output_path if background.get("mode") == "color_key" else output_path,
@@ -1569,6 +1993,24 @@ def pixel_matches_any_key(pixel: tuple[int, int, int, int], key_colors: list[tup
         ):
             return True
     return False
+
+
+def color_key_pixel_mask(
+    image: Image.Image,
+    *,
+    key_colors: list[tuple[int, int, int]],
+    tolerance: int,
+) -> Image.Image:
+    rgba = image.convert("RGBA")
+    width, height = rgba.size
+    pixels = rgba.load()
+    mask = Image.new("L", rgba.size, 0)
+    mask_pixels = mask.load()
+    for y in range(height):
+        for x in range(width):
+            if pixel_matches_any_key(pixels[x, y], key_colors, tolerance):
+                mask_pixels[x, y] = 255
+    return mask
 
 
 def color_key_connected_background_mask(
@@ -1935,10 +2377,13 @@ def apply_color_key_to_image(
     fallback_colors: list[str],
     tolerance: int,
     emit_variant_pool: bool = False,
+    remove_all_key_pixels: bool = False,
 ) -> dict[str, Any]:
     image = Image.open(image_path).convert("RGBA")
     colors = [parse_hex_color(prompt_color), *(parse_hex_color(color) for color in fallback_colors)]
-    background_mask = color_key_connected_background_mask(image, key_colors=colors, tolerance=tolerance)
+    connected_background_mask = color_key_connected_background_mask(image, key_colors=colors, tolerance=tolerance)
+    all_key_mask = color_key_pixel_mask(image, key_colors=colors, tolerance=tolerance)
+    background_mask = ImageChops.lighter(connected_background_mask, all_key_mask) if remove_all_key_pixels else connected_background_mask
     active_key_color, detection_stats = detect_active_key_color(image, key_colors=colors)
     masked_result = image.copy()
     masked_result.putalpha(ImageChops.subtract(masked_result.getchannel("A"), background_mask))
@@ -1979,7 +2424,10 @@ def apply_color_key_to_image(
         "prompt_color": prompt_color,
         "fallback_colors": fallback_colors,
         "tolerance": tolerance,
+        "remove_all_key_pixels": remove_all_key_pixels,
         "removed_background_pixels": mask_area(background_mask),
+        "removed_connected_background_pixels": mask_area(connected_background_mask),
+        "removed_internal_key_pixels": max(0, mask_area(background_mask) - mask_area(connected_background_mask)),
         "active_key_color": detection_stats["detected_active_key_color"],
         "key_color_detection": detection_stats,
         "variants": variants_payload,

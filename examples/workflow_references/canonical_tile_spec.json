@@ -20,41 +20,110 @@
       },
       "faces": {
         "top": [
-          [64, 0],
-          [128, 32],
-          [64, 64],
-          [0, 32]
+          [
+            64,
+            0
+          ],
+          [
+            128,
+            32
+          ],
+          [
+            64,
+            64
+          ],
+          [
+            0,
+            32
+          ]
         ],
         "left": [
-          [0, 32],
-          [64, 64],
-          [64, 128],
-          [0, 96]
+          [
+            0,
+            32
+          ],
+          [
+            64,
+            64
+          ],
+          [
+            64,
+            128
+          ],
+          [
+            0,
+            96
+          ]
         ],
         "right": [
-          [64, 64],
-          [128, 32],
-          [128, 96],
-          [64, 128]
+          [
+            64,
+            64
+          ],
+          [
+            128,
+            32
+          ],
+          [
+            128,
+            96
+          ],
+          [
+            64,
+            128
+          ]
         ]
       },
       "anchors": {
-        "top_tip": [64, 0],
-        "left_tip": [0, 32],
-        "right_tip": [128, 32],
-        "center": [64, 64],
-        "bottom_left": [0, 96],
-        "bottom_tip": [64, 128],
-        "bottom_right": [128, 96]
+        "top_tip": [
+          64,
+          0
+        ],
+        "left_tip": [
+          0,
+          32
+        ],
+        "right_tip": [
+          128,
+          32
+        ],
+        "center": [
+          64,
+          64
+        ],
+        "bottom_left": [
+          0,
+          96
+        ],
+        "bottom_tip": [
+          64,
+          128
+        ],
+        "bottom_right": [
+          128,
+          96
+        ]
       },
       "contact_edges": {
         "wall_left_base": [
-          [0, 96],
-          [64, 64]
+          [
+            0,
+            96
+          ],
+          [
+            64,
+            64
+          ]
         ],
         "wall_right_base": [
-          [64, 64],
-          [128, 96]
+          [
+            64,
+            64
+          ],
+          [
+            128,
+            96
+          ]
         ]
       }
     },
@@ -71,41 +140,110 @@
       },
       "faces": {
         "top": [
-          [0, 64],
-          [64, 32],
-          [128, 64],
-          [64, 96]
+          [
+            0,
+            64
+          ],
+          [
+            64,
+            32
+          ],
+          [
+            128,
+            64
+          ],
+          [
+            64,
+            96
+          ]
         ],
         "left": [
-          [0, 64],
-          [64, 96],
-          [64, 128],
-          [0, 96]
+          [
+            0,
+            64
+          ],
+          [
+            64,
+            96
+          ],
+          [
+            64,
+            128
+          ],
+          [
+            0,
+            96
+          ]
         ],
         "right": [
-          [64, 96],
-          [128, 64],
-          [128, 96],
-          [64, 128]
+          [
+            64,
+            96
+          ],
+          [
+            128,
+            64
+          ],
+          [
+            128,
+            96
+          ],
+          [
+            64,
+            128
+          ]
         ]
       },
       "anchors": {
-        "top_tip": [64, 32],
-        "left_tip": [0, 64],
-        "right_tip": [128, 64],
-        "center": [64, 96],
-        "bottom_left": [0, 96],
-        "bottom_tip": [64, 128],
-        "bottom_right": [128, 96]
+        "top_tip": [
+          64,
+          32
+        ],
+        "left_tip": [
+          0,
+          64
+        ],
+        "right_tip": [
+          128,
+          64
+        ],
+        "center": [
+          64,
+          96
+        ],
+        "bottom_left": [
+          0,
+          96
+        ],
+        "bottom_tip": [
+          64,
+          128
+        ],
+        "bottom_right": [
+          128,
+          96
+        ]
       },
       "contact_edges": {
         "wall_left_base": [
-          [0, 96],
-          [64, 96]
+          [
+            0,
+            96
+          ],
+          [
+            64,
+            96
+          ]
         ],
         "wall_right_base": [
-          [64, 96],
-          [128, 96]
+          [
+            64,
+            96
+          ],
+          [
+            128,
+            96
+          ]
         ]
       },
       "derived_from": {
@@ -126,20 +264,50 @@
         "height_units": 1
       },
       "body": [
-        [0, 96],
-        [0, 32],
-        [64, 0],
-        [64, 64]
+        [
+          0,
+          96
+        ],
+        [
+          0,
+          32
+        ],
+        [
+          64,
+          0
+        ],
+        [
+          64,
+          64
+        ]
       ],
       "anchors": {
-        "bottom_left": [0, 96],
-        "top_left": [0, 32],
-        "top_tip": [64, 0],
-        "bottom_right": [64, 64]
+        "bottom_left": [
+          0,
+          96
+        ],
+        "top_left": [
+          0,
+          32
+        ],
+        "top_tip": [
+          64,
+          0
+        ],
+        "bottom_right": [
+          64,
+          64
+        ]
       },
       "contact_edge": [
-        [0, 96],
-        [64, 64]
+        [
+          0,
+          96
+        ],
+        [
+          64,
+          64
+        ]
       ],
       "derived_from": {
         "base_floor": "floor_full",
@@ -159,20 +327,50 @@
         "height_units": 1
       },
       "body": [
-        [64, 64],
-        [64, 0],
-        [128, 32],
-        [128, 96]
+        [
+          64,
+          64
+        ],
+        [
+          64,
+          0
+        ],
+        [
+          128,
+          32
+        ],
+        [
+          128,
+          96
+        ]
       ],
       "anchors": {
-        "bottom_left": [64, 64],
-        "top_left": [64, 0],
-        "top_tip": [128, 32],
-        "bottom_right": [128, 96]
+        "bottom_left": [
+          64,
+          64
+        ],
+        "top_left": [
+          64,
+          0
+        ],
+        "top_tip": [
+          128,
+          32
+        ],
+        "bottom_right": [
+          128,
+          96
+        ]
       },
       "contact_edge": [
-        [64, 64],
-        [128, 96]
+        [
+          64,
+          64
+        ],
+        [
+          128,
+          96
+        ]
       ],
       "derived_from": {
         "base_floor": "floor_full",
@@ -183,7 +381,7 @@
       "kind": "wall",
       "canvas": {
         "width": 128,
-        "height": 256
+        "height": 192
       },
       "placement": {
         "attach_edge": "top_left",
@@ -193,20 +391,50 @@
         "height_extension_rule": "extend upward while preserving the same lower-half handedness and contact-edge behavior as wall_left_1u"
       },
       "body": [
-        [0, 224],
-        [0, 32],
-        [64, 0],
-        [64, 192]
+        [
+          0,
+          160
+        ],
+        [
+          0,
+          32
+        ],
+        [
+          64,
+          0
+        ],
+        [
+          64,
+          128
+        ]
       ],
       "anchors": {
-        "bottom_left": [0, 224],
-        "top_left": [0, 32],
-        "top_tip": [64, 0],
-        "bottom_right": [64, 192]
+        "bottom_left": [
+          0,
+          160
+        ],
+        "top_left": [
+          0,
+          32
+        ],
+        "top_tip": [
+          64,
+          0
+        ],
+        "bottom_right": [
+          64,
+          128
+        ]
       },
       "contact_edge": [
-        [0, 224],
-        [64, 192]
+        [
+          0,
+          160
+        ],
+        [
+          64,
+          128
+        ]
       ],
       "derived_from": {
         "base_variant": "wall_left_1u",
@@ -217,7 +445,7 @@
       "kind": "wall",
       "canvas": {
         "width": 128,
-        "height": 256
+        "height": 192
       },
       "placement": {
         "attach_edge": "top_right",
@@ -227,20 +455,50 @@
         "height_extension_rule": "extend upward while preserving the same lower-half handedness and contact-edge behavior as wall_right_1u"
       },
       "body": [
-        [64, 192],
-        [64, 0],
-        [128, 32],
-        [128, 224]
+        [
+          64,
+          128
+        ],
+        [
+          64,
+          0
+        ],
+        [
+          128,
+          32
+        ],
+        [
+          128,
+          160
+        ]
       ],
       "anchors": {
-        "bottom_left": [64, 192],
-        "top_left": [64, 0],
-        "top_tip": [128, 32],
-        "bottom_right": [128, 224]
+        "bottom_left": [
+          64,
+          128
+        ],
+        "top_left": [
+          64,
+          0
+        ],
+        "top_tip": [
+          128,
+          32
+        ],
+        "bottom_right": [
+          128,
+          160
+        ]
       },
       "contact_edge": [
-        [64, 192],
-        [128, 224]
+        [
+          64,
+          128
+        ],
+        [
+          128,
+          160
+        ]
       ],
       "derived_from": {
         "base_variant": "wall_right_1u",

@@ -546,6 +546,17 @@
   - validation status `pass`
 - The spec's `target_project_folder` should be copied into `imt_prop_handoff.json` so IMT import tooling can know the intended generated-image folder.
 
+## Prop provider CLI override gotcha
+
+- When `generate-prop-assets --provider ...` is used on a mock prop spec, also reset `model.name` to the provider-compatible default unless `--model` is explicitly supplied.
+- Otherwise the spec's old `model.name = mock` survives the provider override and fails provider/model normalization.
+- Current CLI defaults:
+  - `gpt_image`, `cliproxyapi`, `gpt_image_2`, `imagegen` -> `gpt-image-2`
+  - `gemini_cli`, `nano_banana` -> `nano-banana-2`
+  - `nano_banana_pro` -> `nano-banana-pro`
+  - `mock` -> `mock`
+- Prop validation treats **top corners** as strict alpha/text/watermark guards; bottom corners are diagnostics because bottom-anchored props may legitimately occupy them.
+
 ## Local CLIProxyAPI service setup
 
 - On 2026-06-02 the default LaunchAgent was still pointing at the Homebrew `cliproxyapi` binary, which returned `404 page not found` for `/v1/images/generations`.

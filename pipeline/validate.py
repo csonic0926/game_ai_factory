@@ -19,7 +19,7 @@ from pipeline.validation import (
 
 
 def parse_arguments() -> argparse.Namespace:
-    argument_parser = argparse.ArgumentParser(description="Validate isometric_tile_factory config or manifest files.")
+    argument_parser = argparse.ArgumentParser(description="Validate game_asset_factory config or manifest files.")
     argument_parser.add_argument("--config", help="Path to config JSON")
     argument_parser.add_argument("--manifest", help="Path to manifest JSON")
     argument_parser.add_argument(

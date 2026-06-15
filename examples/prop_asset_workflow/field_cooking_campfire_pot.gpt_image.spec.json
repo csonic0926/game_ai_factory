@@ -1,0 +1,122 @@
+{
+  "schema_version": "prop_asset_workflow_v1",
+  "asset_family": "field_cooking_campfire_pot",
+  "run_id": "imt_field_cooking_campfire_pot_gpt_image",
+  "output_root": "../../output/prop_asset_runs",
+  "provider": {
+    "name": "gpt_image",
+    "mode": "gpt_image_prop_color_key"
+  },
+  "model": {
+    "name": "gpt-image-2"
+  },
+  "background": {
+    "mode": "color_key",
+    "prompt_color": "#FF00FF",
+    "fallback_colors": [
+      "#00FF00"
+    ],
+    "tolerance": 24
+  },
+  "canvas": {
+    "width": 128,
+    "height": 256
+  },
+  "generation_canvas": {
+    "strategy": "derive_from_final_canvas",
+    "target_long_edge": 1024,
+    "preserve_aspect_ratio": true
+  },
+  "projection_mode": "isometric",
+  "anchor": {
+    "type": "bottom_center",
+    "x": 64,
+    "y": 255
+  },
+  "footprint": {
+    "tile_width": 1,
+    "tile_height": 1
+  },
+  "states": [
+    {
+      "asset_id": "imt_field_cooking_pot_unlit",
+      "role": "portable dungeon field cooking tripod pot, unlit and ready for night meal",
+      "view": "2D isometric game prop",
+      "background": "solid #FF00FF chroma-key background",
+      "silhouette": "clear readable silhouette at small game scale",
+      "style_constraints": [
+        "dark fantasy dungeon survival prop",
+        "compatible with IMT 2:1 isometric dungeon tiles",
+        "small iron cooking pot hanging from a compact tripod over stone-ring firewood",
+        "centered object",
+        "bottom-center anchored object",
+        "no floor tile",
+        "flat solid #FF00FF background, no scene or floor"
+      ],
+      "generation": {
+        "mode": "base"
+      }
+    },
+    {
+      "asset_id": "imt_field_cooking_pot_active",
+      "role": "portable dungeon field cooking tripod pot with active warm cooking fire and light steam",
+      "view": "2D isometric game prop",
+      "background": "solid #FF00FF chroma-key background",
+      "silhouette": "clear readable silhouette at small game scale",
+      "style_constraints": [
+        "dark fantasy dungeon survival prop",
+        "compatible with IMT 2:1 isometric dungeon tiles",
+        "same tripod pot and stone-ring firewood as the unlit state",
+        "compact warm flame under the pot",
+        "small readable steam from the pot",
+        "centered object",
+        "bottom-center anchored object",
+        "no floor tile",
+        "flat solid #FF00FF background, no scene or floor"
+      ],
+      "generation": {
+        "mode": "edit_from",
+        "source_asset_id": "imt_field_cooking_pot_unlit",
+        "prompt_delta": "light a compact warm cooking fire under the same pot and add subtle steam while preserving the same tripod, anchor, footprint, silhouette size, and solid chroma-key background"
+      }
+    }
+  ],
+  "constraints": {
+    "transparent_background": true,
+    "no_text": true,
+    "no_watermark": true,
+    "no_floor_tile_baked_in": true,
+    "no_large_cast_shadow": true
+  },
+  "prompt_parts": {
+    "style": "IMT prototype-friendly isometric pixel art dungeon prop",
+    "material": "dark iron tripod and cooking pot, small stone fire ring, dry dungeon firewood, warm restrained ember color",
+    "decoration": "single compact 1x1 interactable survival-cooking object, no environment, no baked floor",
+    "negative_constraints": [
+      "no text",
+      "no watermark",
+      "no baked-in floor tile",
+      "no large cast shadow",
+      "no scene background",
+      "no extra props",
+      "no character",
+      "no table"
+    ]
+  },
+  "validation": {
+    "profile": "prop_engineering_v1",
+    "min_side_margin_px": 3,
+    "min_top_margin_px": 3,
+    "bottom_anchor_tolerance_px": 8,
+    "center_x_tolerance_px": 12,
+    "max_pair_width_delta_ratio": 0.28,
+    "max_pair_height_delta_ratio": 0.35,
+    "max_pair_center_delta_px": 12,
+    "max_pair_bottom_delta_px": 8
+  },
+  "atlas": {
+    "enabled": true,
+    "padding": 0
+  },
+  "target_project_folder": "img/generated/field_cooking_campfire_pot/"
+}

@@ -216,6 +216,10 @@ def parse_arguments() -> argparse.Namespace:
         choices=["true", "false"],
         help="Deprecated for gpt-image-2 prop runs; use false/color-key because native transparent background is not supported by that model.",
     )
+    prop_generate_parser.add_argument(
+        "--model",
+        help="Override prop model for the chosen provider, e.g. gpt-image-2, nano-banana-2, or nano-banana-pro",
+    )
     prop_generate_parser.add_argument("--out", help="Override run root for this prop run")
 
     tile_reskin_prepare_parser = subparsers.add_parser(
@@ -736,17 +740,40 @@ def command_prepare_prop_assets(arguments: argparse.Namespace) -> int:
 def command_generate_prop_assets(arguments: argparse.Namespace) -> int:
     try:
         spec_path = Path(arguments.spec).expanduser().resolve()
-        if arguments.provider or arguments.transparent_background or arguments.out:
+        if arguments.provider or arguments.transparent_background or arguments.model or arguments.out:
             spec = json.loads(spec_path.read_text(encoding="utf-8"))
+            model_override = str(arguments.model or "").strip().lower()
             if arguments.provider:
                 provider_name = str(arguments.provider).strip().lower()
+                default_model = ""
                 if provider_name in {"gpt_image", "gpt_image_transparent_prop"}:
                     spec["provider"] = {"name": "gpt_image", "mode": "gpt_image_prop_color_key"}
-                    spec.setdefault("model", {"name": "gpt-image-2"})
-                    spec["model"]["name"] = spec["model"].get("name") or "gpt-image-2"
+                    default_model = "gpt-image-2"
                     spec["background"] = {"mode": "color_key", "prompt_color": "#FF00FF", "fallback_colors": ["#00FF00"], "tolerance": 24}
                 else:
-                    spec["provider"] = {"name": provider_name, "mode": "direct"}
+                    if provider_name == "agent_handoff":
+                        spec["provider"] = {"name": provider_name, "mode": "agent_handoff", "agent_tool": "imagegen"}
+                        default_model = "gpt-image-2"
+                    else:
+                        spec["provider"] = {"name": provider_name, "mode": "direct"}
+                        if provider_name in {"cliproxyapi", "gpt_image_2", "imagegen"}:
+                            default_model = "gpt-image-2"
+                        elif provider_name in {"gemini_cli", "nano_banana"}:
+                            default_model = "nano-banana-2"
+                        elif provider_name == "nano_banana_pro":
+                            default_model = "nano-banana-pro"
+                        elif provider_name == "mock":
+                            default_model = "mock"
+                existing_model = ""
+                if isinstance(spec.get("model"), dict):
+                    existing_model = str(spec["model"].get("name", "")).strip().lower()
+                model_name = model_override or default_model or existing_model
+                if default_model and existing_model == "mock" and not model_override:
+                    model_name = default_model
+                if model_name:
+                    spec["model"] = {"name": model_name}
+            elif model_override:
+                spec["model"] = {"name": model_override}
             if arguments.transparent_background == "true":
                 raise PropAssetWorkflowError(
                     "--transparent-background true is not supported for gpt-image-2 prop runs; use color-key background and cleanup scoring."

@@ -29,6 +29,16 @@
   - canonical-vs-corrected reference distinctions
   - debug checklists
 
+## Cross-repo requirement intake
+
+- Store requests from other repos in:
+  - `requirement_from_other_repo/`
+- Other-repo Codex agents should follow:
+  - `requirement_from_other_repo/README.md`
+  - `requirement_from_other_repo/REQUEST_TEMPLATE.md`
+- Factory-side Codex should treat each request file as the source of truth, then update specs/code/docs as needed.
+- After handling a request, append a short factory response to that request file and update `docs/CURRENT_JOB.md`.
+
 ## Stable repo rules
 
 - Prefer keeping sample export objects in one stable scene: `examples/sample_factory.blend`.
