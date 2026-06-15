@@ -2,6 +2,10 @@
 
 This folder is the intake contract for other repositories that need `game_asset_factory` to add or update asset-generation functionality.
 
+If another repo only needs to call existing factory tools, start with
+[`docs/AI_CALLER_LANDING.md`](../docs/AI_CALLER_LANDING.md) instead of creating
+a request here.
+
 ## Who should use this
 
 Use this when another repo's Codex needs factory-side work, for example:

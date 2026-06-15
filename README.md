@@ -14,6 +14,10 @@ Treat this repo as a **game asset factory** for isometric art workflows:
 
 The public order contract is the **reference-pair spec JSON** plus the CLI commands in `/Users/hunglingki/git_projects/tools/game_asset_factory/itf.py`.
 
+If you are an AI agent coming from another repo, start with
+[`docs/AI_CALLER_LANDING.md`](docs/AI_CALLER_LANDING.md). It separates direct
+tool calls from cross-repo requests that require factory-side changes.
+
 ## Use this workflow
 
 For almost all tile-art work, use the **reference-pair workflow**.

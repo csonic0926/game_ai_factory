@@ -31,6 +31,8 @@
 
 ## Cross-repo requirement intake
 
+- If another repo only needs to call existing factory tools, start with:
+  - `docs/AI_CALLER_LANDING.md`
 - Store requests from other repos in:
   - `requirement_from_other_repo/`
 - Other-repo Codex agents should follow:

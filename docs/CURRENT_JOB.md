@@ -1308,3 +1308,16 @@ Primary regression target:
   - `python3 -m unittest tests/test_reference_pair_workflow_provider.py tests/test_prop_asset_workflow.py`
   - `/tmp/gaf_pytest_venv/bin/python -m unittest discover -s tests`
   - `python3 itf.py generate-prop-assets --spec examples/prop_asset_workflow/flame_relay_brazier_pair.spec.json`
+
+## June 15 — AI caller landing added
+
+- Added `docs/AI_CALLER_LANDING.md` as the first-stop guide for AI agents in other repos that want to call existing factory tools.
+- The landing separates:
+  - direct CLI/spec use for existing workflows
+  - cross-repo request filing when the factory itself must add or change behavior
+- Linked the landing from:
+  - `README.md`
+  - `AGENTS.md`
+  - `requirement_from_other_repo/README.md`
+- Updated `docs/REPO_MEMORY.md` with the durable rule that `requirement_from_other_repo/` is for factory changes, not ordinary existing-tool calls.
+- No render/reference/sample workflow behavior was changed.

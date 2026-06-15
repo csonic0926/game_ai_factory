@@ -2,6 +2,8 @@
 
 ## Cross-repo requirement intake
 
+- Other-repo AI agents that only need to call existing factory tools should start at `docs/AI_CALLER_LANDING.md`.
+- Use `requirement_from_other_repo/` only when the factory must add or change behavior, specs, validators, adapters, docs, or examples for the source repo.
 - Canonical intake folder for requirements from other repos is `requirement_from_other_repo/`.
 - Other-repo Codex agents should create one dated Markdown request file there using `REQUEST_TEMPLATE.md`.
 - Factory-side Codex should treat the request file as the source of truth, implement the smallest factory-side change that satisfies it, and append a short factory response to the same request file.
