@@ -19,7 +19,8 @@ Prop/object workflow is intentionally separate:
 - `docs/PROP_ASSET_WORKFLOW.md`
 - schema: `prop_asset_workflow_v1`
 - case studies: IMT `flame_relay_brazier` and `field_cooking_campfire_pot`
-- GPT Image prop mode: `provider.name=gpt_image`,
+- GPT Image prop mode currently stays on the direct-provider path:
+  `provider.name=gpt_image`,
   `provider.mode=gpt_image_prop_color_key`,
   `background.mode=color_key`
 - `gpt-image-2` does not support native transparent background; prop runs use flat `#FF00FF` / `#00FF00` source backgrounds plus cleanup scoring.
@@ -51,6 +52,32 @@ Current model support:
 - `gemini_cli` -> `nano-banana-2`, `nano-banana-pro`
 - `cliproxyapi` -> `gpt-image-2`
 - `agent_handoff` -> `gpt-image-2`
+
+For Codex-agent reference-pair callers, primary GPT Image execution is:
+
+```json
+"provider": { "name": "agent_handoff", "mode": "agent_handoff", "agent_tool": "imagegen" },
+"model": { "name": "gpt-image-2" }
+```
+
+This prepares `request/imagegen_handoff.json`; the orchestrating Codex agent
+then uses native `image_gen.imagegen` and writes Step 1 PNGs to
+`agent_handoff/step_1_raw/<variant>.png`.
+
+`cliproxyapi` is the fallback direct local GPT Image route for non-agent or
+headless callers. It uses the configured local proxy at
+`http://127.0.0.1:8317/v1` with API key `local-dev-image-key` unless overridden
+by `CLI_PROXY_API_BASE_URL` / `CLI_PROXY_API_KEY`. Before fallback image
+generation, the factory checks `GET /v1/models`; if the service is down, start:
+
+```bash
+/opt/homebrew/bin/cliproxyapi --config ~/.cli-proxy-api/config.yaml
+curl -s -m4 http://127.0.0.1:8317/v1/models
+```
+
+Do not infer that GPT Image is unavailable just because the local proxy process
+is not currently running, but also do not make the proxy the default path for a
+Codex-agent caller that can use `agent_handoff`.
 
 Legacy provider aliases are still accepted for compatibility, but new callers should use the canonical provider/model split.
 

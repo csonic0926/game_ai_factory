@@ -3,9 +3,12 @@ from __future__ import annotations
 import base64
 import json
 import os
+import shlex
 import shutil
 import subprocess
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from email.generator import _make_boundary
 from collections import deque
@@ -26,6 +29,9 @@ CLI_PROXY_API_CONFIG_PATH = Path("~/.cli-proxy-api/config.yaml").expanduser()
 CLI_PROXY_DEFAULT_BASE_URL = "http://127.0.0.1:8317/v1"
 CLI_PROXY_DEFAULT_API_KEY = "local-dev-image-key"
 CLI_PROXY_DEFAULT_MODEL = "gpt-image-2"
+CLI_PROXY_DEFAULT_BINARY = "/opt/homebrew/bin/cliproxyapi"
+CLI_PROXY_HEALTH_TIMEOUT_SECONDS = 4
+CLI_PROXY_START_WAIT_SECONDS = 20
 SCHEMA_VERSION = "reference_pair_workflow_v1"
 SUPPORTED_DIRECT_PROVIDERS = {"mock", "gemini_cli", "cliproxyapi", "nano_banana", "nano_banana_pro", "gpt_image_2", "imagegen"}
 SUPPORTED_AGENT_HANDOFF_PROVIDERS = {"agent_handoff", "imagegen", "imagegen_handoff"}
@@ -441,21 +447,208 @@ def _resolve_cli_proxy_api_settings(base_env: dict[str, str] | None = None) -> d
     }
 
 
+def _cli_proxy_api_probe_url(base_url: str) -> str:
+    return f"{base_url.rstrip('/')}/models"
+
+
+def _env_flag_enabled(*names: str, base_env: dict[str, str] | None = None) -> bool:
+    env = base_env if base_env is not None else os.environ
+    for name in names:
+        value = env.get(name, "").strip().lower()
+        if value in {"1", "true", "yes", "y", "on"}:
+            return True
+    return False
+
+
+def _cli_proxy_start_command_text(binary: str | None = None, config_path: str | None = None) -> str:
+    binary_text = binary or CLI_PROXY_DEFAULT_BINARY
+    config_text = config_path or str(CLI_PROXY_API_CONFIG_PATH)
+    return f"{binary_text} --config {config_text}"
+
+
+def _is_local_cli_proxy_base_url(base_url: str) -> bool:
+    try:
+        parsed = urllib.parse.urlparse(base_url)
+    except Exception:
+        return False
+    hostname = (parsed.hostname or "").strip().lower()
+    return hostname in {"127.0.0.1", "localhost", "::1"}
+
+
+def _resolve_cli_proxy_binary(base_env: dict[str, str] | None = None) -> str | None:
+    env = base_env if base_env is not None else os.environ
+    for env_name in ("CLI_PROXY_API_BIN", "CLIPROXYAPI_BIN"):
+        configured = env.get(env_name, "").strip()
+        if configured:
+            expanded = Path(configured).expanduser()
+            if expanded.exists():
+                return str(expanded)
+    for candidate in (Path(CLI_PROXY_DEFAULT_BINARY), Path("/usr/local/bin/cliproxyapi")):
+        if candidate.exists():
+            return str(candidate)
+    return shutil.which("cliproxyapi")
+
+
 def _probe_cli_proxy_api_capabilities(*, base_url: str, api_key: str, timeout: int) -> dict[str, Any]:
-    probe_root = base_url.rsplit("/v1", 1)[0] if base_url.endswith("/v1") else base_url
+    probe_url = _cli_proxy_api_probe_url(base_url)
     request = urllib.request.Request(
-        probe_root,
+        probe_url,
         headers={"Authorization": f"Bearer {api_key}"},
         method="GET",
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8"))
-    except Exception:
-        return {}
+    except urllib.error.HTTPError as error:
+        error_body = error.read().decode("utf-8", errors="replace")
+        return {
+            "_ok": False,
+            "probe_url": probe_url,
+            "error_type": "HTTPError",
+            "http_status": error.code,
+            "error": error_body or str(error),
+        }
+    except urllib.error.URLError as error:
+        return {
+            "_ok": False,
+            "probe_url": probe_url,
+            "error_type": "URLError",
+            "error": str(error.reason if getattr(error, "reason", None) else error),
+        }
+    except Exception as error:
+        return {
+            "_ok": False,
+            "probe_url": probe_url,
+            "error_type": type(error).__name__,
+            "error": str(error),
+        }
     if isinstance(payload, dict):
-        return payload
-    return {}
+        return {"_ok": True, "probe_url": probe_url, **payload}
+    return {"_ok": True, "probe_url": probe_url, "payload": payload}
+
+
+def _cli_proxy_probe_ok(probe_payload: dict[str, Any]) -> bool:
+    if not probe_payload:
+        return False
+    if "_ok" not in probe_payload:
+        # Backward-compatible path for unit tests / older callers that mocked
+        # the probe with only a capabilities payload.
+        return True
+    return bool(probe_payload.get("_ok"))
+
+
+def _cli_proxy_probe_suggests_process_down(probe_payload: dict[str, Any]) -> bool:
+    return str(probe_payload.get("error_type", "")).strip() != "HTTPError"
+
+
+def _format_cli_proxy_unavailable_error(
+    *,
+    settings: dict[str, str],
+    probe_payload: dict[str, Any],
+    ensure_proxy: bool,
+    start_attempt: dict[str, Any] | None = None,
+) -> str:
+    binary = _resolve_cli_proxy_binary()
+    binary_text = binary or CLI_PROXY_DEFAULT_BINARY
+    config_path = settings.get("config_path") or str(CLI_PROXY_API_CONFIG_PATH)
+    probe_url = str(probe_payload.get("probe_url") or _cli_proxy_api_probe_url(settings["base_url"]))
+    error_text = str(probe_payload.get("error") or "no response")
+    parts = [
+        "cli-proxy not running or not reachable for GPT Image.",
+        f"health_check={probe_url}",
+        f"base_url={settings['base_url']}",
+        f"model={CLI_PROXY_DEFAULT_MODEL}",
+        f"Start it: {_cli_proxy_start_command_text(binary_text, config_path)}",
+        f"binary={binary_text}",
+        f"config={config_path}",
+    ]
+    if ensure_proxy:
+        parts.append("ensure_proxy=attempted")
+    else:
+        parts.append(
+            "ensure_proxy=disabled; pass --ensure-proxy where supported or set CLI_PROXY_API_ENSURE=1 to auto-start a local proxy"
+        )
+    if start_attempt:
+        if start_attempt.get("started"):
+            parts.append(f"start_pid={start_attempt.get('pid')}")
+        elif start_attempt.get("reason"):
+            parts.append(f"start_skipped={start_attempt.get('reason')}")
+    if error_text:
+        parts.append(f"last_error={error_text}")
+    return " ".join(parts)
+
+
+def _start_cli_proxy_api_process(settings: dict[str, str]) -> dict[str, Any]:
+    if not _is_local_cli_proxy_base_url(settings["base_url"]):
+        return {"started": False, "reason": f"base_url is not local: {settings['base_url']}"}
+    binary = _resolve_cli_proxy_binary()
+    if not binary:
+        return {
+            "started": False,
+            "reason": f"cliproxyapi binary not found; expected {CLI_PROXY_DEFAULT_BINARY} or set CLI_PROXY_API_BIN",
+        }
+    config_path = settings.get("config_path") or str(CLI_PROXY_API_CONFIG_PATH)
+    command = [binary, "--config", config_path]
+    try:
+        process = subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except Exception as error:
+        return {"started": False, "reason": str(error), "command": _cli_proxy_start_command_text(binary, config_path)}
+    return {"started": True, "pid": process.pid, "command": _cli_proxy_start_command_text(binary, config_path)}
+
+
+def _ensure_cli_proxy_api_ready(
+    *,
+    settings: dict[str, str],
+    timeout: int = CLI_PROXY_HEALTH_TIMEOUT_SECONDS,
+    ensure_proxy: bool = False,
+) -> dict[str, Any]:
+    probe_payload = _probe_cli_proxy_api_capabilities(
+        base_url=settings["base_url"],
+        api_key=settings["api_key"],
+        timeout=timeout,
+    )
+    if _cli_proxy_probe_ok(probe_payload):
+        return probe_payload
+
+    should_start = ensure_proxy or _env_flag_enabled(
+        "CLI_PROXY_API_ENSURE",
+        "CLIPROXYAPI_ENSURE",
+        "ITF_ENSURE_CLIPROXYAPI",
+    )
+    start_attempt: dict[str, Any] | None = None
+    if should_start and _cli_proxy_probe_suggests_process_down(probe_payload):
+        start_attempt = _start_cli_proxy_api_process(settings)
+        deadline = time.monotonic() + CLI_PROXY_START_WAIT_SECONDS
+        while time.monotonic() < deadline:
+            time.sleep(0.5)
+            probe_payload = _probe_cli_proxy_api_capabilities(
+                base_url=settings["base_url"],
+                api_key=settings["api_key"],
+                timeout=timeout,
+            )
+            if _cli_proxy_probe_ok(probe_payload):
+                probe_payload["_auto_started"] = start_attempt
+                return probe_payload
+    elif should_start:
+        start_attempt = {
+            "started": False,
+            "reason": f"service responded with {probe_payload.get('error_type')}; not auto-starting another proxy",
+        }
+
+    raise ReferencePairWorkflowError(
+        _format_cli_proxy_unavailable_error(
+            settings=settings,
+            probe_payload=probe_payload,
+            ensure_proxy=should_start,
+            start_attempt=start_attempt,
+        )
+    )
 
 
 def _save_cli_proxy_api_response(payload: dict[str, Any], output_path: Path) -> Path:
@@ -574,12 +767,13 @@ def _generate_with_cli_proxy_api(
     transparent_background: bool = False,
     size_override: str | None = None,
     timeout: int = 300,
+    ensure_proxy: bool = False,
 ) -> dict[str, Any]:
     settings = _resolve_cli_proxy_api_settings()
-    capabilities = _probe_cli_proxy_api_capabilities(
-        base_url=settings["base_url"],
-        api_key=settings["api_key"],
-        timeout=timeout,
+    capabilities = _ensure_cli_proxy_api_ready(
+        settings=settings,
+        timeout=CLI_PROXY_HEALTH_TIMEOUT_SECONDS,
+        ensure_proxy=ensure_proxy,
     )
     advertised_endpoints = capabilities.get("endpoints", []) if isinstance(capabilities, dict) else []
     advertised_text = " | ".join(str(item) for item in advertised_endpoints) if isinstance(advertised_endpoints, list) else ""
@@ -994,6 +1188,37 @@ def _build_imagegen_codex_edit_prompt(
     ).strip()
 
 
+def _build_imagegen_codex_exec_prompt(
+    *,
+    codex_prompt_text: str,
+    edit_target_image: str,
+    output_path: str,
+) -> str:
+    reference_instruction = (
+        f"Use the local reference image at {edit_target_image} as the exact edit target. "
+        "Preserve its canvas, silhouette, framing, and geometry while repainting only as requested. "
+        if edit_target_image
+        else ""
+    )
+    return (
+        "Call the image_gen.imagegen model tool to generate the requested raster image. "
+        "Do NOT hand-draw with code, SVG, PIL, canvas, or any procedural drawing. "
+        f"{reference_instruction}"
+        f"Prompt for image_gen.imagegen: {codex_prompt_text} "
+        f"Then take the actual image bytes returned by image_gen.imagegen and WRITE them to disk at {output_path} "
+        "(decode base64 / copy the tool's output file as needed). "
+        f"After writing, run 'ls -la {output_path}' and report the absolute path and byte size. "
+        "If you cannot persist the actual generated image bytes, say exactly CANNOT_PERSIST."
+    ).strip()
+
+
+def _codex_exec_shell_command(prompt_text: str) -> str:
+    return (
+        "cd /tmp && codex exec --skip-git-repo-check --sandbox workspace-write "
+        f"{shlex.quote(prompt_text)} < /dev/null"
+    )
+
+
 def _build_imagegen_handoff_task(
     *,
     run_root: Path,
@@ -1003,16 +1228,26 @@ def _build_imagegen_handoff_task(
     tasks: dict[str, Any] = {}
     for variant in variants:
         reference_images = list(request_payload["generation_inputs"][variant])
+        output_path = str(_agent_handoff_raw_output_path(run_root, variant=str(variant)))
+        edit_target_image = reference_images[0] if reference_images else ""
+        codex_prompt_text = _build_imagegen_codex_edit_prompt(
+            variant=str(variant),
+            request_payload=request_payload,
+        )
+        codex_exec_prompt_text = _build_imagegen_codex_exec_prompt(
+            codex_prompt_text=codex_prompt_text,
+            edit_target_image=edit_target_image,
+            output_path=output_path,
+        )
         tasks[str(variant)] = {
             "prompt_text": request_payload["prompts"][variant],
             "codex_imagegen_mode": "edit",
-            "codex_prompt_text": _build_imagegen_codex_edit_prompt(
-                variant=str(variant),
-                request_payload=request_payload,
-            ),
+            "codex_prompt_text": codex_prompt_text,
+            "codex_exec_prompt_text": codex_exec_prompt_text,
+            "codex_exec_shell_command": _codex_exec_shell_command(codex_exec_prompt_text),
             "reference_images": reference_images,
-            "edit_target_image": reference_images[0] if reference_images else "",
-            "output_path": str(_agent_handoff_raw_output_path(run_root, variant=str(variant))),
+            "edit_target_image": edit_target_image,
+            "output_path": output_path,
         }
     return {
         "mode": "agent_handoff",
@@ -1021,14 +1256,23 @@ def _build_imagegen_handoff_task(
         "run_root": str(run_root),
         "background": request_payload.get("background", {}),
         "variants": variants,
+        "primary_for_codex_agent_callers": True,
+        "fallback_for_non_agent_callers": {
+            "provider": {"name": "cliproxyapi", "mode": "direct"},
+            "model": {"name": CLI_PROXY_DEFAULT_MODEL},
+        },
+        "one_variant_per_session": True,
         "tasks": tasks,
         "contract": {
             "purpose": "External Codex imagegen execution for Step 1 raw generation.",
             "write_step": "step_1_raw only",
             "codex_execution_protocol": [
-                "For each variant, load edit_target_image into the conversation with view_image immediately before invoking image_gen.",
-                "Invoke built-in image_gen in edit mode using codex_prompt_text; do not rely on the file path alone as an image input.",
-                "After image_gen saves its output under CODEX_HOME/generated_images, copy the selected PNG to output_path.",
+                "Process one variant per Codex/imagegen session.",
+                "Invoke built-in image_gen.imagegen using codex_prompt_text or codex_exec_prompt_text.",
+                "Do not hand-draw with code, SVG, PIL, canvas, or procedural drawing.",
+                "Persist the actual image bytes returned by image_gen.imagegen to output_path.",
+                "After writing output_path, verify with ls -la output_path and report the byte size.",
+                "For headless codex exec, run from /tmp with --skip-git-repo-check, --sandbox workspace-write, and stdin redirected from /dev/null.",
                 "Do not run cleanup, selection, or final mapping in the Codex/imagegen step.",
             ],
             "do_not_modify": [
@@ -1432,6 +1676,7 @@ def generate_with_provider(
     size_override: str | None = None,
     aspect_ratio_override: str | None = None,
     image_size_override: str | None = None,
+    ensure_proxy: bool = False,
 ) -> dict[str, Any]:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if provider_name == "mock":
@@ -1445,6 +1690,7 @@ def generate_with_provider(
             output_path=output_path,
             transparent_background=transparent_background,
             size_override=size_override,
+            ensure_proxy=ensure_proxy,
         )
     if not NANO_BANANA_SCRIPT.exists():
         raise ReferencePairWorkflowError(f"Nano Banana CLI not found: {NANO_BANANA_SCRIPT}")
@@ -1786,7 +2032,7 @@ def _requires_mapping_selection(request_payload: dict[str, Any], *, variants: li
     return False
 
 
-def generate_reference_pair(spec_path: Path, *, max_attempts: int = 3) -> dict[str, Any]:
+def generate_reference_pair(spec_path: Path, *, max_attempts: int = 3, ensure_proxy: bool = False) -> dict[str, Any]:
     if max_attempts <= 0:
         raise ReferencePairWorkflowError("max_attempts must be at least 1.")
     prepare_result = prepare_reference_pair_run(spec_path)
@@ -1863,6 +2109,7 @@ def generate_reference_pair(spec_path: Path, *, max_attempts: int = 3) -> dict[s
                     prompt_text=prompt_text,
                     reference_images=generation_input_paths,
                     output_path=raw_output_path if background.get("mode") == "color_key" else output_path,
+                    ensure_proxy=ensure_proxy,
                 )
             _write_step1_raw_artifact(
                 run_root,

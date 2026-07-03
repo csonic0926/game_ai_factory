@@ -1321,3 +1321,41 @@ Primary regression target:
   - `requirement_from_other_repo/README.md`
 - Updated `docs/REPO_MEMORY.md` with the durable rule that `requirement_from_other_repo/` is for factory changes, not ordinary existing-tool calls.
 - No render/reference/sample workflow behavior was changed.
+
+
+## June 17 — GPT Image / CLIProxyAPI availability preflight
+
+Status: completed.
+
+- Handled cross-repo request `requirement_from_other_repo/2026-06-17_imt_gpt_image_cliproxy_availability.md`.
+- Direct GPT Image (`gpt-image-2`) remains routed through local `cliproxyapi`.
+- Added `/v1/models` preflight before `cliproxyapi` image calls so a stopped local proxy now fails with a start command instead of a raw connection error.
+- Added opt-in local proxy auto-start:
+  - `--ensure-proxy` for reference-pair and wall helper commands
+  - `CLI_PROXY_API_ENSURE=1` for all workflows using the shared provider wrapper
+- Updated README/workflow docs and repo memory to state that GPT Image is configured here and should not be downgraded to Gemini solely because port `8317` is not currently listening.
+- Validation run:
+  - `python3 -m unittest tests.test_reference_pair_workflow_provider -v`
+  - `python3 -m unittest tests.test_prop_asset_workflow tests.test_reference_pair_workflow_provider tests.test_variant_selector_floor_mapping tests.test_variant_selector_wall_validation -v`
+  - `python3 -m py_compile pipeline/reference_pair_workflow.py itf.py pipeline/prop_asset_workflow.py pipeline/tile_reskin_workflow.py`
+  - `python3 -m unittest discover -s tests -v` was attempted but is blocked by missing local `pytest` for `tests/test_tile_reskin_workflow.py`.
+- Follow-up left open: the Gemini `--key=company` label/key-selection smell remains separate from this GPT Image availability fix.
+
+
+## June 17 — GPT Image direct Codex priority correction
+
+Status: completed.
+
+- Handled correction request `requirement_from_other_repo/2026-06-17_imt_gpt_image_direct_codex_priority_CORRECTION.md`.
+- Corrected provider priority: for Codex-agent reference-pair callers, GPT Image primary path is now `agent_handoff` using native `image_gen.imagegen`; `cliproxyapi` remains the non-agent/headless fallback.
+- Expanded `request/imagegen_handoff.json` so each task includes:
+  - `codex_exec_prompt_text`
+  - `codex_exec_shell_command`
+  - one-variant-per-session and persist/verify instructions
+- Updated README, AI caller landing, SPEC, floor/wall/reference-pair docs, prop/tile-reskin docs, and repo memory to stop presenting `cliproxyapi` as the headline GPT Image route for Codex-agent use.
+- Updated `/Users/hunglingki/.claude/skills/imt-generate-tiles-orchestrator/SKILL.md` to use `game_asset_factory` paths and prefer `agent_handoff` for fresh floor/wall GPT Image generation from Codex-capable agents.
+- Validation run:
+  - `python3 -m unittest tests.test_reference_pair_workflow_provider -v`
+  - `python3 -m unittest tests.test_prop_asset_workflow tests.test_reference_pair_workflow_provider tests.test_variant_selector_floor_mapping tests.test_variant_selector_wall_validation -v`
+  - `python3 -m py_compile pipeline/reference_pair_workflow.py itf.py pipeline/prop_asset_workflow.py pipeline/tile_reskin_workflow.py`
+- Not changed: the existing `cliproxyapi` preflight/auto-start fallback and the Gemini `--key=company` follow-up.

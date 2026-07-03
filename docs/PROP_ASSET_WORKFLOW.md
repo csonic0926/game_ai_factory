@@ -95,6 +95,21 @@ This avoids the local proxy build failure mode where `/v1/images/edits`
 exists but rejects multipart bridging with `request Content-Type isn't
 multipart/form-data`.
 
+Direct GPT Image prop runs still require the local `cliproxyapi` process to be
+running because `prop_asset_workflow_v1` does not yet implement the
+reference-pair `agent_handoff` path. Treat this as the prop workflow's current
+fallback/direct-provider limitation, not as the preferred GPT Image route for
+Codex-agent reference-pair work. The configured local path is:
+
+```bash
+/opt/homebrew/bin/cliproxyapi --config ~/.cli-proxy-api/config.yaml
+curl -s -m4 http://127.0.0.1:8317/v1/models
+```
+
+If the health check fails, start the proxy or set `CLI_PROXY_API_ENSURE=1` to
+let the factory auto-start it; do not conclude GPT Image itself is unavailable
+solely because port 8317 was not listening.
+
 `gemini_cli` direct mode is also accepted with `nano-banana-2` or
 `nano-banana-pro`; base states receive a small engineering guide image, and
 `edit_from` states receive the already-cleaned source state as the reference
@@ -249,7 +264,10 @@ For GPT Image color-key runs, the handoff keeps the existing IMT-facing shape an
 ## Agent handoff status
 
 `prop_asset_workflow_v1` currently supports mock and direct providers only.
-`agent_handoff` is intentionally not supported yet.
+`agent_handoff` is intentionally not supported yet for prop generation. For
+Codex-agent GPT Image handoff, use the reference-pair workflow's
+`request/imagegen_handoff.json` contract; prop handoff needs its own future
+schema before it should be treated as supported.
 
 Preparing an `agent_handoff` spec writes `request/prop_agent_handoff.json` as an
 explicit unsupported packet for debugging, but `generate-prop-assets` will still

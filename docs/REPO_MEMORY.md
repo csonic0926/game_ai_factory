@@ -255,49 +255,71 @@
   - the actual wall rendering
   - the background-color restriction
 
-## Agent-assisted wall Step 1 contract
+## GPT Image provider priority for reference-pair Step 1
 
-- Wall Step 0 may now emit an **agent_handoff** contract for Codex-side image generation.
-- This is **not** a normal repo-local provider call.
-  - use `provider.mode = "agent_handoff"`
-  - use `provider.name = "imagegen"`
+- For Codex-agent callers, the first-class GPT Image route is **agent_handoff**:
+  - `provider.name = "agent_handoff"`
+  - `provider.mode = "agent_handoff"`
+  - `provider.agent_tool = "imagegen"`
+  - `model.name = "gpt-image-2"`
   - Step 0 writes `request/imagegen_handoff.json`
+- This path means the orchestrating Codex agent generates Step 1 raw PNGs with native `image_gen.imagegen`; no local proxy process is required for the normal Codex-agent path.
 - The external Codex/imagegen side owns **Step 1 raw generation only**:
-  - read prompt + reference image(s) from the handoff packet
-  - write one PNG per variant to `agent_handoff/step_1_raw/<variant>.png`
+  - read the task packet's prompt + reference image(s)
+  - process **one variant per Codex/imagegen session**
+  - call `image_gen.imagegen`; do **not** hand-draw with code, SVG, PIL, canvas, or procedural drawing
+  - persist the actual returned image bytes to `agent_handoff/step_1_raw/<variant>.png`
+  - verify the file with `ls -la <output_path>`
   - do not perform Step 3 cleanup / selection there
-- After those raw PNGs are staged, the factory resumes with `generate-reference-pair` and ingests them into the normal Step 3+ workflow.
+- The handoff packet should include, per variant:
+  - `codex_prompt_text`
+  - `codex_exec_prompt_text`
+  - `codex_exec_shell_command`
+  - `edit_target_image`
+  - `output_path`
+- Headless `codex exec` gotchas to preserve in docs/contracts:
+  - run one image per `codex exec` session
+  - include `--skip-git-repo-check`
+  - use `--sandbox workspace-write`
+  - redirect stdin with `< /dev/null`
+  - explicitly instruct Codex to use `image_gen.imagegen` and to persist bytes; otherwise it may satisfy the task with hand-written SVG/PIL code or leave the image only in conversation state
+- After raw PNGs are staged, the factory resumes with `generate-reference-pair` and ingests them into the normal Step 3+ workflow.
 
-## CLIProxyAPI GPT Image 2 provider
+## CLIProxyAPI GPT Image 2 fallback provider
 
-- The repo now exposes a **public provider/model split** for Step 1 execution.
-- Canonical external contract:
-  - `provider.name = "cliproxyapi"` + `model.name = "gpt-image-2"` for direct local CLIProxyAPI execution
-  - `provider.name = "gemini_cli"` + `model.name = "nano-banana-2"` or `nano-banana-pro`
-  - `provider.name = "agent_handoff"` + `model.name = "gpt-image-2"` for Codex handoff mode
+- Keep `cliproxyapi + gpt-image-2` as the direct HTTP fallback for non-agent/headless callers that cannot perform `agent_handoff`.
+- Canonical fallback contract:
+  - `provider.name = "cliproxyapi"`
+  - `provider.mode = "direct"`
+  - `model.name = "gpt-image-2"`
+- Gemini remains available as `provider.name = "gemini_cli"` + `model.name = "nano-banana-2"` or `nano-banana-pro`, especially for floor transform runs that need two image inputs.
 - Legacy aliases remain accepted but should be treated as compatibility input only:
-  - `gpt_image_2`
-  - direct `imagegen`
+  - `imagegen_handoff` -> `agent_handoff`
+  - `gpt_image_2` / direct-mode `imagegen` -> `cliproxyapi` fallback
   - `nano_banana`
   - `nano_banana_pro`
-  - `imagegen_handoff`
-- Direct GPT Image 2 provider resolution order:
+- Direct fallback GPT Image 2 provider resolution order:
   1. `CLI_PROXY_API_BASE_URL` / `CLI_PROXY_API_KEY`
   2. `CLIPROXYAPI_BASE_URL` / `CLIPROXYAPI_API_KEY`
   3. `~/.cli-proxy-api/config.yaml`
   4. fallback defaults `http://127.0.0.1:8317/v1` and `local-dev-image-key`
-- Current repo limitation: direct GPT Image 2 backend supports **0 or 1 reference image** per variant in this repo wrapper.
+- A stopped local proxy is not proof GPT Image is unavailable; it only blocks the fallback HTTP route.
+  - on this machine `cliproxyapi` is installed at `/opt/homebrew/bin/cliproxyapi`
+  - config is expected at `~/.cli-proxy-api/config.yaml`
+  - health check is `GET http://127.0.0.1:8317/v1/models`
+  - start command is `/opt/homebrew/bin/cliproxyapi --config ~/.cli-proxy-api/config.yaml`
+  - if port `8317` is not listening, start the proxy or use the repo's opt-in ensure hook; do **not** silently downgrade to Gemini just because the fallback process is down
+- Current direct fallback limitation: GPT Image 2 backend supports **0 or 1 reference image** per variant in this repo wrapper.
   - single-reference variants use `/images/edits`
   - zero-reference variants use `/images/generations`
   - multi-reference variants should still use Gemini/Nano Banana or a future dedicated mapping layer
 - CLIProxyAPI service compatibility note:
-  - Homebrew `cliproxyapi 6.9.30` on this machine exposed only text routes even though upstream `main` already had image handlers.
   - Root endpoint advertisement can be stale/incomplete; do **not** treat missing `/v1/images/*` in `GET /` as proof that image routes are unavailable.
-  - Real truth is whether `/v1/images/generations` and `/v1/images/edits` return non-404.
+  - Use `/v1/models` for service reachability, then rely on the actual `/v1/images/generations` or `/v1/images/edits` response for route-specific failures.
 
 ## Codex imagegen wall run gotchas
 
-- Codex imagegen can be used for wall Step 1 only through the handoff path; Python still cannot call it directly.
+- Codex imagegen should be used for wall Step 1 through the handoff path when a Codex-capable agent is orchestrating the run.
 - In the first real 2u wall run, imagegen produced visually useful stone texture but did **not** reliably obey:
   - the exact wall reference silhouette
   - the flat chroma-key background requirement
@@ -313,8 +335,10 @@
   - `edit_target_image`
   - `codex_imagegen_mode = "edit"`
   - `codex_prompt_text`
+  - `codex_exec_prompt_text`
+  - `codex_exec_shell_command`
   - `contract.codex_execution_protocol`
-- This fixes the **handoff path ambiguity**: Codex must load the exact local reference image with `view_image` before invoking imagegen because the built-in imagegen tool does not consume arbitrary filesystem paths directly.
+- This fixes the **handoff path ambiguity**: Codex must use the exact local reference image named by `edit_target_image`, invoke `image_gen.imagegen`, persist the actual returned bytes to `output_path`, and verify the file on disk.
 - Early test with enlarged 2u references still showed that imagegen may ignore exact silhouette even in edit-style prompting, so the path-contract fix is necessary but not sufficient for geometric correctness.
 
 ## Wall Step 6 six-point debug contract
@@ -561,14 +585,20 @@
 
 ## Local CLIProxyAPI service setup
 
-- On 2026-06-02 the default LaunchAgent was still pointing at the Homebrew `cliproxyapi` binary, which returned `404 page not found` for `/v1/images/generations`.
-- Switched `/Users/hunglingki/Library/LaunchAgents/homebrew.mxcl.cliproxyapi.plist` to run:
-  - `/Users/hunglingki/.local/bin/cliproxyapi-main -config /opt/homebrew/etc/cliproxyapi.conf`
-- A backup was written at:
-  - `/Users/hunglingki/Library/LaunchAgents/homebrew.mxcl.cliproxyapi.plist.backup.isometric_asset_factory_20260602`
-- Route probe after restart:
-  - `POST /v1/images/generations` with empty JSON returns HTTP 400 `prompt is required` instead of 404
-  - `POST /v1/images/edits` with empty JSON returns HTTP 400 `prompt is required` instead of 404
+- This is fallback-provider setup for `cliproxyapi`, not the primary GPT Image route for Codex-agent reference-pair calls.
+- Current setup verified 2026-06-17:
+  - binary: `/opt/homebrew/bin/cliproxyapi`
+  - config: `~/.cli-proxy-api/config.yaml`
+  - local base URL: `http://127.0.0.1:8317/v1`
+  - API key: `local-dev-image-key`
+  - upstream Codex/ChatGPT account auth lives under `~/.cli-proxy-api/codex-*.json`
+- If `curl -s -m4 http://127.0.0.1:8317/v1/models` returns no response / HTTP `000`, the proxy process is down, not necessarily misconfigured.
+- Start manually with:
+  - `/opt/homebrew/bin/cliproxyapi --config ~/.cli-proxy-api/config.yaml`
+- Repo preflight should fail with that start command instead of letting a raw `Connection refused` convince future agents that GPT Image is unavailable.
+- Opt-in auto-start:
+  - reference-pair CLI: `--ensure-proxy`
+  - all workflows using the shared provider wrapper: `CLI_PROXY_API_ENSURE=1`
 
 ## Tile re-skin workflow (tile_reskin_workflow_v1)
 

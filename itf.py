@@ -141,6 +141,11 @@ def parse_arguments() -> argparse.Namespace:
         help="Prepare, generate/ingest Step 1 output, and validate requested variant(s) from the reference-pair workflow",
     )
     ref_generate_parser.add_argument("--spec", required=True, help="Path to reference-pair spec JSON")
+    ref_generate_parser.add_argument(
+        "--ensure-proxy",
+        action="store_true",
+        help="For cliproxyapi/GPT Image runs, start the local cli-proxy if the /v1/models health check is unreachable.",
+    )
 
     wall_generate_parser = subparsers.add_parser(
         "generate-wall-reference-pair",
@@ -176,6 +181,11 @@ def parse_arguments() -> argparse.Namespace:
     wall_generate_parser.add_argument(
         "--spec-out",
         help="Optional path to write the generated wall spec JSON for inspection/reuse",
+    )
+    wall_generate_parser.add_argument(
+        "--ensure-proxy",
+        action="store_true",
+        help="For cliproxyapi/GPT Image runs, start the local cli-proxy if the /v1/models health check is unreachable.",
     )
 
     ref_validate_parser = subparsers.add_parser(
@@ -642,7 +652,10 @@ def command_prepare_reference_pair(arguments: argparse.Namespace) -> int:
 
 def command_generate_reference_pair(arguments: argparse.Namespace) -> int:
     try:
-        result = generate_reference_pair(Path(arguments.spec).expanduser().resolve())
+        result = generate_reference_pair(
+            Path(arguments.spec).expanduser().resolve(),
+            ensure_proxy=bool(getattr(arguments, "ensure_proxy", False)),
+        )
         print(json.dumps({"ok": True, "mode": "generate-reference-pair", "result": result}, indent=2))
         return 0
     except ReferencePairWorkflowError as error:
@@ -682,7 +695,7 @@ def command_generate_wall_reference_pair(arguments: argparse.Namespace) -> int:
             result = prepare_reference_pair_run(spec_out)
             mode = "generate-wall-reference-pair.prepare-agent-handoff"
         else:
-            result = generate_reference_pair(spec_out)
+            result = generate_reference_pair(spec_out, ensure_proxy=bool(getattr(arguments, "ensure_proxy", False)))
             mode = "generate-wall-reference-pair"
         print(
             json.dumps(

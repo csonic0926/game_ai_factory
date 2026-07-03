@@ -31,8 +31,9 @@ source-repo output expectations in the spec when supported, for example
 `target_project_folder` in prop specs.
 
 For a safe offline smoke test, prefer `provider.name = "mock"` or the workflow's
-`--provider mock` override. For real generation, use the provider/model contract
-documented in `README.md`.
+`--provider mock` override. For real GPT Image generation from a Codex-capable
+agent, prefer `agent_handoff` / native `image_gen.imagegen`; use `cliproxyapi`
+only as the non-agent/headless fallback.
 
 ## Common workflows
 
@@ -118,9 +119,27 @@ Wall helper:
 ```bash
 python3 itf.py generate-wall-reference-pair --height 2
 python3 itf.py generate-wall-reference-pair --height 2 --variant left
+python3 itf.py generate-wall-reference-pair --provider agent_handoff --model gpt-image-2
 python3 itf.py generate-wall-reference-pair --provider gemini_cli --model nano-banana-pro
 python3 itf.py generate-wall-reference-pair --provider cliproxyapi --model gpt-image-2
+python3 itf.py generate-wall-reference-pair --provider cliproxyapi --model gpt-image-2 --ensure-proxy
 ```
+
+Codex-agent GPT Image handoff:
+
+1. Prepare a handoff run with `provider.name=agent_handoff` or
+   `generate-wall-reference-pair --provider agent_handoff --model gpt-image-2`.
+2. Open `<run_root>/request/imagegen_handoff.json`.
+3. For each task, run the provided `codex_exec_shell_command` or manually call
+   `image_gen.imagegen`; do not hand-draw with code.
+4. Write the actual image bytes to
+   `<run_root>/agent_handoff/step_1_raw/<variant>.png` and verify with `ls -la`.
+5. Resume with `python3 itf.py generate-reference-pair --spec <same spec>`.
+
+Use one Codex/imagegen session per variant. If you cannot use Codex handoff,
+the fallback is local `cliproxyapi`: health check
+`curl -s -m4 http://127.0.0.1:8317/v1/models`; if it is down, start
+`/opt/homebrew/bin/cliproxyapi --config ~/.cli-proxy-api/config.yaml`.
 
 Inspect:
 

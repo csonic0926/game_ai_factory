@@ -76,6 +76,14 @@ python3 itf.py generate-tile-reskin --spec <spec> --out output/tile_reskin_runs/
 }
 ```
 
+`tile_reskin_workflow_v1` currently uses direct providers for material-field
+generation. It does not implement the reference-pair `agent_handoff` path yet.
+For `gpt_image` / `cliproxyapi`, the workflow calls the local GPT Image proxy as
+the non-agent fallback. Check
+`curl -s -m4 http://127.0.0.1:8317/v1/models`; if it is down, start
+`/opt/homebrew/bin/cliproxyapi --config ~/.cli-proxy-api/config.yaml` or set
+`CLI_PROXY_API_ENSURE=1`.
+
 ### `source_tiles`
 - `dir` — directory of the geometrically-correct source PNGs (use the
   pristine originals, e.g. extracted from the target repo's git HEAD, not a

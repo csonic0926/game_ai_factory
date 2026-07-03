@@ -50,7 +50,9 @@ python3 itf.py generate-wall-reference-pair
 python3 itf.py generate-wall-reference-pair --height 2
 python3 itf.py generate-wall-reference-pair --height 2 --variant left
 python3 itf.py generate-wall-reference-pair --variant right
+python3 itf.py generate-wall-reference-pair --provider agent_handoff --model gpt-image-2
 python3 itf.py generate-wall-reference-pair --provider cliproxyapi --model gpt-image-2
+python3 itf.py generate-wall-reference-pair --provider cliproxyapi --model gpt-image-2 --ensure-proxy
 python3 itf.py generate-wall-reference-pair --provider gemini_cli --model nano-banana-pro
 ```
 
@@ -73,12 +75,18 @@ providers only. `agent_handoff` is intentionally not supported yet.
 
 ## Public provider/model contract
 
-Use these two fields in specs:
+For a Codex-agent caller, the first-class GPT Image path is `agent_handoff`:
+the factory prepares prompts, references, and exact output paths, then the
+orchestrating Codex agent calls its native `image_gen.imagegen` tool and writes
+Step 1 raw PNGs into the run. This path does not require a local proxy server.
+
+Use these fields for the primary Codex handoff path:
 
 ```json
 "provider": {
-  "name": "cliproxyapi",
-  "mode": "direct"
+  "name": "agent_handoff",
+  "mode": "agent_handoff",
+  "agent_tool": "imagegen"
 },
 "model": {
   "name": "gpt-image-2"
@@ -100,6 +108,53 @@ Current supported models:
 - `cliproxyapi` -> `gpt-image-2`
 - `agent_handoff` -> `gpt-image-2`
 
+### Codex agent handoff: primary GPT Image path
+
+One-liner for standard wall handoff preparation:
+
+```bash
+python3 itf.py generate-wall-reference-pair \
+  --height 2 \
+  --provider agent_handoff \
+  --model gpt-image-2 \
+  --spec-out /tmp/wall_handoff.spec.json \
+  --output-root /tmp/game_asset_factory_handoff_runs
+```
+
+That command prepares the run and prints `request/imagegen_handoff.json`. For
+each task in that packet, run the provided `codex_exec_shell_command` or use the
+same instructions manually. The agent must write exactly one PNG per variant to:
+
+```text
+<run_root>/agent_handoff/step_1_raw/<variant>.png
+```
+
+The packet intentionally says to use `image_gen.imagegen`, not hand-drawn code,
+to persist the actual returned image bytes to `output_path`, and to verify with
+`ls -la`. Process one variant per Codex/imagegen session. After all requested
+raw PNGs exist, resume the factory:
+
+```bash
+python3 itf.py generate-reference-pair --spec /tmp/wall_handoff.spec.json
+```
+
+### Local GPT Image / CLIProxyAPI fallback
+
+For non-agent/headless callers that cannot perform a Codex handoff, use the
+local OpenAI-compatible `cliproxyapi` fallback. On this machine it is installed
+and configured; if a fallback GPT Image run fails because `127.0.0.1:8317` is
+not listening, start the proxy instead of downgrading to Gemini:
+
+```bash
+/opt/homebrew/bin/cliproxyapi --config ~/.cli-proxy-api/config.yaml
+curl -s -m4 http://127.0.0.1:8317/v1/models
+```
+
+The factory preflights `GET /v1/models` before a `cliproxyapi` image request and
+returns an actionable start command when the local proxy is unreachable. For
+reference-pair commands, pass `--ensure-proxy` to auto-start the local proxy; for
+all workflows, `CLI_PROXY_API_ENSURE=1` enables the same opt-in auto-start hook.
+
 For prop assets, direct `cliproxyapi`, `gpt_image`, and `gemini_cli` runs emit request payload
 snapshots under `request/provider_request_{asset_id}.json`; `edit_from` states
 route the cleaned source-state PNG as the reference image. For local CLIProxyAPI GPT Image edit routes, the factory sends JSON data-URL edit payloads rather than multipart uploads so current proxy builds can bridge through the Responses image tool. GPT Image 2 does not support native transparent background, so the prop path asks for a flat `#FF00FF`/`#00FF00` chroma-key background, emits cleanup candidates, scores them by raw-vs-cleaned pixel preservation/removal, then validates the selected transparent PNG.
@@ -108,7 +163,7 @@ Legacy aliases are still accepted and normalized:
 
 - `nano_banana` -> `provider.name=gemini_cli`, `model.name=nano-banana-2`
 - `nano_banana_pro` -> `provider.name=gemini_cli`, `model.name=nano-banana-pro`
-- `gpt_image_2` or direct `imagegen` -> `provider.name=cliproxyapi`, `model.name=gpt-image-2`
+- `gpt_image_2` or direct-mode `imagegen` -> fallback `provider.name=cliproxyapi`, `model.name=gpt-image-2`
 - `imagegen_handoff` -> `provider.name=agent_handoff`, `model.name=gpt-image-2`
 
 For new integrations, prefer the canonical provider/model fields instead of legacy aliases.
@@ -123,8 +178,9 @@ For new integrations, prefer the canonical provider/model fields instead of lega
   "output_root": "/absolute/path/to/output/reference_pair_runs",
   "variants": ["left", "right"],
   "provider": {
-    "name": "cliproxyapi",
-    "mode": "direct"
+    "name": "agent_handoff",
+    "mode": "agent_handoff",
+    "agent_tool": "imagegen"
   },
   "model": {
     "name": "gpt-image-2"

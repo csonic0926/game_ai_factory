@@ -27,6 +27,13 @@ python3 itf.py generate-reference-pair \
   --spec /absolute/path/to/spec.json
 ```
 
+For fresh floor GPT Image generation from a Codex-capable caller, prefer a spec
+with `provider.mode = "agent_handoff"` and let the agent write
+`agent_handoff/step_1_raw/<variant>.png` via `image_gen.imagegen`; then rerun
+`generate-reference-pair` with the same spec to resume validation/selection.
+Use `cliproxyapi` only as the non-agent/headless fallback. Floor transform runs
+that need two input images should still use Gemini/Nano Banana.
+
 Validate:
 
 ```bash
