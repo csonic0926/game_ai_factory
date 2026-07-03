@@ -1,6 +1,6 @@
 ---
 name: game-story-factory
-description: Project-agnostic story creation orchestrator. Use when any game project needs world/character/cast/chapter story production. Resolves a project adapter under game_story_factory/adapters/, then routes one fresh worker per step through the factory's step files with .5 review gates.
+description: Project-agnostic story creation orchestrator. Use when any game project needs world/character/cast/chapter story production. Resolves a project adapter under the factory's adapters/, then routes one fresh worker per step through the factory's step files with .5 review gates; also supports craft mode to invoke a single writing-technique doc independently, without a full step machine.
 ---
 
 # Game Story Factory Orchestrator
@@ -14,6 +14,7 @@ Everything project-specific comes from an adapter — never hardcode game paths.
 ## Invocation
 
 `/game-story-factory <project_id> [world|character|cast|chapter] [start|resume|revise ...]`
+`/game-story-factory <project_id> craft <craft-name> [task / target files ...]`  — independent single-craft call
 
 If `<project_id>` is omitted, infer it from the current working repo by
 matching `<GAME_REPO>` across `<FACTORY>/adapters/*/PROJECT_PROFILE.md`;
@@ -86,10 +87,27 @@ Chapter hard bindings:
 `WORLD → CHARACTER (one) → CAST → CHARACTER (next requested) → CAST → …
 → CAST_PASS → CHAPTER (repeat per chapter/branch)`
 
-## Craft library
+## Craft library & craft mode
 
-Writing-technique docs in `<FACTORY>/core/craft/` (story-logic-ledger,
-character-memory-ledger, quoted-dialogue, antagonist-pressure-design,
-choice-aftermath-writing, character-context, knowledge-stage-json,
-world-state-snapshot, rest-moment-progression, story-attributes).
-Step files name the craft docs they require; pass those paths to workers.
+Writing-technique docs live in `<FACTORY>/core/craft/`. They are self-contained
+(no step/pipeline coupling; they consume only resolved profile variables such as
+`<PRIMARY_LOCALE>` / `<SHIPPED_LOCALES>` plus the input artifacts you hand them).
+Catalog + per-craft inputs/outputs: `<FACTORY>/core/craft/README.md`.
+
+Two ways to use a craft:
+
+1. **Inside a step machine** — step files name the craft docs they require
+   (e.g. CHAPTER STEP 8/8.5 require `quoted-dialogue.md`); pass those paths to the
+   step worker.
+2. **Independent craft mode** — `/game-story-factory <project_id> craft <craft-name> [task / target files]`.
+   Run Resolution first (profile → variables), then dispatch ONE fresh worker with:
+   (a) `<FACTORY>/core/craft/<craft-name>.md` as its only source of truth,
+   (b) the resolved profile variables it needs,
+   (c) the input artifacts / target files named in the task,
+   (d) the output path (usually an existing `<STORY_ROOT>` file to revise, or a
+   named deliverable).
+   **No `.5` gate** — craft mode applies a technique, it is not a pipeline stage;
+   the worker self-checks against the craft doc's own criteria. Use it to run one
+   technique (revise quoted dialogue, build a knowledge-stage JSON, write a memory
+   ledger) without spinning up a full step machine. Craft mode never edits
+   `WORKFLOW_CORE_VARIABLES.md`.

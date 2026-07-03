@@ -45,7 +45,7 @@ REFERENCE_PAIR_EXAMPLES_ROOT = REPO_ROOT / "examples" / "reference_pair_workflow
 
 
 def parse_arguments() -> argparse.Namespace:
-    argument_parser = argparse.ArgumentParser(description="game_asset_factory repo CLI")
+    argument_parser = argparse.ArgumentParser(description="game_ai_factory asset-factory CLI")
     subparsers = argument_parser.add_subparsers(dest="command", required=True)
 
     validate_parser = subparsers.add_parser("validate", help="Validate config, manifest, or Blender scene")
