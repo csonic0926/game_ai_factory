@@ -1,9 +1,9 @@
+# umbrella-wide ignores (sub-factories also carry their own .gitignore)
 __pycache__/
 *.pyc
-*.pyo
-*.blend1
+.pytest_cache/
+.DS_Store
 .env
-
-output/
-output_square/
-texture_cache/
+# generated run outputs from any factory
+**/output/
+asset/texture_cache/

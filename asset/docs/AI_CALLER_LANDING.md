@@ -21,7 +21,7 @@ job. File a request only when the factory itself must change.
 Run commands from the factory repo:
 
 ```bash
-cd /Users/hunglingki/git_projects/tools/game_asset_factory
+cd /Users/hunglingki/git_projects/tools/game_ai_factory/asset
 python3 -m pip install -r requirements.txt
 python3 itf.py --help
 ```

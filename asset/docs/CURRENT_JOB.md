@@ -1266,8 +1266,8 @@ Primary regression target:
 
 - User requested another repo/folder rename from the prior `isometric_asset_factory` direction to `game_asset_factory`.
 - GitHub repository was renamed to `csonic0926/game_asset_factory` and local `origin` was updated to `https://github.com/csonic0926/game_asset_factory.git`.
-- Public-facing repo names, CLI descriptions, docs, and current absolute-path examples now use `game_asset_factory` and `/Users/hunglingki/git_projects/tools/game_asset_factory`.
-- Local directory rename completed at `/Users/hunglingki/git_projects/tools/game_asset_factory`.
+- Public-facing repo names, CLI descriptions, docs, and current absolute-path examples now use `game_asset_factory` and `/Users/hunglingki/git_projects/tools/game_ai_factory/asset`.
+- Local directory rename completed at `/Users/hunglingki/git_projects/tools/game_ai_factory/asset`.
 - Historical run notes and old generated provenance may still mention prior names if they describe past runs or actual old backup filenames.
 
 ## June 13 — tile re-skin workflow added (cross-repo request: doodi_world_demo)

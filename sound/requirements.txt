@@ -1,0 +1,2 @@
+# No pip dependencies — stdlib urllib for HTTP, ffmpeg/ffprobe (external) for audio.
+# System requirement: ffmpeg + ffprobe on PATH.

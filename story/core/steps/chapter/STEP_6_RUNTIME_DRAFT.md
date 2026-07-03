@@ -1,0 +1,105 @@
+# STEP 6 — Scene Runtime Draft
+
+## Purpose
+
+Write the chapter's zh-Hant runtime scene draft from the saved event graph.
+
+## Read inputs from
+
+Read the saved event graph:
+
+- `<STORY_ROOT>/chapter_event_graphs/<ARTIFACT_STEM>.md`
+
+## Save output to
+
+Write the runtime draft to:
+
+- `<STORY_ROOT>/runtime_scene_drafts/<ARTIFACT_STEM>_zh.md`
+
+If the chapter is split into multiple scene-cluster files, keep them in the same directory and use the same `<ARTIFACT_STEM>` prefix.
+
+## Skill use
+
+- No skill required for this step.
+
+## Task
+
+Turn the event graph into scene-level runtime prose.
+
+Write one scene cluster at a time, usually one `STORY` beat with its adjacent `FLOW` beats, or one small location block.
+
+Write the draft so it:
+
+- follows the graph beat order exactly
+- turns beat intent into on-screen scene action
+- reads in second person with `你`
+- stays in zh-Hant for this pass
+- lands one readable beat at a time
+- is ready for later CSV landing
+
+## Scene draft standard
+
+Write each scene cluster so the reader can perceive:
+
+- where `你` are standing
+- who is physically present
+- what visible action is happening
+- what object, document, doorway, counter, table, street position, or other support is carrying the beat
+- what visible change pushes the next beat forward
+
+Stage graph information through scene action, dialogue, gesture, position, and object state.
+
+When a graph beat includes revealed information, write the moment that reveals it on-screen.
+
+When a major character, institution face, or place appears for the first time in this chapter, introduce it in-scene through action and placement.
+
+## Line writing standard
+
+Write each line as one dominant readable beat.
+
+A strong line usually carries one of these:
+
+- one action
+- one spoken line
+- one visible reaction
+- one object-state change
+- one small realization attached to the immediately previous action
+
+Keep line-to-line continuity strong so each line feels pulled out of the previous one by sight, movement, speech, or pressure.
+
+## Runtime prose standard
+
+Write runtime-facing prose that stays on observable ground.
+
+Write with:
+
+- action
+- position
+- distance
+- gesture
+- dialogue
+- object state
+- visible environment
+- visible signs of routine, rules, or institutional process
+
+Write natural Chinese with short readable rhythm.
+
+Prefer direct scene facts and direct spoken language.
+
+## INTRO handling
+
+If the chapter includes an `INTRO`, keep its opening function intact.
+
+The opening should still cover:
+
+1. time cue
+2. place cue
+3. current errand or obligation
+4. key object or task destination
+5. one abnormal note for today
+6. immediate next move
+
+## Required output
+
+- one or more zh-Hant runtime draft files under `<STORY_ROOT>/runtime_scene_drafts/`
+- each draft file readable as playable scene prose rather than graph summary

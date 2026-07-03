@@ -9,10 +9,10 @@ Use this document for:
 
 ## Canonical references
 
-- `1u left -> /Users/hunglingki/git_projects/tools/game_asset_factory/examples/golden/sample_factory/images/101_wall_straight_rot90.png`
-- `1u right -> /Users/hunglingki/git_projects/tools/game_asset_factory/examples/golden/sample_factory/images/101_wall_straight_rot0.png`
-- `2u left -> /Users/hunglingki/git_projects/tools/game_asset_factory/examples/golden/sample_factory/images/102_wall_straight_2u_rot90.png`
-- `2u right -> /Users/hunglingki/git_projects/tools/game_asset_factory/examples/golden/sample_factory/images/102_wall_straight_2u_rot0.png`
+- `1u left -> /Users/hunglingki/git_projects/tools/game_ai_factory/asset/examples/golden/sample_factory/images/101_wall_straight_rot90.png`
+- `1u right -> /Users/hunglingki/git_projects/tools/game_ai_factory/asset/examples/golden/sample_factory/images/101_wall_straight_rot0.png`
+- `2u left -> /Users/hunglingki/git_projects/tools/game_ai_factory/asset/examples/golden/sample_factory/images/102_wall_straight_2u_rot90.png`
+- `2u right -> /Users/hunglingki/git_projects/tools/game_ai_factory/asset/examples/golden/sample_factory/images/102_wall_straight_2u_rot0.png`
 
 Canonical handedness:
 

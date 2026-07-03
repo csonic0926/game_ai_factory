@@ -1,0 +1,84 @@
+{
+  "id": "ch_example",
+  "name": "角色名",
+  "aliases": [
+    "別名一",
+    "別名二"
+  ],
+  "concept": {
+    "role_in_story": "此人在故事中的作用。",
+    "social_read": "別人平常怎麼看這個人。",
+    "core_pressure": "此人日常最核心的壓力。",
+    "visible_contradiction": "場景裡可見的矛盾。"
+  },
+  "world_position": {
+    "household_or_institution": "所屬家庭、門派、學院、店鋪或制度位置。",
+    "daily_role": "平日扮演的角色。",
+    "range_of_movement": [
+      "平常可活動地點一",
+      "平常可活動地點二"
+    ],
+    "ordinary_obligations": [
+      "日常義務一",
+      "日常義務二"
+    ]
+  },
+  "behavior": {
+    "observable_habits": [
+      "可觀察習慣一",
+      "可觀察習慣二"
+    ],
+    "pressure_reaction": "受壓時的典型反應。",
+    "speaking_pattern": "說話節奏、密度、直接性。",
+    "avoidances": [
+      "避免說或做的事一",
+      "避免說或做的事二"
+    ]
+  },
+  "knowledge": {
+    "knows": [
+      "明確知道的事一",
+      "明確知道的事二"
+    ],
+    "does_not_know": [
+      "明確不知道的事一",
+      "明確不知道的事二"
+    ],
+    "blind_spots": [
+      "常見盲點一",
+      "常見盲點二"
+    ]
+  },
+  "relationships": [
+    {
+      "target": "ch_other",
+      "stance": "依賴 / 保護 / 觀察 / 敵意 / 利用",
+      "dependency_or_leverage": "這段關係中的依賴或槓桿。",
+      "risk": "這段關係可能帶來的風險。"
+    }
+  ],
+  "capabilities": {
+    "combat": "若有，描述戰鬥向能力。",
+    "social": "若有，描述社交向能力。",
+    "practical": "若有，描述日常實務能力。",
+    "limits": [
+      "限制一",
+      "限制二"
+    ]
+  },
+  "pressure_points": [
+    "壓力點一",
+    "壓力點二"
+  ],
+  "hooks": [
+    "可重用故事鉤子一",
+    "可重用故事鉤子二"
+  ],
+  "assumptions": [
+    {
+      "assumption": "當前工作假設。",
+      "why_reasonable": "為何這假設合理。",
+      "how_to_falsify_in_story": "後續故事如何推翻。"
+    }
+  ]
+}
