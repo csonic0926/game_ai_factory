@@ -29,6 +29,7 @@ Two ways to use a craft (see the orchestrator `SKILL.md`):
 | `world-state-snapshot` | maintain open-story world state (arcs, factions, character memory, snapshots) + deltas | current state + latest scene | snapshot update + deltas |
 | `rest-moment-progression` | design a "rest/town" moment giving limited actions to improve readiness, then route it | story moment + available systems | rest-moment design + routing |
 | `story-attributes` | design + land attribute/skill checks in events (success line / fail-forward / costs) | event + attribute system (`<BATTLE_SYSTEM>`) | check design + field mapping |
+| `cutscene-staging` | turn an approved scene into a playable cutscene document for the target game's runtime (CHAPTER STEP 7 landing) | approved STEP 6 draft + adapter `LANDING_SPEC` cutscene surface | `.cutscene.json` document + dialogue locale keys |
 
 Applicability is project-dependent: `story-attributes` / `rest-moment-progression`
 assume an RPG-ish system (`<BATTLE_SYSTEM>` present); `knowledge-stage-json`

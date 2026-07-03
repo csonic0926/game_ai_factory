@@ -79,6 +79,8 @@ plus `BRANCH_IMPLEMENTATION_OVERLAY.md`, with a branch `<ARTIFACT_STEM>`.
 Chapter hard bindings:
 - STEP 7/7.5 (and 19/19.5) REQUIRE `adapters/<project_id>/LANDING_SPEC.md`;
   missing/NOT_AVAILABLE ⇒ stop at approved STEP 6 draft, report BLOCKED_BY_PROFILE.
+  When the landing surface is a scripted cutscene, STEP 7 uses
+  `core/craft/cutscene-staging.md` to emit the game's cutscene document.
 - STEP 8/8.5 workers MUST use `core/craft/quoted-dialogue.md`.
 - STEP 10 follows `adapters/<project_id>/SYNC_SPEC.md`; missing ⇒ SKIPPED_BY_PROFILE.
 
