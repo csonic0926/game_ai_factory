@@ -47,6 +47,33 @@ if no adapter matches, offer to create one from `adapters/_template/`.
   `<PROJECT_ID>`, `<TWIN_ROOT>`, `<KNOWLEDGE_ROOT>`, `<BATTLE_SYSTEM>` in the
   worker prompt when dispatching (workers must never guess them).
 
+## Handoff language (anti-compression rules — USER ruling 2026-07-04)
+
+Handoff files are the ONLY channel between workers. They are shared working
+memory, NOT summaries. Compressed handoffs breed invented jargon that
+eventually poisons story prose — so:
+
+- Write artifacts token-RICH: full natural prose in `<PRIMARY_LOCALE>`.
+  Every constraint carried forward states the rule in plain words, its
+  source (which file, which ruling), why it exists, and what a violation
+  would look like — a short paragraph each, never a coined label.
+- NEVER invent shorthand: no code names, no compressed tags, no
+  jargon-coinage for constraints, beats, or disciplines. When an upstream
+  artifact already coined one, EXPAND it back into plain language when
+  carrying it forward and cite the origin; do not propagate the label as
+  if it were a term of art.
+- Meaning may repeat across artifacts; wording should vary. Rich and
+  diverse beats short and cryptic — a downstream worker can skim past
+  redundancy, but cannot decompress a label it has never seen defined.
+- Dispatch workers to LOOK THINGS UP: name every upstream artifact AND the
+  canon files behind it; instruct workers to over-read the sources rather
+  than trust any summary (including the orchestrator's own).
+- Review gates verify MEANING fidelity against upstream sources. Label
+  presence or count-matching alone is never sufficient evidence.
+- If the adapter has `STYLE_GUIDE.md`, its language rules bind ALL
+  artifacts written under `<STORY_ROOT>` — design documents and reviews
+  included, not just story prose.
+
 ## Step machines
 
 Step files live under `<FACTORY>/core/steps/`.

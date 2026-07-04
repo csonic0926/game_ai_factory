@@ -90,3 +90,9 @@ workflow proceeds to STEP 11.
 - One step at a time; every STEP n has a STEP n.5 review gate that can FAIL.
 - File-based handoff only — a fresh worker must be able to resume from disk.
 - Review steps never fix content; they only PASS/FAIL with reasons.
+- Handoff artifacts are token-RICH working memory, never compressed
+  summaries (USER ruling 2026-07-04): full natural prose in
+  `<PRIMARY_LOCALE>`; no invented shorthand/labels — expand inherited ones
+  back into plain language; workers over-read upstream sources rather than
+  trust summaries; review gates verify meaning fidelity, not label counts.
+  If `STYLE_GUIDE.md` exists it binds ALL `<STORY_ROOT>` artifacts.

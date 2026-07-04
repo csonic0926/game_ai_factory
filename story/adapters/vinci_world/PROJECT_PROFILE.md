@@ -36,4 +36,5 @@ Vinci World (web, PIXI.js client + Bun server).
   cutscenes (free-roam / interactive gameplay) remain BLOCKED_BY_PROFILE
   until a general event runtime exists.
 - `SYNC_SPEC.md`: NOT_AVAILABLE
-- `STYLE_GUIDE.md`: NOT_AVAILABLE
+- `STYLE_GUIDE.md`: AVAILABLE (v1.0 — 富文本交接、禁造詞；binds ALL
+  artifacts under `<STORY_ROOT>`, design docs included)
