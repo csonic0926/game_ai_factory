@@ -31,8 +31,9 @@ Vinci World (web, PIXI.js client + Bun server).
 
 ## Adapter files
 
-- `LANDING_SPEC.md`: AVAILABLE (scoped v0.1 — onboarding locale-key surface
-  only). Chapter-scale work beyond that surface remains BLOCKED_BY_PROFILE
-  until a general story runtime exists.
+- `LANDING_SPEC.md`: AVAILABLE (v0.2 — onboarding locale keys + scripted
+  cutscenes as `.cutscene.json`). Chapter scenes that are NOT scripted
+  cutscenes (free-roam / interactive gameplay) remain BLOCKED_BY_PROFILE
+  until a general event runtime exists.
 - `SYNC_SPEC.md`: NOT_AVAILABLE
 - `STYLE_GUIDE.md`: NOT_AVAILABLE

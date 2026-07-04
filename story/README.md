@@ -30,7 +30,7 @@ core/
 adapters/
   _template/                            # copy to onboard a new game
   rpg-1/                                # reference adapter (Godot wuxia RPG, CSV runtime)
-  vinci_world/                          # Vinci World (web); landing spec pending
+  vinci_world/                          # Vinci World (web); landing spec v0.2 (locale keys + cutscenes)
 docs/PROJECT_PROFILE_CONTRACT.md        # the adapter contract
 skills/game-story-factory/SKILL.md      # the single orchestrator skill
 scripts/init_story_root.sh              # bootstrap <STORY_ROOT> canonical layout
