@@ -74,6 +74,12 @@ Vinci World plays cutscenes from declarative documents via the runtime in
 `client/src/cutscene/`. Producing a cutscene = authoring/patching a document +
 its dialogue locale keys. Use `core/craft/cutscene-staging.md`.
 
+**USER approval gate (standing rule, 2026-07-04):** the STEP 6 zh-TW draft
+must be read and approved by the USER before STEP 7 landing begins on this
+surface. No exceptions — the USER is the taste gate for every chapter script.
+The draft form is the screenplay format defined in this adapter's
+`STYLE_GUIDE.md` §3.
+
 ### 1. Target files
 
 - Document: `<GAME_REPO>/client/src/cutscene/documents/<id>.cutscene.json`

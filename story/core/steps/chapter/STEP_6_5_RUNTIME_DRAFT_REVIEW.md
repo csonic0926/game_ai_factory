@@ -36,13 +36,21 @@ This step passes when:
 - the saved draft covers the chapter scene clusters that were written for this pass
 - the draft is readable as scene prose rather than graph notes
 
-### Runtime point of view
+### Runtime point of view / draft form
+
+The draft form is adapter-driven: check the adapter's `STYLE_GUIDE.md` for a
+"runtime draft form" section and review against THAT form. Only when the
+adapter defines no form, apply the default below.
 
 This step passes when:
 
-- player-facing narration reads in second person with `你`
-- protagonist names or third-person references appear only inside spoken dialogue when another character uses them that way
-- the draft stays in zh-Hant for this pass
+- the draft follows the adapter-prescribed form (e.g. screenplay format:
+  scene headings + third-person stage directions + dialogue lines); default
+  when none is prescribed: player-facing narration in second person with `你`
+- protagonist names or third-person references appear only where the
+  prescribed form allows them (in the default form: only inside spoken
+  dialogue when another character uses them that way)
+- the draft stays in `<PRIMARY_LOCALE>` for this pass
 
 ### Scene staging
 

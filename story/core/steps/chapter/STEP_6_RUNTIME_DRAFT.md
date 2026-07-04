@@ -28,14 +28,21 @@ Turn the event graph into scene-level runtime prose.
 
 Write one scene cluster at a time, usually one `STORY` beat with its adjacent `FLOW` beats, or one small location block.
 
+**Draft FORM is adapter-driven.** Check the adapter's `STYLE_GUIDE.md` for a
+"runtime draft form" section and use the form it prescribes (e.g. a screenplay
+format for cutscene-based games: scene headings + third-person stage
+directions + dialogue lines). Only when the adapter defines no form, default
+to second-person `你` narrative prose (the text-game form this step
+inherited from rpg-1).
+
 Write the draft so it:
 
 - follows the graph beat order exactly
 - turns beat intent into on-screen scene action
-- reads in second person with `你`
-- stays in zh-Hant for this pass
+- uses the adapter-prescribed draft form (default: second person with `你`)
+- stays in `<PRIMARY_LOCALE>` for this pass
 - lands one readable beat at a time
-- is ready for later CSV landing
+- is ready for the adapter's landing surface (CSV rows, cutscene beats, …)
 
 ## Scene draft standard
 

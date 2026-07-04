@@ -52,7 +52,15 @@ Then from any session:
 /game-story-factory vinci_world character        # one character per run
 /game-story-factory vinci_world cast
 /game-story-factory vinci_world chapter resume
+/game-story-factory vinci_world chapter start ask    # dialogue mode: direction questions first
+/game-story-factory vinci_world chapter start auto   # headless: zero questions (AI callers use this)
 ```
+
+Interaction modes: `ask` puts the run's few highest-leverage direction
+questions to the user before the first step (answers land in a brief file);
+`auto` runs straight through, recording every direction call + open items
+for later review. Live human session defaults to ask; headless defaults to
+auto. Details in the skill.
 
 Master loop: `WORLD → CHARACTER → CAST ↔ CHARACTER → CAST_PASS → CHAPTER`.
 

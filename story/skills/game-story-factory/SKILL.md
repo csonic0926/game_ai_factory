@@ -13,12 +13,57 @@ Everything project-specific comes from an adapter — never hardcode game paths.
 
 ## Invocation
 
-`/game-story-factory <project_id> [world|character|cast|chapter] [start|resume|revise ...]`
+`/game-story-factory <project_id> [world|character|cast|chapter] [start|resume|revise ...] [ask|auto]`
 `/game-story-factory <project_id> craft <craft-name> [task / target files ...]`  — independent single-craft call
 
 If `<project_id>` is omitted, infer it from the current working repo by
 matching `<GAME_REPO>` across `<FACTORY>/adapters/*/PROJECT_PROFILE.md`;
 if no adapter matches, offer to create one from `adapters/_template/`.
+
+## Interaction modes: ask / auto (USER ruling 2026-07-05)
+
+Two modes govern how the orchestrator handles DIRECTION decisions — the
+choices that shape a whole run and that review gates cannot fix afterwards
+(a wrong direction produces a well-crafted wrong thing).
+
+**ask — dialogue mode (default for a live human session).**
+After Resolution and before dispatching the first step, put the run's 3–5
+highest-leverage direction questions to the user in ONE round: each with
+2–4 concrete options and a marked recommendation. Then write the answers
+into a brief file at `<STORY_ROOT>/state/briefs/<workflow>_<stem>_BRIEF.md`
+(rich prose per the handoff rules — the brief is what STEP 0/1 reads as
+"the user's brief"). Mid-run, when a worker or gate surfaces a decision it
+marks as open-for-USER, ask it right away as a small single question instead
+of letting open items pile up to the end. If an answer sounds like a durable
+ruling (true beyond this run), offer to write it into
+`WORKFLOW_CORE_VARIABLES.md` — with the user's explicit approval only.
+
+Direction questions per workflow (guidance, not a fixed form — pick what
+actually matters for THIS run):
+- WORLD: what the world exists to express; the player's relationship to the
+  world; surface tone and how dark the underside may go.
+- CHARACTER: what this character must carry for the story; formalize an
+  existing canon slot or create freely; how the player should read them at
+  first sight; name now or leave open.
+- CAST: which stage is locked; ensemble size; any seats the user already
+  has firm images for.
+- CHAPTER: the player's pulse and posture this chapter (the v1→v2 lesson:
+  quiet resident vs excited newcomer); where the emotional peak should
+  land; how much of the mystery budget to spend; any single big judgment
+  call the chapter hinges on (e.g. hands-on first pull vs watching);
+  delivery checkpoint (script approved first vs run straight through).
+
+**auto — headless mode (REQUIRED for AI callers, cron, pipelines).**
+Zero questions. Make the best-judgment call on every direction decision,
+record each one in the artifacts with its reasons and a clearly labeled
+open-items list (with fallback plans) for later human review. Hard USER
+gates from the adapter (e.g. a landing spec's script-approval gate) are NOT
+skipped in auto mode — the run stops there and reports, instead of asking.
+
+Mode resolution when unspecified: a live human conversation defaults to
+`ask`; a programmatic/headless invocation defaults to `auto`. Craft mode is
+`auto` by nature (a single technique application) unless the task itself is
+ambiguous enough to need one clarifying question.
 
 ## Resolution (always first)
 
@@ -73,6 +118,36 @@ eventually poisons story prose — so:
 - If the adapter has `STYLE_GUIDE.md`, its language rules bind ALL
   artifacts written under `<STORY_ROOT>` — design documents and reviews
   included, not just story prose.
+
+## Dispatch recipe (what every worker prompt must include — proven 2026-07-04)
+
+Every worker dispatch hands over, explicitly:
+
+1. the step file path (the worker's single source of truth for the task);
+2. the resolved profile variables;
+3. `<STORY_ROOT>/state/WORKFLOW_CORE_VARIABLES.md`, named as the highest
+   authority (read, never edit);
+4. the adapter `STYLE_GUIDE.md` when present — with the reminder that it
+   governs every word the worker writes, reports included;
+5. the upstream artifacts to read AND the canon files they cite, with the
+   instruction to over-read the originals rather than trust any summary;
+6. one short plain-language paragraph of context: why this step exists
+   right now (what changed upstream, what the user asked for, what a
+   previous version got wrong). Workers write noticeably better when they
+   understand the why, not just the what.
+
+**Honesty loop (required):** creative-step workers END their report by
+naming the one or two choices they are least confident about. The
+orchestrator passes those named spots into the next review dispatch, and
+the review gate must adjudicate each one explicitly (keep, or route back
+with reasons) — never leave a flagged doubt to drift downstream to the
+user unexamined.
+
+**Lint in the gate:** when the adapter provides `style_lint_config.json`,
+review-gate workers run
+`python3 <FACTORY>/scripts/style_lint.py --config <adapter>/style_lint_config.json <artifact>`
+and adjudicate every hit: citation-form usage (label quoted with source,
+meaning expanded nearby) passes; term-of-art usage in prose fails.
 
 ## Step machines
 
