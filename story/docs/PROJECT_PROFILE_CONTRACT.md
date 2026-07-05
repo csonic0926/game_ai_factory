@@ -45,7 +45,7 @@ must treat a missing optional capability as a hard skip, never improvise):
     character_baselines/            # per-character step artifacts + reviews
     characters/                     # packaged ch_<id>.json + index.json
     cast_management/                # CAST_* artifacts + CAST_ACTION_REQUESTS.md
-    chapter_sources/                # preflight / story line / day spine / source JSON
+    chapter_sources/                # preflight / story line / chapter spine / source JSON
     briefs/                         # ask-mode direction briefs (<workflow>_<stem>_BRIEF.md)
   chapter_event_graphs/
   runtime_scene_drafts/

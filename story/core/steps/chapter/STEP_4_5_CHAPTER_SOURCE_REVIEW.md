@@ -10,7 +10,7 @@
 - `<STORY_ROOT>/state/chapter_sources/<ARTIFACT_STEM>.json`
 - `<STORY_ROOT>/state/chapter_sources/<ARTIFACT_STEM>_PREFLIGHT.md`
 - `<STORY_ROOT>/state/chapter_sources/<ARTIFACT_STEM>_STORY_LINE.md`
-- `<STORY_ROOT>/state/chapter_sources/<ARTIFACT_STEM>_DAY_SPINE.md`
+- `<STORY_ROOT>/state/chapter_sources/<ARTIFACT_STEM>_CHAPTER_SPINE.md`
 
 ## Save output to
 
@@ -27,8 +27,8 @@ Check the chapter source JSON and decide whether it is ready to pass.
 Use these checks:
 
 - the JSON exists at the expected path
-- the JSON includes `preflight`, `story_line`, and `day_spine`
-- the JSON content matches the saved preflight, story-line, and day-spine artifacts
+- the JSON includes `preflight`, `story_line`, and `chapter_spine`
+- the JSON content matches the saved preflight, story-line, and chapter-spine artifacts
 
 ## Acceptance criteria
 
@@ -42,7 +42,7 @@ Pass when the JSON contains:
 
 - `preflight`
 - `story_line`
-- `day_spine`
+- `chapter_spine`
 
 ### Source consistency
 
@@ -50,7 +50,7 @@ Pass when the JSON content matches:
 
 - `<STORY_ROOT>/state/chapter_sources/<ARTIFACT_STEM>_PREFLIGHT.md`
 - `<STORY_ROOT>/state/chapter_sources/<ARTIFACT_STEM>_STORY_LINE.md`
-- `<STORY_ROOT>/state/chapter_sources/<ARTIFACT_STEM>_DAY_SPINE.md`
+- `<STORY_ROOT>/state/chapter_sources/<ARTIFACT_STEM>_CHAPTER_SPINE.md`
 
 ## Required stop condition
 

@@ -51,7 +51,7 @@ Write the landing so it:
 - keeps diffs minimal and append-oriented where possible
 - maps every referenced event id, story profile, location node, and locale key to a real runtime row, following the id & key grammar defined by the adapter `LANDING_SPEC.md`
 - keeps location-transition nodes as location transitions rather than automatic time jumps, where the runtime has them
-- preserves time-of-day continuity across linked morning, noon, and evening stretches
+- preserves time continuity across linked spine segments
 - records the ids, row ranges, routing targets, and touched files in the landing log
 
 ## Runtime text standard

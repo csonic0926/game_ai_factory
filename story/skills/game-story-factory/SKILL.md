@@ -48,10 +48,12 @@ actually matters for THIS run):
 - CAST: which stage is locked; ensemble size; any seats the user already
   has firm images for.
 - CHAPTER: the player's pulse and posture this chapter (the v1→v2 lesson:
-  quiet resident vs excited newcomer); where the emotional peak should
-  land; how much of the mystery budget to spend; any single big judgment
-  call the chapter hinges on (e.g. hands-on first pull vs watching);
-  delivery checkpoint (script approved first vs run straight through).
+  quiet resident vs excited newcomer); the chapter's time frame (one day?
+  one evening? several days? a journey? — the story's needs decide, there
+  is no factory default); where the emotional peak should land; how much
+  of the mystery budget to spend; any single big judgment call the chapter
+  hinges on (e.g. hands-on first pull vs watching); delivery checkpoint
+  (script approved first vs run straight through).
 
 **auto — headless mode (REQUIRED for AI callers, cron, pipelines).**
 Zero questions. Make the best-judgment call on every direction decision,
@@ -171,7 +173,7 @@ Artifacts: `<STORY_ROOT>/state/character_baselines/`, `<STORY_ROOT>/state/charac
 requests → sufficiency QA). Artifacts: `<STORY_ROOT>/state/cast_management/`.
 
 **CHAPTER** — `core/steps/chapter/`
-Phase A trunk STEP 1→11.5: preflight → story line discovery → day spine →
+Phase A trunk STEP 1→11.5: preflight → story line discovery → chapter spine →
 chapter source → event graph → runtime draft (`<PRIMARY_LOCALE>`) → runtime
 landing → quoted dialogue revision → story/prose QA → sync → outcomes/handoff.
 Phase B STEP 12/12.5: open-story branch expansion/acceptance.

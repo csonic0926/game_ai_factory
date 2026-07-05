@@ -26,9 +26,9 @@ Turn the saved chapter source into one design-layer chapter event graph.
 
 Write the graph as a playable sequence of beats that:
 
-- follows the selected story line and the day spine
-- keeps morning, noon, and evening visible in event ordering
-- stays grounded in concrete world supports such as locations, people, objects, routines, and time-of-day pressure
+- follows the selected story line and the chapter spine
+- keeps the spine's declared segments visible in event ordering
+- stays grounded in concrete world supports such as locations, people, objects, routines, and the time pressure of the declared frame
 - keeps graph summaries at beat-intent level rather than runtime prose level
 - uses `玩家` or `主角` for protagonist references in graph-layer summaries
 
@@ -52,12 +52,14 @@ Use these event types:
 - `FLOW`
 - `STORY`
 
-Recommended baseline shape:
+Recommended baseline shape — one FLOW/STORY pair (or more) per spine
+segment, in segment order:
 
 ```text
-INTRO -> FLOW (morning location) -> STORY (morning action)
--> FLOW (noon location) -> STORY (noon drift)
--> FLOW (evening location) -> STORY (evening consequence)
+INTRO -> FLOW (first-segment location) -> STORY (first-segment action)
+-> FLOW (next-segment location) -> STORY (next-segment drift)
+-> ... repeated per declared segment ...
+-> FLOW (final-segment location) -> STORY (final consequence)
 ```
 
 ## Writing standard
@@ -96,7 +98,7 @@ Default line functions:
 2. place cue
 3. current errand or obligation
 4. key object or task destination
-5. one abnormal note for today
+5. one abnormal note for the chapter's opening
 6. immediate next move
 
 ### `FLOW`
@@ -107,7 +109,7 @@ Each `FLOW` beat should show:
 
 - the concrete location reached or left
 - the visible movement or transition
-- continuity inside the current time block when time has not changed
+- continuity inside the current spine segment when the segment has not changed
 
 ### `STORY`
 

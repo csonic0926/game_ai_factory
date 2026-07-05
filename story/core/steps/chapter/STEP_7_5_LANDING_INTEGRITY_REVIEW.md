@@ -64,7 +64,7 @@ This step passes when:
 
 - chapter start wiring exists when the landing required in-game test entry wiring
 - location-transition nodes function as location transitions instead of broken or dangling jumps
-- linked morning, noon, and evening stretches preserve runtime continuity where the chapter requires it
+- linked spine segments preserve runtime continuity where the chapter requires it
 
 ### Locale landing
 

@@ -10,7 +10,7 @@ Read these saved chapter artifacts:
 
 - `<STORY_ROOT>/state/chapter_sources/<ARTIFACT_STEM>_PREFLIGHT.md`
 - `<STORY_ROOT>/state/chapter_sources/<ARTIFACT_STEM>_STORY_LINE.md`
-- `<STORY_ROOT>/state/chapter_sources/<ARTIFACT_STEM>_DAY_SPINE.md`
+- `<STORY_ROOT>/state/chapter_sources/<ARTIFACT_STEM>_CHAPTER_SPINE.md`
 
 ## Save output to
 
@@ -36,7 +36,7 @@ The JSON must include:
 
 - `preflight`
 - `story_line`
-- `day_spine`
+- `chapter_spine`
 - optional `branch_points`
 
 If this chapter opens a new dedicated branch or rebuild branch, add the matching entry to `PROGRESS.md`.

@@ -37,9 +37,9 @@ Keep the chosen branch line distinct from the trunk line in later-state conseque
 
 ### Reused `STEP 3` / `STEP 3.5`
 
-Keep the branch inside the same chapter-day frame unless the branch explicitly crosses that boundary.
+Keep the branch inside the trunk chapter's declared time frame unless the branch explicitly crosses that boundary.
 
-State how the branch bends away from the trunk day path.
+State how the branch bends away from the trunk path.
 
 Make the branch spine meaningfully different from a cosmetic rewrite of the trunk spine.
 

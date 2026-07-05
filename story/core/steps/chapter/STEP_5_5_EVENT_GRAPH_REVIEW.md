@@ -50,7 +50,7 @@ This step passes when:
 This step passes when:
 
 - the graph includes `INTRO`, `FLOW`, and `STORY`
-- event ordering keeps morning, noon, and evening visible
+- event ordering keeps the spine's declared segments visible
 - the graph reads as one chapter sequence rather than disconnected notes
 
 ### Graph writing
