@@ -31,6 +31,7 @@ Two ways to use a craft (see the orchestrator `SKILL.md`):
 | `rest-moment-progression` | design a "rest/town" moment giving limited actions to improve readiness, then route it | story moment + available systems | rest-moment design + routing |
 | `story-attributes` | design + land attribute/skill checks in events (success line / fail-forward / costs) | event + attribute system (`<BATTLE_SYSTEM>`) | check design + field mapping |
 | `cutscene-staging` | turn an approved scene into a playable cutscene document for the target game's runtime (CHAPTER STEP 7 landing) | approved STEP 6 draft + adapter `LANDING_SPEC` cutscene surface | `.cutscene.json` document + dialogue locale keys |
+| `dialogue-runway` | pave a 4–7 line conversation runway to a USER-set destination line (creative KPI) so it lands earned, as an invitation | scene constraints + KPI line + arrival emotion | 3 annotated candidate runways (USER cuts) |
 
 Applicability is project-dependent: `story-attributes` / `rest-moment-progression`
 assume an RPG-ish system (`<BATTLE_SYSTEM>` present); `knowledge-stage-json`

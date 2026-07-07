@@ -144,8 +144,11 @@ story/
   路徑保留。
 - 第 3 步：`story/modules/beat-sheet-dialogue/` 建成；第一份 beat sheet 收在
   `vinci_world/design/story/beat_sheets/ENTRY_LANDING_BEAT_SHEET.md`。
-  **注意**：原對談的 1-9 清單沒有落盤，beat sheet 依本計畫記錄的定案收成，
-  骨幹八拍中兩拍標【草案待 USER 砍定】，攤田區留了 Momo 與等待段兩個待補。
+  **注意**：原對談的 1-9 清單初收時沒有落盤，beat sheet 曾依本計畫記錄的
+  定案轉述收成；2026-07-07 稍後由持有對談原文的一方補登為十拍定稿（恢復
+  「你來找什麼」「跟著箱子走」「街上全是猜」三拍；Momo 見證封條升入骨幹；
+  初版「貨箱分流走另一條路」與定案相反，已修正為「人與貨同向」），
+  投放規劃隨之重核為第二版。
 - 第 4 步：`story/modules/delivery-planner/` 建成；渠道清單
   `adapters/vinci_world/DELIVERY_CHANNELS.md`（七渠道）；試跑產出
   `vinci_world/design/story/state/chapter_sources/ENTRY_LANDING_DELIVERY_PLAN.md`
