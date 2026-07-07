@@ -1,61 +1,20 @@
-# Workflow Core Variables
+# Workflow Core Variables — SUPERSEDED (2026-07-07)
 
-This file is a **user-authored control file** for the four main creation workflows:
+This template is retired. The single user-authored control file mixed three
+kinds of sovereignty, so it was split (see the umbrella repo's
+`STORY_REBUILD_PLAN.md`, section 三):
 
-- `<STORY_ROOT>/state/WORLD_CREATION_WORKFLOW.md`
-- `<STORY_ROOT>/state/CHARACTER_CREATION_WORKFLOW.md`
-- `<STORY_ROOT>/state/CAST_CREATION_WORKFLOW.md`
-- `<STORY_ROOT>/state/CHAPTER_WORKFLOW.md`
+| was in this file | now lives at | sovereignty |
+|---|---|---|
+| what is TRUE in the world (ontology, laws, currency, decided terms, tone red lines) | `<STORY_ROOT>/state/WORLD_RULES.md` — template: `WORLD_RULES.template.md` | USER-authored, tools read-only |
+| how the game SPEAKS (explicitness dial, channel weighting, dialogue density) | `<STORY_ROOT>/state/NARRATIVE_DELIVERY.md` — template: `NARRATIVE_DELIVERY.template.md` | USER-authored, tools read-only |
+| production discipline (style, language, handoff anti-compression, review procedure) | factory core (`SKILL.md`, `core/`) + adapter `STYLE_GUIDE.md` | factory-maintained |
 
-Its purpose is to record cross-workflow creative rules that should come from the user, not from AI inference.
+Rules for existing projects:
 
-Examples:
-
-- naming style
-- whether names should be translated or preserved
-- dialogue register
-- reader-facing reveal posture
-- how much first-appearance introduction is preferred
-- how formal or plain institutions should sound
-
-## Authority Rule
-
-- This file should be filled and revised by the user.
-- AI workflows may read this file.
-- AI workflows must **not** silently add, rewrite, or "improve" its content.
-- If a workflow discovers a likely missing variable, it may mention that gap in its reply, but it should not edit this file unless the user explicitly asks for that edit.
-
-## How To Use
-
-Each workflow should read only the section that applies to it, plus any obviously shared rule that the user has written.
-
-The intended structure is:
-
-1. `WORLD_CREATION_WORKFLOW` rules
-2. `CHARACTER_CREATION_WORKFLOW` rules
-3. `CAST_CREATION_WORKFLOW` rules
-4. `story_logic/state/CHAPTER_WORKFLOW` rules
-
----
-
-## WORLD_CREATION_WORKFLOW 用的守則
-
-- 名稱都是原名：標準原生英文名；中文名：再從英文名音譯出來
-
----
-
-## CHARACTER_CREATION_WORKFLOW 用的守則
-
-- 名稱都是原名：標準原生英文名；中文名：再從英文名音譯出來
-
----
-
-## CAST_CREATION_WORKFLOW 用的守則
-
-- （由 USER 填寫）
-
----
-
-## story_logic/state/CHAPTER_WORKFLOW 用的守則
-
-- （由 USER 填寫）
+- A project whose `<STORY_ROOT>/state/WORKFLOW_CORE_VARIABLES.md` still exists
+  as a full legacy file (e.g. rpg-1) keeps working: workers read it as before.
+- A migrated project keeps a pointer at the old path naming the two new files;
+  workers follow the pointer.
+- `init_story_root.sh` no longer creates this file; it creates the two new
+  sovereignty files from their templates.

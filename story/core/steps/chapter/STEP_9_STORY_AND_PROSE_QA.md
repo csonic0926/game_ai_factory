@@ -13,6 +13,8 @@ Read the latest chapter artifacts relevant to QA:
 - touched CSV / locale files for landed runtime review
 - `<STORY_ROOT>/runtime_scene_drafts/<ARTIFACT_STEM>_zh.md` when the pre-landing prose draft is needed for comparison
 - `<STORY_ROOT>/runtime_scene_drafts/<ARTIFACT_STEM>_LANDING_REVIEW.md` for the landing status being reviewed
+- `<STORY_ROOT>/beat_sheets/<ARTIFACT_STEM>_BEAT_SHEET.md`, when it exists —
+  the emotional-acceptance source for the whole chapter
 
 ## Save output to
 
@@ -110,6 +112,29 @@ Check chapter-local consistency for:
 - place names
 - object labels
 - household or shop references
+
+### Emotional acceptance（情感驗收）— whole chapter
+
+Applies whenever the chapter has a beat sheet; without one, state
+`NO BEAT SHEET — emotional acceptance not applicable` in the story QA
+report.
+
+Across the LANDED chapter (all delivery channels together — cutscenes,
+played segments, scenery, copy):
+
+- account for every beat: which landed artifact transmits it, through which
+  channel; a beat with no landing anywhere is a blocker
+- verify each beat still TRANSMITS after landing: the landed form works as
+  a concrete picture, not as an explanation of one
+  (`core/NARRATIVE_FOUNDATIONS.md` #1)
+- walk the chapter in player order and verify the curve: every HOLD (壓)
+  still holds through its whole stretch, the single RELEASE (放) lands
+  where the beat sheet put it, and nothing that landed later (an
+  achievement pop, a reward toast, a stray line) releases inside a hold
+- verify feel-consistency across channels: every touchpoint of the chapter
+  delivers the same feel (`core/NARRATIVE_FOUNDATIONS.md` #3) — a channel
+  whose tone breaks the chapter's feel is a finding even when its content
+  is technically correct
 
 ## Required output format
 

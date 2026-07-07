@@ -10,6 +10,15 @@ time frame, and save it as the chapter source's spine artifact.
 Read:
 
 - `<STORY_ROOT>/state/chapter_sources/<ARTIFACT_STEM>_STORY_LINE.md`
+- when its `MODE` block says ASSIGNMENT, also over-read the sources it
+  restates rather than trusting the restatement:
+  - `<STORY_ROOT>/beat_sheets/<ARTIFACT_STEM>_BEAT_SHEET.md`
+  - `<STORY_ROOT>/state/chapter_sources/<ARTIFACT_STEM>_DELIVERY_PLAN.md`, if present
+
+In assignment mode the spine must keep the beat order and the curve: HOLD
+(壓) beats may not gain payoffs inside a segment, and the RELEASE (放) may
+not move to a different segment than the beat sheet implies — a conflict
+routes back through STEP 2, never gets absorbed silently.
 
 ## Save output to
 

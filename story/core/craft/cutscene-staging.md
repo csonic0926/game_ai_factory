@@ -14,9 +14,11 @@ runtime.
 - World + character + knowledge context (`<STORY_ROOT>/state/…`, `<KNOWLEDGE_ROOT>`).
 - The adapter's cutscene surface in `LANDING_SPEC.md`: document path, schema
   location, beat vocabulary, mark/actor conventions, locale-key rules, integrity checks.
-- `<STORY_ROOT>/state/WORKFLOW_CORE_VARIABLES.md` — obey its constraints
-  (for Vinci World: the **信任媒介 / TRUST_TRANSLATION_MAP** rule and the
-  no-real-tech-words rule are highest priority).
+- The sovereignty files `<STORY_ROOT>/state/WORLD_RULES.md` and
+  `<STORY_ROOT>/state/NARRATIVE_DELIVERY.md` (or the legacy
+  `WORKFLOW_CORE_VARIABLES.md` where the project has not migrated) — obey
+  their constraints (for Vinci World: the **信任媒介 / TRUST_TRANSLATION_MAP**
+  rule and the no-real-tech-words rule are highest priority).
 
 ## Output
 

@@ -1,14 +1,32 @@
-# STEP 2 — Story-Line Discovery
+# STEP 2 — Chapter Task (Assignment / Discovery)
 
 ## Purpose
 
-- choose the one ordinary track that should carry this chapter
-- declare the chapter's time frame — how much in-world time the chapter covers
-- identify the concrete bend that turns that track into the chapter
+Fix what this chapter is FOR, in one of two modes:
+
+- **Assignment mode** (the default whenever the chapter has an emotional
+  beat sheet): take the chapter's task FROM the beat sheet — the emotional
+  goal was decided upstream in the USER dialogue; this step translates it
+  into a workable chapter line, it does not invent one.
+- **Discovery mode** (legacy — only when NO beat sheet exists for this
+  chapter, e.g. the rpg-1 back catalog): choose the one ordinary track that
+  should carry the chapter, declare its time frame, and identify the
+  concrete bend — exactly as this step always worked.
+
+Mode selection is mechanical, not a judgment call:
+`<STORY_ROOT>/beat_sheets/<ARTIFACT_STEM>_BEAT_SHEET.md` exists → assignment
+mode; otherwise discovery mode. A beat sheet whose beats are still all
+unconfirmed drafts (no `USER 定案` beat) is NOT a usable assignment source —
+report BLOCKED_BY_BEAT_SHEET instead of falling back silently.
 
 ## Read inputs from
 
 - `<STORY_ROOT>/state/chapter_sources/<ARTIFACT_STEM>_PREFLIGHT.md`
+- assignment mode only:
+  - `<STORY_ROOT>/beat_sheets/<ARTIFACT_STEM>_BEAT_SHEET.md` (the task source)
+  - `<STORY_ROOT>/state/chapter_sources/<ARTIFACT_STEM>_DELIVERY_PLAN.md`,
+    if present (binding channel assignments)
+  - `<STORY_ROOT>/state/NARRATIVE_DELIVERY.md` (how this game speaks)
 
 ## Save output to
 
@@ -18,7 +36,34 @@
 
 - No skill required for this step.
 
-## Task
+## Task — assignment mode
+
+Read the beat sheet as the chapter's commissioned task and produce the
+chapter line that will deliver it.
+
+Your result must state:
+
+- the beat sheet's chapter unit, quoted scope, and status (which beats are
+  USER-ruled, which are drafts — draft beats are carried as open items, not
+  silently treated as settled)
+- the emotional curve as ordered beats, restated in plain rich prose (the
+  anti-compression rules apply: every beat's picture is restated in full,
+  never reduced to a label)
+- what ordinary track, in the preflight's world state, those beats hang on
+- the chapter's time frame as the beat order implies it (if the beat sheet
+  already fixes the span, record that source instead of re-deciding)
+- how the curve's HOLD (壓) stretch and its RELEASE (放) point map onto the
+  chapter's segments — name where the single top of the curve lands
+- any beat the preflight's world state cannot support — flag it back
+  toward the beat-sheet dialogue as an open item; NEVER bend or drop a beat
+  to fit
+
+Then fill the required output blocks below. In assignment mode
+`STORY LINE CANDIDATES` may hold a single entry (the beat sheet already
+chose the story); `BENDING POINT` names the beat where the ordinary track
+stops being ordinary.
+
+## Task — discovery mode
 
 Read the preflight and select one story line that should become the chapter.
 
@@ -51,6 +96,7 @@ Useful source material includes:
 
 ## Required output blocks
 
+- `MODE`
 - `DISCOVERY QUESTION`
 - `STORY LINE CANDIDATES`
 - `SELECTED STORY LINE`
@@ -58,12 +104,27 @@ Useful source material includes:
 - `NORMAL TRACK`
 - `BENDING POINT`
 - `WHY THIS MUST BE THE CHAPTER`
+- assignment mode also requires: `BEAT COVERAGE`
 
 ## Block definitions
 
+### `MODE`
+
+State `ASSIGNMENT` (with the beat sheet path and its status line) or
+`DISCOVERY` (with the reason: no beat sheet exists for this stem).
+
+### `BEAT COVERAGE` (assignment mode only)
+
+One row per beat of the beat sheet: the beat's picture restated in plain
+words, its curve mark (壓/放), where in the chapter line it lands, and its
+delivery channel when a delivery plan exists. Every beat appears exactly
+once; a beat the world state cannot support is listed with an open-item
+flag, never dropped.
+
 ### `DISCOVERY QUESTION`
 
-State the chapter question this step answered.
+State the chapter question this step answered. In assignment mode this is
+the beat sheet's commissioned task, quoted.
 
 ### `STORY LINE CANDIDATES`
 

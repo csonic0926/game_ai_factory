@@ -15,6 +15,13 @@ Everything project-specific comes from an adapter — never hardcode game paths.
 
 `/game-story-factory <project_id> [world|character|cast|chapter] [start|resume|revise ...] [ask|auto]`
 `/game-story-factory <project_id> craft <craft-name> [task / target files ...]`  — independent single-craft call
+`/game-story-factory <project_id> beatsheet <chapter-stem>` — beat-sheet dialogue (interactive only; `<FACTORY>/modules/beat-sheet-dialogue/`)
+`/game-story-factory <project_id> delivery <chapter-stem>` — delivery planning (`<FACTORY>/modules/delivery-planner/`)
+`/game-story-factory <project_id> twin <query/mutation>` — story-world db (`<FACTORY>/modules/twin-db/`, tool `scripts/twin_db.py`)
+`/game-story-factory <project_id> rules [revise|migrate]` — sovereignty files (interactive only; `<FACTORY>/modules/world-rules-editor/`)
+
+The step pipeline is one module among five (`<FACTORY>/modules/README.md`);
+each module is independently callable after Resolution.
 
 If `<project_id>` is omitted, infer it from the current working repo by
 matching `<GAME_REPO>` across `<FACTORY>/adapters/*/PROJECT_PROFILE.md`;
@@ -35,8 +42,10 @@ into a brief file at `<STORY_ROOT>/state/briefs/<workflow>_<stem>_BRIEF.md`
 "the user's brief"). Mid-run, when a worker or gate surfaces a decision it
 marks as open-for-USER, ask it right away as a small single question instead
 of letting open items pile up to the end. If an answer sounds like a durable
-ruling (true beyond this run), offer to write it into
-`WORKFLOW_CORE_VARIABLES.md` — with the user's explicit approval only.
+ruling (true beyond this run), offer to write it into the matching
+sovereignty file (`WORLD_RULES.md` for world truth, `NARRATIVE_DELIVERY.md`
+for how the game speaks) — with the user's explicit approval only, via the
+world-rules-editor module.
 
 Direction questions per workflow (guidance, not a fixed form — pick what
 actually matters for THIS run):
@@ -75,9 +84,19 @@ ambiguous enough to need one clarifying question.
    `<FACTORY>/docs/PROJECT_PROFILE_CONTRACT.md`.
 2. Ensure `<STORY_ROOT>` exists with the canonical layout
    (bootstrap: `<FACTORY>/scripts/init_story_root.sh <STORY_ROOT>`).
-3. Ensure `<STORY_ROOT>/state/WORKFLOW_CORE_VARIABLES.md` exists; if missing,
-   copy `<FACTORY>/core/schemas/templates/WORKFLOW_CORE_VARIABLES.template.md`.
-   That file is USER-authored: read it, never edit it silently.
+3. Resolve the sovereignty files (USER-authored: read, never edit silently):
+   - `<STORY_ROOT>/state/WORLD_RULES.md` — what is TRUE in the world
+     (ontology, laws, currency, decided terms, tone red lines). Highest
+     world-truth authority. Do not confuse with
+     `state/world_baselines/WORLD_RULES.md`, a factory-produced artifact
+     derived downstream of it — on conflict the sovereignty file wins.
+   - `<STORY_ROOT>/state/NARRATIVE_DELIVERY.md` — how the game speaks
+     (explicitness dial, channel weighting, dialogue density). Primary input
+     of the delivery-planner module.
+   If missing, copy from `<FACTORY>/core/schemas/templates/`.
+   **Legacy:** a project that still carries a full
+   `<STORY_ROOT>/state/WORKFLOW_CORE_VARIABLES.md` (e.g. rpg-1) keeps using
+   it as before; a migrated project keeps a pointer there — follow it.
 
 ## Core orchestration rules (proven, inherited from the rpg-1 system)
 
@@ -127,8 +146,10 @@ Every worker dispatch hands over, explicitly:
 
 1. the step file path (the worker's single source of truth for the task);
 2. the resolved profile variables;
-3. `<STORY_ROOT>/state/WORKFLOW_CORE_VARIABLES.md`, named as the highest
-   authority (read, never edit);
+3. the sovereignty files `<STORY_ROOT>/state/WORLD_RULES.md` and
+   `<STORY_ROOT>/state/NARRATIVE_DELIVERY.md` (or the legacy
+   `WORKFLOW_CORE_VARIABLES.md` where the project has not migrated), named
+   as the highest authority (read, never edit);
 4. the adapter `STYLE_GUIDE.md` when present — with the reminder that it
    governs every word the worker writes, reports included;
 5. the upstream artifacts to read AND the canon files they cite, with the
@@ -173,20 +194,33 @@ Artifacts: `<STORY_ROOT>/state/character_baselines/`, `<STORY_ROOT>/state/charac
 requests → sufficiency QA). Artifacts: `<STORY_ROOT>/state/cast_management/`.
 
 **CHAPTER** — `core/steps/chapter/`
-Phase A trunk STEP 1→11.5: preflight → story line discovery → chapter spine →
-chapter source → event graph → runtime draft (`<PRIMARY_LOCALE>`) → runtime
-landing → quoted dialogue revision → story/prose QA → sync → outcomes/handoff.
+Phase A trunk STEP 1→11.5: preflight → chapter task (ASSIGNMENT mode from
+the chapter's emotional beat sheet when `<STORY_ROOT>/beat_sheets/<stem>_BEAT_SHEET.md`
+exists — the beat sheet + delivery plan are the chapter's commissioned task;
+legacy DISCOVERY mode only when no beat sheet exists, e.g. the rpg-1 back
+catalog) → chapter spine → chapter source → event graph → runtime draft
+(`<PRIMARY_LOCALE>`) → runtime landing → quoted dialogue revision →
+story/prose QA → sync/write-back → outcomes/handoff.
 Phase B STEP 12/12.5: open-story branch expansion/acceptance.
 Phase C STEP 13→22.5: branch implementation = trunk files 1–11.5 minus STEP 10,
 plus `BRANCH_IMPLEMENTATION_OVERLAY.md`, with a branch `<ARTIFACT_STEM>`.
 
 Chapter hard bindings:
+- STEP 2 mode is mechanical: beat sheet exists ⇒ assignment mode; a beat
+  sheet with zero USER-ruled beats ⇒ BLOCKED_BY_BEAT_SHEET (report, never
+  fall back silently). Producing a missing beat sheet is the interactive
+  beat-sheet-dialogue module's job — a headless run cannot invent one.
+- Emotional acceptance（情感驗收）: when the chapter has a beat sheet, the
+  STEP 6.5 and STEP 9 gates verify which beat each output transmits and
+  that the curve's holds and releases survived (`core/NARRATIVE_FOUNDATIONS.md`).
 - STEP 7/7.5 (and 19/19.5) REQUIRE `adapters/<project_id>/LANDING_SPEC.md`;
   missing/NOT_AVAILABLE ⇒ stop at approved STEP 6 draft, report BLOCKED_BY_PROFILE.
   When the landing surface is a scripted cutscene, STEP 7 uses
   `core/craft/cutscene-staging.md` to emit the game's cutscene document.
 - STEP 8/8.5 workers MUST use `core/craft/quoted-dialogue.md`.
-- STEP 10 follows `adapters/<project_id>/SYNC_SPEC.md`; missing ⇒ SKIPPED_BY_PROFILE.
+- STEP 10 Part A (twin write-back via `scripts/twin_db.py writeback`) runs
+  whenever `<STORY_ROOT>/story_world/` exists; Part B follows
+  `adapters/<project_id>/SYNC_SPEC.md`, missing ⇒ SKIPPED_BY_PROFILE.
 
 ## Master loop
 
@@ -216,4 +250,5 @@ Two ways to use a craft:
    the worker self-checks against the craft doc's own criteria. Use it to run one
    technique (revise quoted dialogue, build a knowledge-stage JSON, write a memory
    ledger) without spinning up a full step machine. Craft mode never edits
-   `WORKFLOW_CORE_VARIABLES.md`.
+   the sovereignty files (`WORLD_RULES.md`, `NARRATIVE_DELIVERY.md`, or a
+   legacy `WORKFLOW_CORE_VARIABLES.md`).

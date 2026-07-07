@@ -13,7 +13,8 @@ Two ways to use a craft (see the orchestrator `SKILL.md`):
    Resolution runs first, then ONE fresh worker is dispatched with the craft doc
    as its only source of truth + resolved vars + input/target files + output path.
    No `.5` gate; the worker self-checks against the craft doc. Never edits
-   `WORKFLOW_CORE_VARIABLES.md`.
+   the sovereignty files (`WORLD_RULES.md`, `NARRATIVE_DELIVERY.md`, or a
+   legacy `WORKFLOW_CORE_VARIABLES.md`).
 
 ## Catalog
 

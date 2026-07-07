@@ -16,7 +16,10 @@ You are an AI agent (Claude Code or Codex) driving story production for a game.
 
 - One fresh worker per `STEP n` / `STEP n.5`; pass it only the step file path,
   resolved profile variables, input artifact paths, output path.
-- Never edit `WORKFLOW_CORE_VARIABLES.md` (user-authored).
+- Never edit the sovereignty files `state/WORLD_RULES.md` /
+  `state/NARRATIVE_DELIVERY.md` (user-authored; legacy projects:
+  `WORKFLOW_CORE_VARIABLES.md`). Only the world-rules-editor module writes
+  them, with explicit USER approval.
 - Never hardcode a game path in `core/` — if a step needs a project path that
   the contract cannot express, that is a factory bug: fix the contract, not the step.
 - Chapter STEP 7 without a usable `LANDING_SPEC.md` ⇒ BLOCKED_BY_PROFILE

@@ -122,7 +122,8 @@ follows, all locales land together, key sets identical.
 - No forbidden real-tech words (SBT/NFT/區塊鏈/上鏈/blockchain/token) in dialogue.
 - Decided world terms correct (投影/收藏家/原件/彼端/點數).
 - `walk` targets reachable (walkability); timeline ends in a transition or clean stop.
-- Trust ruler passed (WORKFLOW_CORE_VARIABLES 信任媒介 / TRUST_TRANSLATION_MAP).
+- Trust ruler passed (`<STORY_ROOT>/state/WORLD_RULES.md` 信任媒介 /
+  TRUST_TRANSLATION_MAP).
 - Smoke: `?force_intro` (onboarding) or the preview harness for other scenes.
 
 ### 7. Battle/minigame hooks

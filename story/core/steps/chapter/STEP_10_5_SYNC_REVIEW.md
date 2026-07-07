@@ -26,9 +26,18 @@ The acceptance note must be short and must state either `STEP 10.5 PASS` or `STE
 
 Pass when all of the following are true:
 
-- twin sync commands completed without blocking errors
-- frame queries use the latest landed chapter state
-- stale runtime rows are no longer treated as current truth
+- Part A (twin write-back): the write-back manifest was applied with the
+  chapter's provenance stamp and `twin_db.py validate` exited clean — or
+  the log records `NO TWIN DB` truthfully
+- Part A judgment call: what was written back is ruling-grade canon (facts
+  later chapters must not contradict), not prose or one-off scene dressing;
+  and nothing that plainly qualifies (a new named character who stuck, a
+  new location, a new law-grade ruling) was left out of the manifest
+- Part B (adapter sync): the adapter's sync commands completed without
+  blocking errors — or the log records `SKIPPED_BY_PROFILE` and the
+  adapter really has no `SYNC_SPEC.md`
+- frame queries (where the adapter defines frames) use the latest landed
+  chapter state; stale runtime rows are no longer treated as current truth
 
 ## Required stop condition
 

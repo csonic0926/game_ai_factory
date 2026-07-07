@@ -40,18 +40,21 @@ must treat a missing optional capability as a hard skip, never improvise):
 ```
 <STORY_ROOT>/
   state/
-    WORKFLOW_CORE_VARIABLES.md      # USER-authored creative rules (never AI-edited)
+    WORLD_RULES.md                  # USER-authored: what is TRUE in the world (never AI-edited)
+    NARRATIVE_DELIVERY.md           # USER-authored: how the game speaks (never AI-edited)
+    WORKFLOW_CORE_VARIABLES.md      # legacy single file — full on unmigrated projects, pointer after migration
     world_baselines/                # WORLD_* artifacts
     character_baselines/            # per-character step artifacts + reviews
     characters/                     # packaged ch_<id>.json + index.json
     cast_management/                # CAST_* artifacts + CAST_ACTION_REQUESTS.md
     chapter_sources/                # preflight / story line / chapter spine / source JSON
     briefs/                         # ask-mode direction briefs (<workflow>_<stem>_BRIEF.md)
+  beat_sheets/                      # per-chapter emotional beat sheets (beat-sheet-dialogue module)
   chapter_event_graphs/
   runtime_scene_drafts/
   qa/reports/
   knowledge/
-  story_world/                      # digital-twin packaging output (world STEP 5)
+  story_world/                      # the story-world database (world STEP 5 builds it; twin-db module maintains it)
   outcomes/<stage>/
 ```
 
@@ -81,13 +84,16 @@ World / character / cast workflows never need a landing spec.
 
 ## SYNC_SPEC.md — the post-landing sync contract
 
-Chapter STEP 10 delegates here (twin sync, frame/export regeneration, asset
-hooks). Missing spec ⇒ STEP 10 is recorded as `SKIPPED_BY_PROFILE` and the
-workflow proceeds to STEP 11.
+Chapter STEP 10 Part B delegates here (project-specific frame/export
+regeneration, asset hooks). Missing spec ⇒ Part B is recorded as
+`SKIPPED_BY_PROFILE` and the workflow proceeds to STEP 11. STEP 10 Part A —
+the twin write-back via `scripts/twin_db.py` — is factory-owned and runs
+whenever `<STORY_ROOT>/story_world/` exists, spec or no spec.
 
 ## Authority rules (inherited from the rpg-1 system, kept)
 
-- `WORKFLOW_CORE_VARIABLES.md` is user-authored; AI reads, never edits.
+- The sovereignty files (`WORLD_RULES.md`, `NARRATIVE_DELIVERY.md`; legacy:
+  `WORKFLOW_CORE_VARIABLES.md`) are user-authored; AI reads, never edits.
 - One step at a time; every STEP n has a STEP n.5 review gate that can FAIL.
 - File-based handoff only — a fresh worker must be able to resume from disk.
 - Review steps never fix content; they only PASS/FAIL with reasons.

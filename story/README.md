@@ -23,17 +23,25 @@ The public order contract is `docs/PROJECT_PROFILE_CONTRACT.md`.
 ## Layout
 
 ```
+modules/                                # the story department as five modules (see modules/README.md)
+  world-rules-editor/                   # sovereignty files: WORLD_RULES + NARRATIVE_DELIVERY (interactive, USER holds the pen)
+  twin-db/                              # story-world database: query/CRUD + per-chapter write-back
+  beat-sheet-dialogue/                  # 攤田 → USER cuts → converge into an emotional beat sheet (interactive)
+  delivery-planner/                     # assign each beat to a delivery channel
+  step-pipelines/                       # pointer to core/steps (the headless step machines)
 core/
+  NARRATIVE_FOUNDATIONS.md              # the three universal foundations every module serves
   steps/world|character|cast|chapter/   # generalized step files (STEP n / STEP n.5)
-  schemas/                              # CHARACTER_SCHEMA.md + templates
+  schemas/                              # CHARACTER_SCHEMA.md + templates (incl. the two sovereignty templates)
   craft/                                # reusable writing-technique docs
 adapters/
   _template/                            # copy to onboard a new game
-  rpg-1/                                # reference adapter (Godot wuxia RPG, CSV runtime)
-  vinci_world/                          # Vinci World (web); landing spec v0.2 (locale keys + cutscenes)
+  rpg-1/                                # reference adapter (Godot wuxia RPG, CSV runtime); legacy WORKFLOW_CORE_VARIABLES
+  vinci_world/                          # Vinci World (web); landing spec v0.2; DELIVERY_CHANNELS declared
 docs/PROJECT_PROFILE_CONTRACT.md        # the adapter contract
 skills/game-story-factory/SKILL.md      # the single orchestrator skill
 scripts/init_story_root.sh              # bootstrap <STORY_ROOT> canonical layout
+scripts/twin_db.py                      # the twin-db CRUD/query CLI
 ```
 
 ## Use
@@ -74,8 +82,11 @@ Master loop: `WORLD → CHARACTER → CAST ↔ CHARACTER → CAST_PASS → CHAPT
 
 ## Rules that keep quality (do not weaken)
 
-- `WORKFLOW_CORE_VARIABLES.md` in each game's `<STORY_ROOT>/state/` is
-  USER-authored; AI reads, never edits.
+- The sovereignty files in each game's `<STORY_ROOT>/state/` —
+  `WORLD_RULES.md` (what is true in the world) and `NARRATIVE_DELIVERY.md`
+  (how the game speaks) — are USER-authored; AI reads, never edits. A
+  not-yet-migrated project's legacy `WORKFLOW_CORE_VARIABLES.md` has the
+  same protection.
 - One fresh worker per step; the step file is the worker's only source of truth.
 - Review steps never fix content — PASS/FAIL with reasons only.
 - Fresh workers must be able to resume purely from disk artifacts.

@@ -29,6 +29,13 @@ Vinci World (web, PIXI.js client + Bun server).
 - `<TWIN_ROOT>`: NOT_AVAILABLE
 - `<KNOWLEDGE_ROOT>`: <STORY_ROOT>/knowledge
 
+## Sovereignty files (USER-authored, tools read-only)
+
+- `<STORY_ROOT>/state/WORLD_RULES.md` — what is TRUE in the world
+- `<STORY_ROOT>/state/NARRATIVE_DELIVERY.md` — how the game speaks
+- Legacy `<STORY_ROOT>/state/WORKFLOW_CORE_VARIABLES.md` is now a pointer to
+  the two files above (split 2026-07-07).
+
 ## Adapter files
 
 - `LANDING_SPEC.md`: AVAILABLE (v0.2 — onboarding locale keys + scripted
@@ -36,5 +43,7 @@ Vinci World (web, PIXI.js client + Bun server).
   cutscenes (free-roam / interactive gameplay) remain BLOCKED_BY_PROFILE
   until a general event runtime exists.
 - `SYNC_SPEC.md`: NOT_AVAILABLE
+- `DELIVERY_CHANNELS.md`: AVAILABLE (7 channels declared 2026-07-07; consumed
+  by the delivery-planner module)
 - `STYLE_GUIDE.md`: AVAILABLE (v1.0 — 富文本交接、禁造詞；binds ALL
   artifacts under `<STORY_ROOT>`, design docs included)

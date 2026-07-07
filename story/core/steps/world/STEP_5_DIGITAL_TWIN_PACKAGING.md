@@ -37,7 +37,15 @@ Build the package so a fresh reader can identify:
 - the main relations between entities, places, institutions, routes, and facts
 - the short query guidance needed to read the package correctly
 
-If this is a revision pass, update the existing twin-facing files so they stay consistent with the current baseline.
+If this is a revision pass, update the existing twin-facing files so they
+stay consistent with the current baseline — and MERGE, never blind-
+regenerate: the package is a live database after its first build
+(`<FACTORY>/modules/twin-db/README.md`), and chapters write records back
+into it. `<STORY_ROOT>/story_world/changelog.jsonl` shows which records
+chapters added (`source: chapter:<STEM>`); a revision pass must preserve
+them unless the current baseline explicitly contradicts one, in which case
+report the conflict instead of silently deleting. The USER sovereignty file
+`<STORY_ROOT>/state/WORLD_RULES.md` outranks both baseline and package.
 
 ## Required output blocks
 

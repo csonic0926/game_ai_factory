@@ -12,6 +12,11 @@ Review the saved runtime draft artifact:
 
 If the draft was split into multiple scene-cluster files, review every file that shares the same `<ARTIFACT_STEM>` prefix.
 
+When the chapter runs in assignment mode, ALSO read the source of emotional
+truth:
+
+- `<STORY_ROOT>/beat_sheets/<ARTIFACT_STEM>_BEAT_SHEET.md`
+
 ## Save output to
 
 Write the acceptance result to:
@@ -68,6 +73,25 @@ This step passes when:
 - lines land one dominant readable beat at a time
 - line-to-line continuity is strong
 - the prose advances through visible change instead of summary compression
+
+### Emotional acceptance（情感驗收）
+
+Applies whenever the chapter has a beat sheet
+(`<STORY_ROOT>/beat_sheets/<ARTIFACT_STEM>_BEAT_SHEET.md`); without one,
+record `NO BEAT SHEET — emotional acceptance not applicable` and move on.
+
+This step passes when, for the scenes covered by this draft:
+
+- each covered beat can be pointed at in the draft: name the beat and the
+  draft passage that transmits it — a beat that is merely mentioned or
+  explained is NOT transmitted (`core/NARRATIVE_FOUNDATIONS.md` #1: the
+  passage must work through a concrete picture, not through a carrying
+  token that needs explaining first)
+- the curve's holds and releases survived: a HOLD (壓) beat's passage
+  releases nothing (no acquisition, no reward, no premature payoff), and
+  the RELEASE (放) lands where the beat sheet put it — one early release
+  anywhere in the draft is a FAIL even if every other check passes
+- no beat covered by this draft's scenes is silently missing
 
 ### INTRO handling
 
