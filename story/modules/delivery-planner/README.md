@@ -22,10 +22,37 @@ module does it up front.
 4. The sovereignty file `WORLD_RULES.md` for red lines the assignment must
    not cross.
 
+## Input version binding
+
+The delivery plan is not valid "for the chapter" in general; it is valid
+only for the exact beat-sheet version it was produced from.
+
+Before assigning channels, read the beat sheet header and capture:
+
+- beat sheet path
+- chapter unit / scope
+- current status line
+- current version evidence: explicit version token when present, otherwise
+  the latest dated USER ruling / revision entry plus a content checksum when
+  the local filesystem is available
+
+If the beat sheet has no stable version evidence, create the best available
+binding from the latest dated USER ruling / revision entry and a checksum,
+and report that the beat sheet should be upgraded with an explicit version
+token next time it is revised.
+
 ## Output
 
 `<STORY_ROOT>/state/chapter_sources/<ARTIFACT_STEM>_DELIVERY_PLAN.md`, with,
-for EVERY beat of the beat sheet:
+at the top:
+
+- `Based on beat sheet:` the source path
+- `Beat sheet binding:` chapter unit / scope + exact version evidence used
+- `Beat sheet checksum:` when available
+- `Delivery plan status:` `CURRENT` when the binding matches the source used
+  in this run, or `STALE` when a beat-sheet revision has invalidated it
+
+Then, for EVERY beat of the beat sheet:
 
 - the assigned channel (or channel combination — e.g. scenery carries the
   picture, one NPC line carries the feel);
@@ -47,12 +74,27 @@ open items with a fallback.
   picture, it outranks dialogue (`../../core/NARRATIVE_FOUNDATIONS.md` #2).
 - The player's own walking (A-point-to-B-point play) is a channel, not dead
   time between cutscenes — the CH1 precedent exists because this was missed.
+- Channel choice follows the beat's emotional delivery method, not the
+  surface topic of the picture. For each beat, ask: what actually makes the
+  feeling arrive for the player — the player's own movement, someone
+  speaking, scenery/props, object text, a reward cue, or another declared
+  channel? If that answer changes during beat-sheet revision, reassign the
+  channel instead of carrying the old one forward. Precedent: a beat about
+  "being on a boat" can be NPC dialogue if the emotion arrives by hearing
+  fellow passengers speak, but it becomes mission/self-walk when the emotion
+  arrives by giving control back to the player and letting them walk to the
+  bow.
 - The plan never rewrites beats. If a beat cannot be delivered by any
   declared channel, that goes back to the beat-sheet dialogue or waits for
   runtime — the planner reports, it does not bend the beat.
 - Headless-able: in `auto` mode record every assignment's reason + open
   items; in `ask` mode put genuinely direction-level channel calls to the
   USER (e.g. "is the first pull a cutscene or played?").
+- Revisions are full re-checks, not patch edits. When re-running against a
+  revised beat sheet, revisit every row and ask the emotional-delivery
+  question again; do not update only the visibly changed beats, because a new
+  beat can shift the curve position and therefore the best channel for
+  neighboring beats.
 
 ## Review
 

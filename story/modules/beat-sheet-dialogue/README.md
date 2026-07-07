@@ -44,6 +44,23 @@ later". (Rule learned the hard way: the vinci_world 1-9 list lived only in
 chat, and a later worker reconstructing it from secondhand records dropped
 three USER-confirmed beats and inverted one.)
 
+Every disk write that changes a USER-ruled beat must also update the beat
+sheet's version evidence in the header: record the revision date, what
+changed in plain words, and a stable version token (for example the latest
+revision line plus a short content checksum when available). This token is
+what the delivery-planner stamps into its own output.
+
+If a delivery plan already exists for this chapter, a beat-sheet change in
+the same interactive session must immediately do one of two things:
+
+1. re-run `../delivery-planner/` so the channel assignments bind to the new
+   beat-sheet version, or
+2. mark the existing delivery plan `STALE — beat sheet revised on <date>`
+   at the top of that plan and report that the next chapter pipeline run
+   must re-run delivery planning before STEP 2 may use it.
+
+Never leave a revised beat sheet beside an apparently-current delivery plan.
+
 ## The artifact
 
 Location: `<STORY_ROOT>/beat_sheets/<ARTIFACT_STEM>_BEAT_SHEET.md`
@@ -53,10 +70,12 @@ Required content, in the chapter's `<PRIMARY_LOCALE>`, rich prose per the
 adapter's style guide:
 
 - **Header**: chapter unit name; scope (where the unit begins and ends);
-  sources (which conversation / which recorded rulings); **status** —
-  every beat is either `USER 定案`(with date) or clearly marked as an
-  unconfirmed draft (【草案待 USER 砍定】). A beat sheet whose beats are all
-  drafts is a 攤田 record, not a finished beat sheet.
+  sources (which conversation / which recorded rulings); **version
+  evidence** — the current revision date, what changed, and a stable version
+  token or checksum for downstream binding; **status** — every beat is
+  either `USER 定案`(with date) or clearly marked as an unconfirmed draft
+  (【草案待 USER 砍定】). A beat sheet whose beats are all drafts is a 攤田
+  record, not a finished beat sheet.
 - **Ordered beats — THREE layers each, all required**:
   1. **畫面** (the picture): one transmitting picture, a short paragraph,
      never a label.
@@ -87,4 +106,9 @@ adapter's style guide:
 The beat sheet is USER-ruled content: revising a beat re-enters the dialogue
 protocol (攤田 the alternatives → USER cuts → converge, writing at the moment
 of the cut). Downstream artifacts built on a revised beat re-run their steps;
-the beat sheet records the revision date and what changed.
+the beat sheet records the revision date, what changed, and the new version
+evidence. Any existing delivery plan is invalid until it is either re-run
+from that new version or explicitly marked stale. This applies even when the
+picture changes but the chapter premise still sounds similar: downstream
+channel assignments are allowed to survive only after the delivery-planner
+re-checks them against the revised beat.

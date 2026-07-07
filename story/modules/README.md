@@ -9,7 +9,7 @@ pipeline is one module among five, no longer the whole department.
 | [`world-rules-editor/`](world-rules-editor/README.md) | interactive (USER sovereignty) | create & revise a game's `WORLD_RULES.md` + `NARRATIVE_DELIVERY.md`; migrate a legacy `WORKFLOW_CORE_VARIABLES.md` |
 | [`twin-db/`](twin-db/README.md) | tool + procedure | the story-world database: query/CRUD over `<STORY_ROOT>/story_world/`, plus the per-chapter write-back |
 | [`beat-sheet-dialogue/`](beat-sheet-dialogue/README.md) | interactive (cannot be automated) | 攤田 → USER cuts & rules → converge into a chapter's emotional beat sheet |
-| [`delivery-planner/`](delivery-planner/README.md) | headless-able | assign each beat of a finished beat sheet to a delivery channel, weighted by `NARRATIVE_DELIVERY.md` |
+| [`delivery-planner/`](delivery-planner/README.md) | headless-able | assign each beat of a finished beat sheet to a delivery channel, weighted by `NARRATIVE_DELIVERY.md`, and stamp the exact beat-sheet version it used |
 | [`step-pipelines/`](step-pipelines/README.md) | headless | the proven WORLD / CHARACTER / CAST / CHAPTER step machines (files stay at `../core/steps/`) |
 
 Production flow for a chapter, end to end:
@@ -19,7 +19,8 @@ sovereignty files ──┐
                     ├─ beat-sheet-dialogue ─→ beat sheet (per chapter, in <STORY_ROOT>/beat_sheets/)
 twin-db (query) ────┘            │
                                  ▼
-                       delivery-planner ─→ delivery plan (beat → channel)
+                       delivery-planner ─→ delivery plan (beat → channel,
+                       bound to one beat-sheet version)
                                  │
                                  ▼
                   step-pipelines CHAPTER (STEP 2 takes assignments

@@ -210,6 +210,16 @@ Chapter hard bindings:
   sheet with zero USER-ruled beats ⇒ BLOCKED_BY_BEAT_SHEET (report, never
   fall back silently). Producing a missing beat sheet is the interactive
   beat-sheet-dialogue module's job — a headless run cannot invent one.
+- Beat sheet and delivery plan must be synchronized before assignment mode
+  may use channel assignments. A delivery plan is binding only when its
+  header records the beat-sheet path and version evidence it was built from;
+  if that binding is missing or mismatched, STEP 1/2 report
+  BLOCKED_BY_STALE_DELIVERY_PLAN and the delivery-planner must be re-run.
+- STEP 1 preflight inventories landing surfaces early: read the adapter's
+  `DELIVERY_CHANNELS.md`, `LANDING_SPEC.md`, and the concrete runtime files
+  they cite. Missing scenes/channels/runtime enum values become explicit
+  engineering dependencies; they do not stop STEP 2-6 design work by
+  themselves, but they must not wait until STEP 7 to be discovered.
 - Emotional acceptance（情感驗收）: when the chapter has a beat sheet, the
   STEP 6.5 and STEP 9 gates verify which beat each output transmits and
   that the curve's holds and releases survived (`core/NARRATIVE_FOUNDATIONS.md`).

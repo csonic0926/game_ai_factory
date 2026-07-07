@@ -38,6 +38,22 @@ report BLOCKED_BY_BEAT_SHEET instead of falling back silently.
 
 ## Task — assignment mode
 
+Before translating the beat sheet into a chapter line, perform the same
+upstream sync check as STEP 1:
+
+- derive the beat sheet's current version evidence from its explicit version
+  token when present, otherwise from its latest dated USER ruling / revision
+  entry plus a content checksum when available
+- if a delivery plan exists, read its header binding and compare beat-sheet
+  path, version token / revision entry, and checksum when available
+- a delivery plan with no binding stamp, a mismatched path, or an older
+  version is stale
+
+If the delivery plan is stale, write `BLOCKED_BY_STALE_DELIVERY_PLAN` to the
+story-line output with the evidence, then stop. Do not use any old channel
+assignment as binding input. If no delivery plan exists, continue without
+binding channel assignments and record that absence as an open item.
+
 Read the beat sheet as the chapter's commissioned task and produce the
 chapter line that will deliver it.
 
@@ -46,6 +62,8 @@ Your result must state:
 - the beat sheet's chapter unit, quoted scope, and status (which beats are
   USER-ruled, which are drafts — draft beats are carried as open items, not
   silently treated as settled)
+- the upstream sync status: whether the delivery plan is synchronized,
+  absent, or blocked as stale
 - the emotional curve as ordered beats, restated in plain rich prose (the
   anti-compression rules apply: every beat's picture is restated in full,
   never reduced to a label)
@@ -117,9 +135,10 @@ State `ASSIGNMENT` (with the beat sheet path and its status line) or
 
 One row per beat of the beat sheet: the beat's picture restated in plain
 words, its curve mark (壓/放), where in the chapter line it lands, and its
-delivery channel when a delivery plan exists. Every beat appears exactly
-once; a beat the world state cannot support is listed with an open-item
-flag, never dropped.
+delivery channel when a synchronized delivery plan exists. Every beat appears
+exactly once; a beat the world state cannot support is listed with an
+open-item flag, never dropped. Never fill this from an unstamped or stale
+delivery plan.
 
 ### `DISCOVERY QUESTION`
 
