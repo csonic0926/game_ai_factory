@@ -21,5 +21,6 @@ Contract: see `../../docs/PROJECT_PROFILE_CONTRACT.md`.
 ## Adapter files
 
 - `LANDING_SPEC.md`: NOT_AVAILABLE     # flip when written — unblocks chapter STEP 7
+- `VISUAL_GRAMMAR.md`: NOT_AVAILABLE   # flip when written — unblocks chapter STEP 6.7
 - `SYNC_SPEC.md`: NOT_AVAILABLE        # chapter STEP 10 skips when absent
 - `STYLE_GUIDE.md`: NOT_AVAILABLE

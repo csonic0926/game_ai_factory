@@ -12,6 +12,8 @@ Read the adapter landing contract FIRST, before any other input:
 
 Review:
 
+- `<STORY_ROOT>/runtime_scene_drafts/<ARTIFACT_STEM>_STAGING_PLAN.md`
+- `<STORY_ROOT>/runtime_scene_drafts/<ARTIFACT_STEM>_STAGING_REVIEW.md`
 - `<STORY_ROOT>/runtime_scene_drafts/<ARTIFACT_STEM>_LANDING.md`
 - the target runtime files and locale storage defined by the adapter `LANDING_SPEC.md`
 - the chapter-entry wiring files defined by the adapter `LANDING_SPEC.md` when chapter start routing or intro-backed chapter entries were part of the landing
@@ -28,7 +30,9 @@ Write the acceptance result to:
 
 ## Task
 
-Check whether the landed runtime data is complete, mechanically valid, and consistent with the STEP 7 landing contract.
+Check whether the landed runtime data is complete, mechanically valid,
+consistent with the STEP 7 landing contract, and faithful to the approved
+STEP 6.7 staging plan.
 
 ## Acceptance criteria
 
@@ -38,6 +42,8 @@ This step passes when:
 
 - the landing log exists
 - the landing log records produced ids, row ranges, routing targets, and touched files clearly enough to audit the landing
+- the landing log maps every STEP 6.7 operation group to landed runtime data
+  or to a named engineering dependency
 
 ### Runtime rows and references
 
@@ -49,6 +55,24 @@ This step passes when:
 - every referenced locale key resolves in the locale storage
 - every required location-node target resolves in the target runtime files
 - the integrity checks defined by the adapter `LANDING_SPEC.md` pass
+
+### Staging-plan fidelity
+
+This step passes when:
+
+- the saved staging review says `STEP 6.75 PASS`
+- every landed cutscene, player-operation, scene-layout, dialogue, emote,
+  sound, transition, and text element corresponds to an approved staging-plan
+  operation
+- STEP 7 did not invent new camera blocking, actor movement, pacing, or
+  cutscene/player-operation binding
+- any staging-plan operation that could not land is recorded as an explicit
+  engineering dependency instead of silently dropped or converted to a
+  different channel
+
+Fail when landed runtime data re-stages the scene, drops an approved
+operation without explanation, or changes player-operation beats into
+cutscenes (or the reverse) without going back through STEP 6.7.
 
 ### Timeline integrity
 

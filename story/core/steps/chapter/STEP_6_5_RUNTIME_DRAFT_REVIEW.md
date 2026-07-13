@@ -31,6 +31,14 @@ Write the acceptance result to:
 
 Check whether the saved runtime draft is complete, readable, and consistent with the STEP 6 runtime-draft contract.
 
+Scope boundary: this gate reviews the draft's emotional and content fidelity,
+readability, draft form, and scene continuity. It does **not** review whether
+the target engine can literally shoot every image. Cinematic language such as
+"wide shot", "parallel boats", or "close-up" is not a STEP 6.5 failure by
+itself, because STEP 6 is medium-independent; STEP 6.7 / 6.75 own visual
+grammar realization. Fail only when such language also breaks this gate's own
+content, emotional, or readability criteria.
+
 ## Acceptance criteria
 
 ### File and coverage

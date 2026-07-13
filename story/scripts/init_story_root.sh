@@ -24,6 +24,16 @@ fi
 
 mkdir -p "$ROOT/beat_sheets"
 
+# Adapter answer sheets — canonical home is <STORY_ROOT>/adapter/ (the game
+# repo owns the filled-in answers; the factory owns the contract + blank
+# sheets in adapters/_template/). Never overwrite an existing answer file.
+mkdir -p "$ROOT/adapter"
+for a in "$FACTORY"/adapters/_template/*; do
+  [ -f "$a" ] || continue
+  base="$(basename "$a")"
+  [ -f "$ROOT/adapter/$base" ] || cp "$a" "$ROOT/adapter/$base"
+done
+
 for t in "$FACTORY"/core/schemas/templates/*.md; do
   base="$(basename "$t")"
   case "$base" in

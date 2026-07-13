@@ -1,18 +1,44 @@
 # Project Profile Contract (Adapter Contract)
 
 The factory's step files are **project-agnostic**. Everything project-specific
-lives in one adapter directory:
+lives in one adapter directory. Ownership split: the factory owns the
+**contract** (this file, plus the blank answer sheets in `adapters/_template/`);
+each game repo owns its **filled-in answers** — the adapter files describe that
+game's runtime and staging capabilities, so they live with the code they
+describe and version with the game.
+
+## Canonical adapter location
+
+The canonical home of a project's adapter is inside the game repo:
 
 ```
-adapters/<project_id>/
-  PROJECT_PROFILE.md    # required — resolves all <VARIABLES> used by core steps
-  LANDING_SPEC.md       # required for chapter production — how approved text becomes runnable game data
-  SYNC_SPEC.md          # optional — post-landing sync duties (digital twin, frames, exports)
-  STYLE_GUIDE.md        # optional — narration/prose style rules for this game
+<STORY_ROOT>/adapter/     # i.e. <GAME_REPO>/design/story/adapter/
+  PROJECT_PROFILE.md      # required — resolves all <VARIABLES> used by core steps
+  VISUAL_GRAMMAR.md       # required for chapter staging — how approved text can actually be staged/shot
+  LANDING_SPEC.md         # required for chapter runtime landing — how approved staging becomes runnable game data
+  DELIVERY_CHANNELS.md    # declared delivery channels — read by chapter STEP 1 preflight
+  SYNC_SPEC.md            # optional — post-landing sync duties (digital twin, frames, exports)
+  STYLE_GUIDE.md          # optional — narration/prose style rules for this game
+  style_lint_config.json  # optional — machine-checkable STYLE_GUIDE rules for review gates
 ```
 
-An orchestrator (Claude or Codex) MUST resolve the profile before dispatching
-any step worker, and MUST pass the resolved values into the worker prompt.
+## Adapter resolution order
+
+An orchestrator (Claude or Codex) MUST resolve the adapter directory in this
+order, MUST resolve the profile before dispatching any step worker, and MUST
+pass the resolved values into the worker prompt:
+
+1. An adapter path stated explicitly in the invocation, if any.
+2. `adapters/registry.md` in the factory — the phonebook, one line per
+   migrated project: `<project_id> → <absolute adapter path>`.
+3. cwd convention: when the session's working directory is a game repo,
+   look for `./design/story/adapter/`.
+4. **Legacy fallback:** the factory-local `adapters/<project_id>/`.
+   Unmigrated projects (e.g. rpg-1) keep resolving here unchanged.
+
+`adapters/_template/` (the blank answer sheets) stays in the factory;
+`scripts/init_story_root.sh` copies it into `<STORY_ROOT>/adapter/` when
+onboarding a new game.
 
 ## Variables every PROJECT_PROFILE.md must define
 
@@ -39,6 +65,7 @@ must treat a missing optional capability as a hard skip, never improvise):
 
 ```
 <STORY_ROOT>/
+  adapter/                            # the project's filled-in adapter — canonical location (see above)
   state/
     WORLD_RULES.md                  # USER-authored: what is TRUE in the world (never AI-edited)
     NARRATIVE_DELIVERY.md           # USER-authored: how the game speaks (never AI-edited)
@@ -59,8 +86,8 @@ must treat a missing optional capability as a hard skip, never improvise):
 ```
 
 Core step files reference paths ONLY under this layout (as `<STORY_ROOT>/...`)
-or through the three spec files below. If a step file needs any other
-project path, that is a factory bug.
+or through the adapter files below. If a step file needs any other project
+path, that is a factory bug.
 
 ## LANDING_SPEC.md — the landing contract
 
@@ -79,8 +106,49 @@ A landing spec must answer, concretely, for its game:
    data, or `NOT_AVAILABLE`.
 
 If `LANDING_SPEC.md` is missing or marked `NOT_AVAILABLE`, chapter production
-stops at STEP 6 (approved runtime draft) and reports that landing is blocked.
+stops before STEP 7 and reports that landing is blocked. When
+`VISUAL_GRAMMAR.md` exists, the pipeline may still produce an approved staging
+plan; it must not write runtime data without the landing spec.
 World / character / cast workflows never need a landing spec.
+
+## VISUAL_GRAMMAR.md — the staging / shooting contract
+
+Chapter STEP 6.7 (and the branch implementation's reused STEP 6.7) delegate
+the "can this engine actually show this?" question here. A visual grammar must
+answer, concretely, for its game:
+
+1. **View** — fixed or changeable viewpoint, map/screen grammar, and what a
+   "shot" means in this game.
+2. **Camera whitelist** — allowed camera operations (focus, pan, zoom,
+   follow, fade, cut, letterbox, etc.) and unsupported operations.
+3. **Actor performance** — how characters move, face, emote, speak, animate,
+   and what they cannot perform.
+4. **Cannot list** — cinematic / spatial / performance language the engine
+   cannot currently shoot, such as close-ups, cut/reverse-shot, moving
+   vehicles, background scroll, montage, or detailed gesture, when applicable.
+5. **Native pacing** — what "stay", "speak", player movement, pauses,
+   dialogue, and environmental holds feel like in this game.
+6. **Presentation primitives** — concrete cutscene, player-operation,
+   environment, text, sound, and transition primitives that STEP 6.7 may use
+   and STEP 7 can mechanically map into runtime data.
+
+If `VISUAL_GRAMMAR.md` is missing or marked `NOT_AVAILABLE`, chapter production
+stops at STEP 6.7 and reports `BLOCKED_BY_PROFILE`. STEP 6 remains
+medium-independent; STEP 6.5 must not reject a draft merely because it uses a
+cinematic image that the visual grammar will later restage.
+
+### LANDING_SPEC.md vs VISUAL_GRAMMAR.md
+
+These two adapter files are complementary and must not replace each other:
+
+- `LANDING_SPEC.md` declares **landing surfaces**: which runtime files, ids,
+  locale keys, schemas, routing rules, and integrity checks receive story data.
+- `VISUAL_GRAMMAR.md` declares **how to stage or shoot** a beat: camera, actor
+  performance, forbidden presentation, native pacing, and the allowed
+  operation primitives.
+
+STEP 6.7 reads `VISUAL_GRAMMAR.md` to produce the staging plan. STEP 7 reads
+`LANDING_SPEC.md` plus the approved staging plan to write runtime files.
 
 ## SYNC_SPEC.md — the post-landing sync contract
 

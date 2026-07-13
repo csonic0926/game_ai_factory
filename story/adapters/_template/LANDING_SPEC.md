@@ -14,5 +14,6 @@ contract in `../../docs/PROJECT_PROFILE_CONTRACT.md`:
 6. Integrity checklist — mechanical checks and exact commands to run them.
 7. Battle/minigame hooks — or NOT_AVAILABLE.
 
-Until then: chapter production stops at STEP 6 (approved runtime draft),
-reported as BLOCKED_BY_PROFILE.
+Until then: chapter production stops before STEP 7 runtime landing, reported
+as BLOCKED_BY_PROFILE. If `VISUAL_GRAMMAR.md` is available, the pipeline may
+still produce the STEP 6.7 staging plan before it blocks on landing.

@@ -55,6 +55,25 @@ Record the following in the branch source:
 
 Keep the branch source traceable back to the accepted trunk and the accepted branch design.
 
+### Reused `STEP 6.7` / `STEP 6.75`
+
+Run branch staging as a real STEP 6.7 pass, not as a copy of trunk staging.
+
+Record:
+
+- which trunk staging decisions are inherited unchanged
+- which branch beats diverge from trunk staging
+- every branch-specific cutscene / player-operation binding decision
+- every branch-specific visual-grammar collision, restage, or engineering
+  dependency
+- whether the branch's pacing still matches the branch's emotional reason for
+  existing
+
+The branch may reuse trunk marks, actors, scene layouts, and operation groups
+only when the branch beat is genuinely the same playable moment. If the branch
+changes what the player knows, chooses, reaches, enters, or feels, re-check the
+binding against `VISUAL_GRAMMAR.md` and save a branch-specific staging plan.
+
 ### Reused `STEP 11` / `STEP 11.5`
 
 Treat the result as branch implementation completion.

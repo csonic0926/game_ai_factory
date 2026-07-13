@@ -18,11 +18,11 @@ Read the source artifacts for the target chapter:
    the latest dated USER ruling / revision entry plus a content checksum when
    the local filesystem is available.
 3. `<STORY_ROOT>/state/chapter_sources/<ARTIFACT_STEM>_DELIVERY_PLAN.md`,
-   if present — the beat-to-channel assignment. Before trusting it, compare
-   its recorded beat-sheet binding against the current beat sheet. A delivery
-   plan with no binding stamp, a different beat-sheet path, a different
-   version token / revision entry, or a different checksum is stale for this
-   run.
+   if present — the beat-to-channel-intent assignment. Before trusting it,
+   compare its recorded beat-sheet binding against the current beat sheet. A
+   delivery plan with no binding stamp, a different beat-sheet path, a
+   different version token / revision entry, or a different checksum is stale
+   for this run.
 4. `<STORY_ROOT>/state/entry_states/<target_stage>/<entry_state_id>.json`, if present
 5. `<STORY_ROOT>/state/outcomes/<source_stage>/<outcome_id>.json`, if present
 6. the latest accepted chapter source for the same chapter stem, if this is a revision or rebuild
@@ -32,11 +32,13 @@ Read the source artifacts for the target chapter:
    instead of transcribing world facts from summaries; also `<TWIN_ROOT>/`
    facts and seeds, if `<TWIN_ROOT>` is declared and present (skip if
    `NOT_AVAILABLE`)
-9. assignment mode only: `adapters/<PROJECT_ID>/DELIVERY_CHANNELS.md` and
-   `adapters/<PROJECT_ID>/LANDING_SPEC.md`, if present. Treat these as the
-   adapter's declared delivery / landing contract, then inspect the concrete
-   runtime files, enums, schemas, or tool specs they cite in `<GAME_REPO>`.
-   Do not assume a scene, channel, enum value, or landing surface exists just
+9. assignment mode only: `adapters/<PROJECT_ID>/DELIVERY_CHANNELS.md`,
+   `adapters/<PROJECT_ID>/LANDING_SPEC.md`, and
+   `adapters/<PROJECT_ID>/VISUAL_GRAMMAR.md`, if present. Treat these as the
+   adapter's declared delivery / landing / staging contracts, then inspect the
+   concrete runtime files, enums, schemas, or tool specs they cite in
+   `<GAME_REPO>`. Do not assume a scene, channel, enum value, landing surface,
+   camera operation, actor performance, or presentation primitive exists just
    because the beat sheet wants it.
 
 ## Save output to
@@ -61,6 +63,9 @@ Produce one chapter preflight that states:
 - what concrete world-state supports the chapter
 - which landing surfaces / runtime capabilities the beat sheet or delivery
   plan requires, and whether they exist now or need engineering
+- which obvious visual-grammar risks the beat sheet or delivery plan creates,
+  especially any whole passage that appears to depend on the adapter's
+  `cannot` list
 - what minimum assumptions are needed because a source is missing
 
 Use only source-backed facts.
@@ -74,7 +79,7 @@ If the delivery plan is missing the binding stamp, points to another beat
 sheet, or was built from an older beat-sheet version, write a blocker
 preflight with `UPSTREAM ARTIFACT SYNC` set to
 `BLOCKED_BY_STALE_DELIVERY_PLAN`, state exactly what mismatched, and stop.
-Do not continue by silently using the old channel assignments.
+Do not continue by silently using the old channel-intent assignments.
 
 If no delivery plan exists, do not invent one. Record `NO_DELIVERY_PLAN` in
 `UPSTREAM ARTIFACT SYNC` and continue with a landing-surface inventory based
@@ -92,6 +97,7 @@ and a clear blocker note; do not fill downstream blocks from stale input.
 - `KNOWLEDGE NOT ALLOWED`
 - `WORLD GROUNDING`
 - `LANDING SURFACE INVENTORY`
+- `VISUAL FEASIBILITY PREVIEW`
 - `ASSUMPTIONS` when needed
 
 ## Block definitions
@@ -108,8 +114,8 @@ For assignment mode, include:
 - delivery plan's recorded beat-sheet binding, if present
 - one status:
   - `SYNCED` — delivery plan binding matches the current beat sheet
-  - `NO_DELIVERY_PLAN` — no delivery plan exists; channel assignments are not
-    binding yet
+  - `NO_DELIVERY_PLAN` — no delivery plan exists; channel-intent assignments
+    are not binding yet
   - `BLOCKED_BY_STALE_DELIVERY_PLAN` — delivery plan is missing a binding
     stamp or no longer matches the current beat sheet
 
@@ -168,6 +174,30 @@ need, with:
 Engineering dependencies do not stop STEP 2-6 design work by themselves.
 They must be visible early: state plainly when the chapter is "design-ready,
 landing waits on engineering." Do not mark a missing surface as available.
+
+### `VISUAL FEASIBILITY PREVIEW`
+
+Move obvious "can this be shot?" warnings early without turning STEP 1 into
+the staging step.
+
+Compare the beat sheet and delivery plan (when synchronized) against
+`VISUAL_GRAMMAR.md`, if present. List every obvious beat or passage that
+appears to require a forbidden camera, actor, movement, pacing, or presentation
+technique, with:
+
+- the beat(s) that create the risk
+- the requested image / action / pacing
+- visual-grammar evidence from `VISUAL_GRAMMAR.md`
+- status:
+  - `LIKELY_SHOOTABLE` — the request fits the visual grammar at this level
+  - `NEEDS_RESTAGE_IN_STEP_6_7` — the beat looks valid but the literal image
+    hits the cannot list and should be translated later
+  - `POSSIBLE_ENGINEERING_DEPENDENCY` — the beat may require runtime capability
+    outside the visual grammar
+  - `VISUAL_GRAMMAR_MISSING` — the adapter has no usable visual grammar yet
+
+This preview does not replace STEP 6.7. It warns early so a whole chapter does
+not unknowingly lean on an impossible cinematic language.
 
 ### `ASSUMPTIONS`
 

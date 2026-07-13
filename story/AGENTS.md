@@ -5,9 +5,16 @@ You are an AI agent (Claude Code or Codex) driving story production for a game.
 ## Start here
 
 1. Read `docs/PROJECT_PROFILE_CONTRACT.md` — the adapter contract.
-2. Resolve the project: `adapters/<project_id>/PROJECT_PROFILE.md`.
-   No adapter? Copy `adapters/_template/` and fill it (ask the user for
-   `<STORY_ROOT>` and locales; do not guess `LANDING_SPEC.md`).
+2. Resolve the project's adapter directory, in order: explicit adapter path
+   in the invocation → `adapters/registry.md` (phonebook:
+   `<project_id> → <absolute path>`) → cwd convention
+   `./design/story/adapter/` when working inside a game repo → legacy
+   fallback `adapters/<project_id>/` (unmigrated projects, e.g. rpg-1).
+   Then read `<adapter>/PROJECT_PROFILE.md`.
+   No adapter anywhere? Bootstrap `<STORY_ROOT>` with
+   `scripts/init_story_root.sh` (it seeds `<STORY_ROOT>/adapter/` from
+   `adapters/_template/`) and fill it (ask the user for `<STORY_ROOT>` and
+   locales; do not guess `LANDING_SPEC.md` or `VISUAL_GRAMMAR.md`).
 3. Orchestrate via `skills/game-story-factory/SKILL.md` — it defines the four
    step machines (world / character / cast / chapter), the step-selection rule,
    and the worker-handoff rule.
@@ -22,8 +29,11 @@ You are an AI agent (Claude Code or Codex) driving story production for a game.
   them, with explicit USER approval.
 - Never hardcode a game path in `core/` — if a step needs a project path that
   the contract cannot express, that is a factory bug: fix the contract, not the step.
+- Chapter STEP 6.7 without a usable `VISUAL_GRAMMAR.md` ⇒
+  BLOCKED_BY_PROFILE (stop at the approved STEP 6 draft; tell the user what
+  the grammar must define).
 - Chapter STEP 7 without a usable `LANDING_SPEC.md` ⇒ BLOCKED_BY_PROFILE
-  (stop at the approved STEP 6 draft; tell the user what the spec must define).
+  (stop before runtime landing; tell the user what the spec must define).
 - Review steps output PASS/FAIL + reasons only.
 
 ## Cross-repo requests

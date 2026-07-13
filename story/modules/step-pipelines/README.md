@@ -20,6 +20,10 @@ What the rebuild changed inside the machines:
 - Chapter review gates carry an **emotional acceptance** line: which beat of
   the beat sheet did this output transmit; did the curve's holds and
   releases survive? (`../../core/NARRATIVE_FOUNDATIONS.md`)
+- CHAPTER STEP 6.7 / 6.75 now sits between runtime draft and runtime landing:
+  it reads the adapter `VISUAL_GRAMMAR.md`, decides cutscene vs player
+  operation, restages unshootable cinematic language, and produces the
+  staging plan that STEP 7 mechanically lands.
 - CHAPTER STEP 10 writes new canon back into the twin database
   (`../twin-db/README.md`) in addition to any adapter `SYNC_SPEC.md` sync.
 - Workers read the sovereignty files `WORLD_RULES.md` +

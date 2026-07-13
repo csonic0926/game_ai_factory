@@ -2,8 +2,13 @@
 
 The step that makes this a GAME story factory rather than a novel/screenplay
 factory: after a chapter's emotional beat sheet is finalized, decide **which
-delivery channel each beat travels through** — before anything is written
-for landing.
+delivery channel each beat seems to travel through at beat-sheet resolution**
+— before anything is written for landing.
+
+This module produces **rough channel intent**, not the final cutscene /
+player-operation binding. The binding decision now belongs to CHAPTER STEP 6.7
+(Staging & Realization), because that step reads the actual
+`VISUAL_GRAMMAR.md` and can see what the engine can shoot.
 
 The founding precedent: vinci_world CH1 was first landed as pure cutscenes,
 then the USER re-cut it into "cutscene + six played mission segments"
@@ -54,8 +59,8 @@ at the top:
 
 Then, for EVERY beat of the beat sheet:
 
-- the assigned channel (or channel combination — e.g. scenery carries the
-  picture, one NPC line carries the feel);
+- the channel intent (or channel-intent combination — e.g. scenery carries
+  the picture, one NPC line carries the feel);
 - the reason, argued from `NARRATIVE_DELIVERY.md` and the beat's own curve
   mark (a HOLD beat must not be given to a channel that releases — e.g. a
   reward pop-up);
@@ -63,6 +68,11 @@ Then, for EVERY beat of the beat sheet:
   missing runtime);
 - what the channel must NOT do (the beat's red lines carried forward in
   plain words).
+
+For beats that look like "cutscene vs played segment" decisions, record the
+planner's best intent and why, but label it `ROUGH CHANNEL INTENT`. Do not
+present it as the final binding. STEP 6.7 may refine or overturn it after
+reading `VISUAL_GRAMMAR.md`.
 
 Plus one coverage table: every beat appears exactly once as a primary
 assignment; no beat is silently dropped; unassignable beats are flagged as
@@ -84,6 +94,9 @@ open items with a fallback.
   fellow passengers speak, but it becomes mission/self-walk when the emotion
   arrives by giving control back to the player and letting them walk to the
   bow.
+- The exact `cutscene` / `player_operation` binding is deliberately deferred
+  to STEP 6.7. The planner does not know yet whether a drafted image can be
+  staged by this engine's camera, actors, pacing, and primitives.
 - The plan never rewrites beats. If a beat cannot be delivered by any
   declared channel, that goes back to the beat-sheet dialogue or waits for
   runtime — the planner reports, it does not bend the beat.

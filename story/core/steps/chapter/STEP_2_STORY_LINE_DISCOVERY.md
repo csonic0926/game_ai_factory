@@ -25,7 +25,7 @@ report BLOCKED_BY_BEAT_SHEET instead of falling back silently.
 - assignment mode only:
   - `<STORY_ROOT>/beat_sheets/<ARTIFACT_STEM>_BEAT_SHEET.md` (the task source)
   - `<STORY_ROOT>/state/chapter_sources/<ARTIFACT_STEM>_DELIVERY_PLAN.md`,
-    if present (binding channel assignments)
+    if present (binding rough channel intent)
   - `<STORY_ROOT>/state/NARRATIVE_DELIVERY.md` (how this game speaks)
 
 ## Save output to
@@ -51,8 +51,8 @@ upstream sync check as STEP 1:
 
 If the delivery plan is stale, write `BLOCKED_BY_STALE_DELIVERY_PLAN` to the
 story-line output with the evidence, then stop. Do not use any old channel
-assignment as binding input. If no delivery plan exists, continue without
-binding channel assignments and record that absence as an open item.
+intent as binding input. If no delivery plan exists, continue without binding
+channel intent and record that absence as an open item.
 
 Read the beat sheet as the chapter's commissioned task and produce the
 chapter line that will deliver it.
@@ -135,10 +135,11 @@ State `ASSIGNMENT` (with the beat sheet path and its status line) or
 
 One row per beat of the beat sheet: the beat's picture restated in plain
 words, its curve mark (壓/放), where in the chapter line it lands, and its
-delivery channel when a synchronized delivery plan exists. Every beat appears
-exactly once; a beat the world state cannot support is listed with an
-open-item flag, never dropped. Never fill this from an unstamped or stale
-delivery plan.
+rough delivery channel intent when a synchronized delivery plan exists. Every
+beat appears exactly once; a beat the world state cannot support is listed
+with an open-item flag, never dropped. Never fill this from an unstamped or
+stale delivery plan. Do not treat the channel intent as final cutscene /
+player-operation binding; STEP 6.7 decides that later from the visual grammar.
 
 ### `DISCOVERY QUESTION`
 

@@ -53,7 +53,7 @@ what the delivery-planner stamps into its own output.
 If a delivery plan already exists for this chapter, a beat-sheet change in
 the same interactive session must immediately do one of two things:
 
-1. re-run `../delivery-planner/` so the channel assignments bind to the new
+1. re-run `../delivery-planner/` so the channel-intent assignments bind to the new
    beat-sheet version, or
 2. mark the existing delivery plan `STALE — beat sheet revised on <date>`
    at the top of that plan and report that the next chapter pipeline run
@@ -94,7 +94,9 @@ adapter's style guide:
 
 ## Downstream consumers
 
-- `../delivery-planner/` assigns each beat to a delivery channel.
+- `../delivery-planner/` assigns each beat to rough channel intent; STEP 6.7
+  later decides exact cutscene / player-operation binding from
+  `VISUAL_GRAMMAR.md`.
 - CHAPTER STEP 2 (assignment mode) takes its task from this file instead of
   discovering story lines on the spot.
 - Chapter review gates run the emotional-acceptance line against this file:
@@ -110,5 +112,5 @@ the beat sheet records the revision date, what changed, and the new version
 evidence. Any existing delivery plan is invalid until it is either re-run
 from that new version or explicitly marked stale. This applies even when the
 picture changes but the chapter premise still sounds similar: downstream
-channel assignments are allowed to survive only after the delivery-planner
+channel-intent assignments are allowed to survive only after the delivery-planner
 re-checks them against the revised beat.

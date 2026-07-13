@@ -42,7 +42,12 @@ Write the draft so it:
 - uses the adapter-prescribed draft form (default: second person with `你`)
 - stays in `<PRIMARY_LOCALE>` for this pass
 - lands one readable beat at a time
-- is ready for the adapter's landing surface (CSV rows, cutscene beats, …)
+- is ready for STEP 6.7 to realize into the target visual grammar
+
+This step is still a scene-writing step, not the final camera / controls
+binding step. Do not contort the draft to solve every engine limitation here:
+STEP 6.7 will translate medium-independent scene images into shootable
+operations and decide cutscene vs. player operation.
 
 ## Scene draft standard
 

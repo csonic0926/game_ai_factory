@@ -11,12 +11,18 @@ that can hard-block bad output).
 
 ## Factory positioning
 
-- caller = a game project, represented by an adapter under `adapters/<project_id>/`
+- caller = a game project, represented by an adapter whose canonical home is
+  the game repo's `<STORY_ROOT>/adapter/` (factory keeps the phonebook
+  `adapters/registry.md`; unmigrated projects still resolve via the legacy
+  `adapters/<project_id>/` fallback)
 - factory owns the **workflow** (step files, review gates, schemas, craft docs)
 - the game repo owns the **artifacts** (everything lands under that repo's
   `<STORY_ROOT>`, so story versions with the game)
-- the adapter owns the **runtime knowledge** (how approved text becomes
-  runnable game data: `LANDING_SPEC.md`, plus optional `SYNC_SPEC.md`)
+- the adapter owns the **runtime and staging knowledge** (how approved text can
+  be staged: `VISUAL_GRAMMAR.md`; how staged beats become runnable game data:
+  `LANDING_SPEC.md`; plus optional `SYNC_SPEC.md`) — it describes the game
+  repo's code, so it lives with that code and versions with the game; the
+  factory keeps the contract and the blank answer sheets (`adapters/_template/`)
 
 The public order contract is `docs/PROJECT_PROFILE_CONTRACT.md`.
 
@@ -27,7 +33,7 @@ modules/                                # the story department as five modules (
   world-rules-editor/                   # sovereignty files: WORLD_RULES + NARRATIVE_DELIVERY (interactive, USER holds the pen)
   twin-db/                              # story-world database: query/CRUD + per-chapter write-back
   beat-sheet-dialogue/                  # 攤田 → USER cuts → converge into an emotional beat sheet (interactive)
-  delivery-planner/                     # assign each beat to a delivery channel
+  delivery-planner/                     # assign each beat to rough channel intent
   step-pipelines/                       # pointer to core/steps (the headless step machines)
 core/
   NARRATIVE_FOUNDATIONS.md              # the three universal foundations every module serves
@@ -35,9 +41,10 @@ core/
   schemas/                              # CHARACTER_SCHEMA.md + templates (incl. the two sovereignty templates)
   craft/                                # reusable writing-technique docs
 adapters/
-  _template/                            # copy to onboard a new game
-  rpg-1/                                # reference adapter (Godot wuxia RPG, CSV runtime); legacy WORKFLOW_CORE_VARIABLES
-  vinci_world/                          # Vinci World (web); landing spec v0.2; DELIVERY_CHANNELS declared
+  _template/                            # blank answer sheets — seeded into a game repo's <STORY_ROOT>/adapter/ on onboarding
+  registry.md                           # phonebook: <project_id> → absolute adapter path (migrated projects)
+  rpg-1/                                # reference adapter (Godot wuxia RPG, CSV runtime); legacy in-factory location; legacy WORKFLOW_CORE_VARIABLES
+  vinci_world/                          # MOVED to the game repo (design/story/adapter/) — folder keeps only the pointer
 docs/PROJECT_PROFILE_CONTRACT.md        # the adapter contract
 skills/game-story-factory/SKILL.md      # the single orchestrator skill
 scripts/init_story_root.sh              # bootstrap <STORY_ROOT> canonical layout
@@ -74,10 +81,14 @@ Master loop: `WORLD → CHARACTER → CAST ↔ CHARACTER → CAST_PASS → CHAPT
 
 ## Onboarding a new game
 
-1. `cp -r adapters/_template adapters/<project_id>` and fill `PROJECT_PROFILE.md`.
-2. `scripts/init_story_root.sh <STORY_ROOT>` inside the game repo.
+1. `scripts/init_story_root.sh <STORY_ROOT>` inside the game repo — creates the
+   canonical layout and seeds `<STORY_ROOT>/adapter/` with the blank answer
+   sheets from `adapters/_template/`.
+2. Fill `<STORY_ROOT>/adapter/PROJECT_PROFILE.md`, then register the project in
+   `adapters/registry.md` (`<project_id> → <absolute adapter path>`).
 3. World/character/cast production can start immediately.
 4. Chapter production up to STEP 6 (approved runtime draft) needs no runtime;
+   writing `VISUAL_GRAMMAR.md` unblocks STEP 6.7 (shootable staging plan), and
    writing `LANDING_SPEC.md` unblocks STEP 7 (landing into real game data).
 
 ## Rules that keep quality (do not weaken)

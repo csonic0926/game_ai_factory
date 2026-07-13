@@ -18,6 +18,7 @@ evidence it cites:
 - `<STORY_ROOT>/state/chapter_sources/<ARTIFACT_STEM>_DELIVERY_PLAN.md`, if present
 - `adapters/<PROJECT_ID>/DELIVERY_CHANNELS.md`, if present
 - `adapters/<PROJECT_ID>/LANDING_SPEC.md`, if present
+- `adapters/<PROJECT_ID>/VISUAL_GRAMMAR.md`, if present
 - any concrete runtime files, enums, schemas, or tool specs the preflight
   names as evidence
 
@@ -45,6 +46,8 @@ A passing preflight gives the chapter:
 - concrete world-grounding supports
 - a visible landing-surface inventory for the chapter's required scenes,
   channels, and runtime capabilities
+- a visual-feasibility preview for obvious conflicts with the adapter's
+  visual grammar, when assignment mode has a beat sheet or delivery plan
 - assumptions only for missing required source material
 
 ## Acceptance criteria
@@ -56,7 +59,7 @@ Pass when the block proves one of these states:
 - `SYNCED`: the delivery plan's beat-sheet binding matches the current beat
   sheet path and version evidence
 - `NO_DELIVERY_PLAN`: no delivery plan exists, and the preflight does not
-  treat any channel assignment as binding
+  treat any channel-intent assignment as binding
 - `DISCOVERY_MODE_NO_BEAT_SHEET`: no beat sheet exists, so the chapter is not
   in assignment mode
 
@@ -66,7 +69,7 @@ Fail when:
 - assignment mode has a delivery plan whose binding stamp is missing,
   unverifiable, or mismatched
 - the preflight says `BLOCKED_BY_STALE_DELIVERY_PLAN`
-- the preflight uses channel assignments from a delivery plan it has not
+- the preflight uses channel-intent assignments from a delivery plan it has not
   proven synchronized
 
 ### `CHAPTER TIMEBOX`
@@ -119,6 +122,25 @@ the chapter is design-ready but landing waits on engineering.
 Fail when the inventory is missing, skips an obvious beat requirement, claims
 a runtime surface exists without adapter/runtime evidence, or hides a required
 engineering dependency until STEP 7.
+
+### `VISUAL FEASIBILITY PREVIEW`
+
+Pass when the block:
+
+- exists in assignment mode
+- checks the beat sheet and synchronized delivery plan against
+  `VISUAL_GRAMMAR.md`, if the adapter provides it
+- names obvious whole-passage risks such as forbidden camera language, actor
+  performance, moving vehicles/backgrounds, or pacing that depends on tools
+  the visual grammar cannot provide
+- distinguishes `LIKELY_SHOOTABLE`, `NEEDS_RESTAGE_IN_STEP_6_7`,
+  `POSSIBLE_ENGINEERING_DEPENDENCY`, and `VISUAL_GRAMMAR_MISSING`
+- treats visual risks as early warnings for STEP 6.7 instead of trying to
+  solve detailed staging inside preflight
+
+Fail when the preview is missing in assignment mode, ignores a visible
+cannot-list dependency, or claims an image is shootable without visual-grammar
+evidence.
 
 ### `ASSUMPTIONS`
 

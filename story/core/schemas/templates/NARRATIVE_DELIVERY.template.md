@@ -12,8 +12,9 @@
 > reticence) nor a production rule (it is not workflow discipline).
 >
 > **Primary consumer:** the delivery-planner module — it reads this file plus
-> a chapter's emotional beat sheet and decides which delivery channel each
-> beat travels through.
+> a chapter's emotional beat sheet and decides each beat's rough delivery
+> channel intent. The final cutscene / player-operation binding happens later
+> in STEP 6.7 against the adapter `VISUAL_GRAMMAR.md`.
 
 ---
 

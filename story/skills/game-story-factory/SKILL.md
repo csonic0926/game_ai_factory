@@ -1,6 +1,6 @@
 ---
 name: game-story-factory
-description: Project-agnostic story creation orchestrator. Use when any game project needs world/character/cast/chapter story production. Resolves a project adapter under the factory's adapters/, then routes one fresh worker per step through the factory's step files with .5 review gates; also supports craft mode to invoke a single writing-technique doc independently, without a full step machine.
+description: Project-agnostic story creation orchestrator. Use when any game project needs world/character/cast/chapter story production. Resolves a project adapter (canonical home is the game repo's <STORY_ROOT>/adapter/, via the factory's adapters/registry.md phonebook, with factory-local adapters/<project_id>/ as legacy fallback), then routes one fresh worker per step through the factory's step files with .5 review gates; also supports craft mode to invoke a single writing-technique doc independently, without a full step machine.
 ---
 
 # Game Story Factory Orchestrator
@@ -23,8 +23,10 @@ Everything project-specific comes from an adapter — never hardcode game paths.
 The step pipeline is one module among five (`<FACTORY>/modules/README.md`);
 each module is independently callable after Resolution.
 
-If `<project_id>` is omitted, infer it from the current working repo by
-matching `<GAME_REPO>` across `<FACTORY>/adapters/*/PROJECT_PROFILE.md`;
+If `<project_id>` is omitted, infer it from the current working repo:
+check `<FACTORY>/adapters/registry.md` for an entry whose adapter path lives
+under the cwd repo (or look for `./design/story/adapter/` directly), else
+match `<GAME_REPO>` across `<FACTORY>/adapters/*/PROJECT_PROFILE.md`;
 if no adapter matches, offer to create one from `adapters/_template/`.
 
 ## Interaction modes: ask / auto (USER ruling 2026-07-05)
@@ -78,10 +80,17 @@ ambiguous enough to need one clarifying question.
 
 ## Resolution (always first)
 
-1. Read `<FACTORY>/adapters/<project_id>/PROJECT_PROFILE.md`.
-   Resolve `<GAME_REPO>`, `<STORY_ROOT>`, `<PRIMARY_LOCALE>`, `<SHIPPED_LOCALES>`,
-   `<RUNTIME_SHAPE>` and optional variables. Contract:
-   `<FACTORY>/docs/PROJECT_PROFILE_CONTRACT.md`.
+1. Resolve the adapter directory (referred to below as `<ADAPTER>`), in order:
+   (a) an adapter path stated explicitly in the invocation;
+   (b) `<FACTORY>/adapters/registry.md` — the phonebook, one line per
+       migrated project: `<project_id> → <absolute adapter path>`;
+   (c) cwd convention: the working repo's `./design/story/adapter/`;
+   (d) legacy fallback `<FACTORY>/adapters/<project_id>/` (unmigrated
+       projects, e.g. rpg-1, keep resolving here unchanged).
+   Read `<ADAPTER>/PROJECT_PROFILE.md`. Resolve `<GAME_REPO>`, `<STORY_ROOT>`,
+   `<PRIMARY_LOCALE>`, `<SHIPPED_LOCALES>`, `<RUNTIME_SHAPE>` and optional
+   variables. Contract: `<FACTORY>/docs/PROJECT_PROFILE_CONTRACT.md`
+   (canonical adapter home: `<STORY_ROOT>/adapter/`).
 2. Ensure `<STORY_ROOT>` exists with the canonical layout
    (bootstrap: `<FACTORY>/scripts/init_story_root.sh <STORY_ROOT>`).
 3. Resolve the sovereignty files (USER-authored: read, never edit silently):
@@ -168,7 +177,7 @@ user unexamined.
 
 **Lint in the gate:** when the adapter provides `style_lint_config.json`,
 review-gate workers run
-`python3 <FACTORY>/scripts/style_lint.py --config <adapter>/style_lint_config.json <artifact>`
+`python3 <FACTORY>/scripts/style_lint.py --config <ADAPTER>/style_lint_config.json <artifact>`
 and adjudicate every hit: citation-form usage (label quoted with source,
 meaning expanded nearby) passes; term-of-art usage in prose fails.
 
@@ -199,11 +208,15 @@ the chapter's emotional beat sheet when `<STORY_ROOT>/beat_sheets/<stem>_BEAT_SH
 exists — the beat sheet + delivery plan are the chapter's commissioned task;
 legacy DISCOVERY mode only when no beat sheet exists, e.g. the rpg-1 back
 catalog) → chapter spine → chapter source → event graph → runtime draft
-(`<PRIMARY_LOCALE>`) → runtime landing → quoted dialogue revision →
+(`<PRIMARY_LOCALE>`) → staging & realization (cutscene/player-operation
+binding under the adapter `VISUAL_GRAMMAR.md`) → runtime landing →
+quoted dialogue revision →
 story/prose QA → sync/write-back → outcomes/handoff.
 Phase B STEP 12/12.5: open-story branch expansion/acceptance.
 Phase C STEP 13→22.5: branch implementation = trunk files 1–11.5 minus STEP 10,
 plus `BRANCH_IMPLEMENTATION_OVERLAY.md`, with a branch `<ARTIFACT_STEM>`.
+The reused trunk-file range includes STEP 6.7 / 6.75 for branch-specific
+staging realization.
 
 Chapter hard bindings:
 - STEP 2 mode is mechanical: beat sheet exists ⇒ assignment mode; a beat
@@ -211,26 +224,41 @@ Chapter hard bindings:
   fall back silently). Producing a missing beat sheet is the interactive
   beat-sheet-dialogue module's job — a headless run cannot invent one.
 - Beat sheet and delivery plan must be synchronized before assignment mode
-  may use channel assignments. A delivery plan is binding only when its
+  may use channel-intent assignments. A delivery plan is binding only when its
   header records the beat-sheet path and version evidence it was built from;
   if that binding is missing or mismatched, STEP 1/2 report
   BLOCKED_BY_STALE_DELIVERY_PLAN and the delivery-planner must be re-run.
-- STEP 1 preflight inventories landing surfaces early: read the adapter's
-  `DELIVERY_CHANNELS.md`, `LANDING_SPEC.md`, and the concrete runtime files
-  they cite. Missing scenes/channels/runtime enum values become explicit
-  engineering dependencies; they do not stop STEP 2-6 design work by
-  themselves, but they must not wait until STEP 7 to be discovered.
+- STEP 1 preflight inventories landing surfaces and obvious visual-grammar
+  risks early: read the adapter's `DELIVERY_CHANNELS.md`, `LANDING_SPEC.md`,
+  `VISUAL_GRAMMAR.md`, and the concrete runtime files they cite. Missing
+  scenes/channels/runtime enum values become explicit engineering
+  dependencies; visual requests that appear to hit `VISUAL_GRAMMAR.md`
+  cannot-list items become STEP 6.7 warnings. These do not stop STEP 2-6
+  design work by themselves, but they must not wait until STEP 7 to be
+  discovered.
 - Emotional acceptance（情感驗收）: when the chapter has a beat sheet, the
-  STEP 6.5 and STEP 9 gates verify which beat each output transmits and
-  that the curve's holds and releases survived (`core/NARRATIVE_FOUNDATIONS.md`).
-- STEP 7/7.5 (and 19/19.5) REQUIRE `adapters/<project_id>/LANDING_SPEC.md`;
-  missing/NOT_AVAILABLE ⇒ stop at approved STEP 6 draft, report BLOCKED_BY_PROFILE.
-  When the landing surface is a scripted cutscene, STEP 7 uses
-  `core/craft/cutscene-staging.md` to emit the game's cutscene document.
+  STEP 6.5, STEP 6.75, and STEP 9 gates verify which beat each output
+  transmits and that the curve's holds and releases survived
+  (`core/NARRATIVE_FOUNDATIONS.md`).
+- STEP 6.7/6.75 (and branch equivalents) REQUIRE
+  `<ADAPTER>/VISUAL_GRAMMAR.md`; missing/NOT_AVAILABLE ⇒ stop at
+  approved STEP 6 draft, report BLOCKED_BY_PROFILE. STEP 6 remains
+  medium-independent; STEP 6.5 reviews emotional/content fidelity and does
+  not fail drafts merely for cinematic language that STEP 6.7 can restage.
+- Delivery plans are rough channel intent. Final cutscene vs player-operation
+  binding happens in STEP 6.7 after reading `VISUAL_GRAMMAR.md`; STEP 6.7 may
+  refine or overturn the planner's intent and must state why.
+- STEP 7/7.5 (and 19/19.5) REQUIRE `<ADAPTER>/LANDING_SPEC.md`
+  and an approved STEP 6.7 staging plan; missing/NOT_AVAILABLE landing spec ⇒
+  stop before runtime landing and report BLOCKED_BY_PROFILE. STEP 7 is a
+  mechanical translation of the staging plan into the files/schemas declared
+  by `LANDING_SPEC.md`, not a second staging pass. When the landing surface is
+  a scripted cutscene, STEP 7 uses `core/craft/cutscene-staging.md` only to
+  emit the game's cutscene document from the approved staging operations.
 - STEP 8/8.5 workers MUST use `core/craft/quoted-dialogue.md`.
 - STEP 10 Part A (twin write-back via `scripts/twin_db.py writeback`) runs
   whenever `<STORY_ROOT>/story_world/` exists; Part B follows
-  `adapters/<project_id>/SYNC_SPEC.md`, missing ⇒ SKIPPED_BY_PROFILE.
+  `<ADAPTER>/SYNC_SPEC.md`, missing ⇒ SKIPPED_BY_PROFILE.
 
 ## Master loop
 

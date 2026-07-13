@@ -30,6 +30,8 @@ workflows can run against it directly.
 ## Adapter files
 
 - `LANDING_SPEC.md`: AVAILABLE (pointer spec — see file)
+- `VISUAL_GRAMMAR.md`: NOT_AVAILABLE (adapter predates STEP 6.7; fill before
+  running new chapter staging)
 - `SYNC_SPEC.md`: AVAILABLE (pointer spec — see file)
 - `STYLE_GUIDE.md`: NOT_AVAILABLE as a file; wuxia-DOS narration rules live in
   the user's `wuxia-dos-narration` skill — treat that skill as the style guide.

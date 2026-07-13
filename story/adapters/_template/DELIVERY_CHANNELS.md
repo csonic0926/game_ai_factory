@@ -1,10 +1,12 @@
 # DELIVERY CHANNELS — <project_id>
 
 The delivery channels this game offers for story beats, consumed by the
-delivery-planner module (`modules/delivery-planner/`). Every game's list is
+delivery-planner module (`modules/delivery-planner/`). The planner uses this
+list for rough channel intent; STEP 6.7 later reads `VISUAL_GRAMMAR.md` to
+decide exact cutscene / player-operation binding. Every game's list is
 different — declare only channels this game actually has or has concretely
-planned, and be honest about runtime status: the planner uses `status` to
-mark what lands now versus what waits.
+planned, and be honest about runtime status: the planner uses `status` to mark
+what lands now versus what waits.
 
 For each channel state:
 
