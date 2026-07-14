@@ -115,3 +115,15 @@ The opening should still cover:
 
 - one or more zh-Hant runtime draft files under `<STORY_ROOT>/runtime_scene_drafts/`
 - each draft file readable as playable scene prose rather than graph summary
+
+## Spoken-fluency pass (required before STEP 6.5)
+
+This draft contains quoted spoken lines, so after it is saved it must pass
+`core/craft/spoken-fluency.md` BEFORE the STEP 6.5 gate reads it. The pass
+runs as a SEPARATE fresh worker dispatched by the orchestrator — the STEP 6
+worker must NOT polish its own lines (a context full of design reasoning
+cannot hear its own annotation register; same independence principle as the
+review gates). The fluency worker repairs sentence grammar of quoted lines
+only, in place, and writes the comparison log to:
+
+- `<STORY_ROOT>/runtime_scene_drafts/<ARTIFACT_STEM>_FLUENCY.md`

@@ -17,6 +17,11 @@ truth:
 
 - `<STORY_ROOT>/beat_sheets/<ARTIFACT_STEM>_BEAT_SHEET.md`
 
+Also read the spoken-fluency log written by the pass that runs between
+STEP 6 and this gate:
+
+- `<STORY_ROOT>/runtime_scene_drafts/<ARTIFACT_STEM>_FLUENCY.md`
+
 ## Save output to
 
 Write the acceptance result to:
@@ -100,6 +105,25 @@ This step passes when, for the scenes covered by this draft:
   the RELEASE (放) lands where the beat sheet put it — one early release
   anywhere in the draft is a FAIL even if every other check passes
 - no beat covered by this draft's scenes is silently missing
+
+### Spoken fluency（唸稿抽查）
+
+This step passes when:
+
+- the spoken-fluency pass ran as its own worker: the fluency log exists at
+  `<STORY_ROOT>/runtime_scene_drafts/<ARTIFACT_STEM>_FLUENCY.md` with one
+  original → repaired comparison entry per changed line
+- sampling check: pick THREE quoted lines from the draft and read each one
+  aloud. If any line reads as design-annotation register — subject or
+  preposition elided past what speech allows, modifier clauses stacked
+  before a noun, several information foci strung into one sentence with
+  commas and dashes, a verb collocation no one says — this gate FAILS and
+  routes back to STEP 6. Judge against the adapter `STYLE_GUIDE.md`
+  spoken-grammar section when present, else the generic rules in
+  `core/craft/spoken-fluency.md`.
+- meaning survived the repair: spot-check the log's comparison entries —
+  beat, pragmatic function, information content, and character voice are
+  unchanged between original and repaired lines
 
 ### INTRO handling
 

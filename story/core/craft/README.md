@@ -22,7 +22,7 @@ Two ways to use a craft (see the orchestrator `SKILL.md`):
 | --- | --- | --- | --- |
 | `story-logic-ledger` | causality-first ledger (stakes, constraints, info distribution, beat reasons, trigger, aftermath deltas) **before** writing a scene/fight | scene intent + world/character state | logic ledger doc for the scene |
 | `character-memory-ledger` | keep "who knows what" consistent; per-character memory ledger + deltas after a scene | scene text + involved characters | memory ledgers + memory deltas |
-| `quoted-dialogue` | rewrite **only** quoted spoken lines to sound like real speech under pressure, one clear pragmatic function, aligned across locales | scene/lines with quoted dialogue | revised quoted lines (all locales) |
+| `quoted-dialogue` | rewrite **only** quoted spoken lines to sound like real speech under pressure, one clear pragmatic function, aligned across locales | scene/lines with quoted dialogue | revised quoted lines (all locales) — chain `spoken-fluency` (separate fresh worker) before handing to USER |
 | `character-context` | load characters and emit context cards for writing / battle design | characters JSON | per-character context cards |
 | `antagonist-pressure-design` | pressure matrix for pursuers/antagonists (objectives, beliefs, constraints, evidence + escalation ladder, failure mode) | antagonist concept + world/pressure | antagonist pressure matrix |
 | `choice-aftermath-writing` | design + write the branch that follows a specific choice (pacing-first) | the choice + current state | aftermath scene + landing notes |
@@ -31,7 +31,8 @@ Two ways to use a craft (see the orchestrator `SKILL.md`):
 | `rest-moment-progression` | design a "rest/town" moment giving limited actions to improve readiness, then route it | story moment + available systems | rest-moment design + routing |
 | `story-attributes` | design + land attribute/skill checks in events (success line / fail-forward / costs) | event + attribute system (`<BATTLE_SYSTEM>`) | check design + field mapping |
 | `cutscene-staging` | turn an approved STEP 6.7 staging plan into a playable cutscene document for the target game's runtime (CHAPTER STEP 7 landing) | approved STEP 6.7 staging plan + STEP 6 draft + adapter `LANDING_SPEC` cutscene surface | `.cutscene.json` document + dialogue locale keys |
-| `dialogue-runway` | pave a 4–7 line conversation runway to a USER-set destination line (creative KPI) so it lands earned, as an invitation | scene constraints + KPI line + arrival emotion | 3 annotated candidate runways (USER cuts) |
+| `dialogue-runway` | pave a 4–7 line conversation runway to a USER-set destination line (creative KPI) so it lands earned, as an invitation | scene constraints + KPI line + arrival emotion | 3 annotated candidate runways (USER cuts) — chain `spoken-fluency` (separate fresh worker) before handing to USER |
+| `spoken-fluency` | 唸稿潤句 pass by a SEPARATE fresh worker: repair sentence grammar of quoted lines only (read aloud, split sentences, restore elided subjects/prepositions, idiomatic verb collocations) — beat / pragmatic function / info / voice frozen; all shipped locales, each under its own native grammar intuition | artifact with quoted lines + adapter `STYLE_GUIDE.md` spoken-grammar section | revised quoted lines in place + fluency log (original → repaired + reason per change) |
 
 Applicability is project-dependent: `story-attributes` / `rest-moment-progression`
 assume an RPG-ish system (`<BATTLE_SYSTEM>` present); `knowledge-stage-json`

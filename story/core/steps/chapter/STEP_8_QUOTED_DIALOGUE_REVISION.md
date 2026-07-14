@@ -55,3 +55,16 @@ Revise quoted lines so they:
 - no route meaning changes
 - no character voice collapses into generic dialogue
 - the revision log records which lines were changed and why
+
+## Spoken-fluency pass (required before STEP 8.5)
+
+After the revision is saved, the revised quoted lines must pass
+`core/craft/spoken-fluency.md` BEFORE the STEP 8.5 gate reads them. The
+pass runs as a SEPARATE fresh worker dispatched by the orchestrator — the
+STEP 8 worker must NOT polish its own lines (same independence principle
+as the review gates). The fluency worker repairs sentence grammar of the
+touched dialogue text only — routing, ids, keys, and file structure stay
+untouched — across all `<SHIPPED_LOCALES>`, and writes the comparison log
+to:
+
+- `<STORY_ROOT>/runtime_scene_drafts/<ARTIFACT_STEM>_DIALOGUE_REVISION_FLUENCY.md`

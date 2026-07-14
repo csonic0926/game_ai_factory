@@ -256,6 +256,18 @@ Chapter hard bindings:
   a scripted cutscene, STEP 7 uses `core/craft/cutscene-staging.md` only to
   emit the game's cutscene document from the approved staging operations.
 - STEP 8/8.5 workers MUST use `core/craft/quoted-dialogue.md`.
+- Spoken-fluency pass (USER ruling 2026-07-13): after STEP 6 saves its
+  draft and after STEP 8 saves its revision, and BEFORE dispatching the
+  matching `.5` gate, dispatch ONE SEPARATE fresh worker with
+  `core/craft/spoken-fluency.md` to repair the sentence grammar of quoted
+  lines (beat / pragmatic function / information / voice frozen; all
+  `<SHIPPED_LOCALES>`, each under its own native grammar intuition). The
+  creating worker never polishes its own lines — a context full of design
+  reasoning cannot hear its own annotation register; same independence
+  principle as the gates. Fluency logs land next to the artifact
+  (`<ARTIFACT_STEM>_FLUENCY.md` / `<ARTIFACT_STEM>_DIALOGUE_REVISION_FLUENCY.md`);
+  STEP 6.5 / 8.5 verify the log and read three sampled lines aloud —
+  annotation register in the sample ⇒ FAIL back to the integer step.
 - STEP 10 Part A (twin write-back via `scripts/twin_db.py writeback`) runs
   whenever `<STORY_ROOT>/story_world/` exists; Part B follows
   `<ADAPTER>/SYNC_SPEC.md`, missing ⇒ SKIPPED_BY_PROFILE.
