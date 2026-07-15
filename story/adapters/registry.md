@@ -10,4 +10,5 @@ here and resolve via the fallback).
 
 ## Entries
 
+- banner_of_the_nameless → /Users/hunglingki/git_projects/Godot/Banner-of-the-Nameless-Rise-of-Albion/design/story/adapter/
 - vinci_world → /Users/hunglingki/git_projects/web_projects/vinci_world/design/story/adapter/
