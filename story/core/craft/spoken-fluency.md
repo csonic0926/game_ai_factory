@@ -54,6 +54,9 @@ not a gate: it changes text; gates only judge.
    `scripts/glossary_check.py --glossary <ADAPTER>/GLOSSARY.csv --extract-cleanroom <LOCALE> <artifact>`
    (plus repeated `--speaker` filters when needed). Missing glossary means
    `NOT_AVAILABLE` and preserves the former hand-picked/STYLE_GUIDE behavior.
+   When available, the glossary is the sole canonical proprietary-term source;
+   no constraint extraction may fall back to `WORLD_RULES.md`, a style/lint
+   allowlist, locale prose, or another term list.
 
 ## Freeze list (never change)
 
@@ -64,7 +67,9 @@ not a gate: it changes text; gates only judge.
 - character voice markers — sentence-final particles, verbal tics,
   short-vs-long sentence personality contrast, register differences
   between speakers
-- canon / red-line wording (decided terms stay exactly as decided)
+- glossary-registered canon / red-line wording stays exactly as registered
+  when the glossary is available; legacy projects retain their existing
+  hand-picked freeze constraints
 - when a glossary exists, every applicable canon
   `dialogue_protected=true` form supplied by the caller
 - narration outside quotation marks

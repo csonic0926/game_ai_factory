@@ -6,7 +6,7 @@ kinds of sovereignty, so it was split (see the umbrella repo's
 
 | was in this file | now lives at | sovereignty |
 |---|---|---|
-| what is TRUE in the world (ontology, laws, currency, decided terms, tone red lines) | `<STORY_ROOT>/state/WORLD_RULES.md` — template: `WORLD_RULES.template.md` | USER-authored, tools read-only |
+| what is TRUE in the world (ontology, laws, currency, terminology philosophy, tone red lines) | `<STORY_ROOT>/state/WORLD_RULES.md` — template: `WORLD_RULES.template.md` | USER-authored, tools read-only; proprietary-term entries live only in adapter `GLOSSARY.csv` when available |
 | how the game SPEAKS (explicitness dial, channel weighting, dialogue density) | `<STORY_ROOT>/state/NARRATIVE_DELIVERY.md` — template: `NARRATIVE_DELIVERY.template.md` | USER-authored, tools read-only |
 | production discipline (style, language, handoff anti-compression, review procedure) | factory core (`SKILL.md`, `core/`) + adapter `STYLE_GUIDE.md` | factory-maintained |
 

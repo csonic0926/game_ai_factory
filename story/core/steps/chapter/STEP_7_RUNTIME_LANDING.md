@@ -29,9 +29,10 @@ Read the saved event graph when ids, links, or target checks are needed:
 - `<STORY_ROOT>/chapter_event_graphs/<ARTIFACT_STEM>.md`
 
 Before writing any quoted locale value, read `<ADAPTER>/GLOSSARY.csv` when it
-exists. Missing means `NOT_AVAILABLE` and keeps the prior landing behavior.
-Do not reconstruct authoritative translations by searching shipped locale
-prose.
+exists. It is the sole canonical proprietary-term source. Missing means
+`NOT_AVAILABLE` and keeps the prior landing behavior. Do not reconstruct or
+override authoritative terms from `WORLD_RULES.md`, `STYLE_GUIDE.md`, shipped
+locale prose, or another artifact.
 
 ## Save output to
 

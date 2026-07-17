@@ -10,7 +10,8 @@ Review the saved quoted-dialogue revision and decide whether it passes.
 - `<STORY_ROOT>/runtime_scene_drafts/<ARTIFACT_STEM>_DIALOGUE_REVISION_FLUENCY.md` — the spoken-fluency log written by the pass that runs between STEP 8 and this gate
 - touched chapter-local rows in the runtime timeline and locale files defined by the adapter `LANDING_SPEC.md`
 - `<ADAPTER>/GLOSSARY.csv` when present; missing means `NOT_AVAILABLE` and
-  glossary-only checks are skipped
+  glossary-only checks are skipped. When present, it is the sole canonical
+  proprietary-term source
 
 ## Save output to
 
@@ -83,8 +84,9 @@ Synonyms and unregistered terms remain human review: a new world noun,
 classifier convention, or register variant requires a `status=pending`
 nomination (or an explicit candidate in this review), not an automatic FAIL.
 The gate never edits the glossary. Pending → `canon`/`banned` is USER-only;
-world-term promotion also requires a reminder to update `WORLD_RULES.md`,
-which wins every conflict.
+deprecating canon or changing an existing canon/banned row is also USER-only,
+and each decision records `provenance`. Do not mirror the decision into
+`WORLD_RULES.md` or use another artifact as a competing term list.
 
 ## Required stop condition
 

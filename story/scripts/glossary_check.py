@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Validate and apply an adapter GLOSSARY.csv as an exact-match review aid.
+"""Validate and apply the canonical adapter GLOSSARY.csv review aid.
+
+GLOSSARY.csv is this checker's only proprietary-term source. The checker has
+no WORLD_RULES, style-guide, locale-prose, or other termbase fallback; callers
+skip glossary-only checks when the adapter capability is NOT_AVAILABLE.
 
 Examples:
   python3 glossary_check.py --glossary <ADAPTER>/GLOSSARY.csv ARTIFACT.md

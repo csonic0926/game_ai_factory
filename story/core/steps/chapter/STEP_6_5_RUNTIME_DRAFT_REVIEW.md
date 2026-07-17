@@ -24,7 +24,9 @@ STEP 6 and this gate:
 
 Read `<ADAPTER>/GLOSSARY.csv` when it exists. Missing means
 `NOT_AVAILABLE`, so glossary-only checks are skipped without changing legacy
-behavior.
+behavior. When present, it is the sole canonical proprietary-term source;
+other canon files may govern world facts or prose style but do not override
+its term entries.
 
 ## Save output to
 
@@ -151,8 +153,10 @@ introduces an unregistered world noun, classifier convention, or register
 variant, do **not** fail an otherwise valid draft merely because it is new.
 Require a `status=pending` glossary nomination, or name the candidate and its
 context in the review for USER ruling. The review worker does not edit the
-glossary. Only the USER may promote a pending row to `canon`/`banned`; on a
-world-term promotion, remind the USER to update `WORLD_RULES.md`.
+glossary. Only the USER may promote a pending row to `canon`/`banned`,
+deprecate canon, or change an existing canon/banned row; record the ruling in
+`provenance`. Do not mirror the promoted entry into `WORLD_RULES.md` or any
+other second term list.
 
 ### INTRO handling
 

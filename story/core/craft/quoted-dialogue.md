@@ -13,8 +13,9 @@ This doc handles **quoted dialogue only**.
 It should not rewrite narration outside quotation marks.
 
 Before rewriting, read `<ADAPTER>/GLOSSARY.csv` when it exists. Missing means
-`NOT_AVAILABLE` and preserves the old behavior. Do not infer authoritative
-translations by searching shipped locale prose.
+`NOT_AVAILABLE` and preserves the old behavior. When present it is the sole
+canonical proprietary-term source. Do not infer or override term entries from
+`WORLD_RULES.md`, `STYLE_GUIDE.md`, shipped locale prose, or another artifact.
 
 ## Goal
 
@@ -141,7 +142,9 @@ When the glossary exists:
   reverse-engineer an authority from shipped prose;
 - report any new world noun, classifier convention, or register variant as a
   `status=pending` nomination. Never promote it to `canon` or `banned`; that
-  ruling is USER-only, and `WORLD_RULES.md` wins every conflict.
+  ruling is USER-only. Deprecating canon or changing an existing canon/banned
+  row is likewise USER-only, and every decision records `provenance`. Do not
+  create or update a second term list elsewhere.
 
 ## Dialogue design workflow
 

@@ -11,8 +11,10 @@ Read the saved event graph:
 - `<STORY_ROOT>/chapter_event_graphs/<ARTIFACT_STEM>.md`
 
 Before writing any quoted dialogue, read `<ADAPTER>/GLOSSARY.csv` when it
-exists. Missing glossary means `NOT_AVAILABLE` and preserves the prior
-workflow; do not invent a substitute termbase from shipped locale files.
+exists. It is the sole canonical source for proprietary terms; do not use
+`WORLD_RULES.md`, `STYLE_GUIDE.md`, shipped locale prose, or another artifact
+as a competing term list. Missing glossary means `NOT_AVAILABLE` and
+preserves the prior workflow.
 
 ## Save output to
 

@@ -13,8 +13,10 @@ Read the latest landed chapter artifacts relevant to dialogue revision:
 - `<STORY_ROOT>/runtime_scene_drafts/<ARTIFACT_STEM>_zh.md` when the pre-landing runtime draft is needed for comparison
 
 Before revising dialogue, read `<ADAPTER>/GLOSSARY.csv` when it exists.
-Missing means `NOT_AVAILABLE` and preserves the old behavior. Do not infer
-authoritative en/ko terms from shipped locale prose.
+It is the sole canonical proprietary-term source. Missing means
+`NOT_AVAILABLE` and preserves the old behavior. Do not infer or override
+authoritative terms from `WORLD_RULES.md`, `STYLE_GUIDE.md`, shipped locale
+prose, or another artifact.
 
 ## Save output to
 

@@ -20,7 +20,7 @@ The canonical home of a project's adapter is inside the game repo:
   SYNC_SPEC.md            # optional — post-landing sync duties (digital twin, frames, exports)
   STYLE_GUIDE.md          # optional — narration/prose style rules for this game
   style_lint_config.json  # optional — machine-checkable STYLE_GUIDE rules for review gates
-  GLOSSARY.csv            # optional — machine-readable world-term termbase for story/dialogue production
+  GLOSSARY.csv            # optional — sole canonical source for proprietary terms when available
 ```
 
 ## Adapter resolution order
@@ -90,14 +90,16 @@ Core step files reference paths ONLY under this layout (as `<STORY_ROOT>/...`)
 or through the adapter files below. If a step file needs any other project
 path, that is a factory bug.
 
-## GLOSSARY.csv — the operational termbase
+## GLOSSARY.csv — the canonical proprietary-term source
 
 `<ADAPTER>/GLOSSARY.csv` is the game-owned, machine-readable answer sheet for
-world vocabulary. It records the forms story workers may use in
-`<PRIMARY_LOCALE>` and `<SHIPPED_LOCALES>`, including spoken-register variants
-and terms that must survive clean-room dialogue rewriting unchanged. The
-factory owns this schema and the blank `adapters/_template/GLOSSARY.csv`; the
-game repo owns the filled rows and versions them with its shipped text.
+proprietary terms. When present, it is the **only canonical source** for term
+entries, status, locale forms, register variants, speaker scope, protected
+forms, bans, and provenance. Story workers must not reconstruct a second term
+list from `WORLD_RULES.md`, `STYLE_GUIDE.md`, shipped locale prose, story-world
+facts, or any other artifact. The factory owns this schema and the blank
+`adapters/_template/GLOSSARY.csv`; the game repo owns the filled rows and
+versions them with its shipped text.
 
 The file is UTF-8 CSV with comma delimiters, standard CSV quoting, this exact
 header order, and one surface form per row:
@@ -126,14 +128,20 @@ must use `dialogue_protected=false`.
 
 ### Authority and admission
 
-The sovereignty term list in `<STORY_ROOT>/state/WORLD_RULES.md` remains the
-source of truth. `GLOSSARY.csv` is its operational projection for production;
-on conflict, `WORLD_RULES.md` wins and the glossary is reported for USER
-correction. Tools may add a newly observed form only as `status=pending`.
-Changing a pending row to `canon` or `banned`, deprecating a canon row, or
-changing an existing canon/banned form is USER-owned. A USER-approved
-promotion records the ruling date in `provenance`; when it is a world term,
-the workflow also reminds the USER to add or update the sovereignty term list.
+`GLOSSARY.csv` is the sole source of truth for proprietary terms. Its
+sovereignty is procedural: tools may add a newly observed form only as
+`status=pending`; changing a pending row to `canon` or `banned`, deprecating a
+canon row, or changing an existing canon/banned row is USER-only. Every such
+decision records its ruling or evidence in `provenance`.
+
+`<STORY_ROOT>/state/WORLD_RULES.md` remains the highest authority for world
+truth and may state the USER's terminology philosophy (for example, why the
+project avoids invented jargon or how technical language should relate to the
+world). It must not carry a proprietary-term table or act as a competing term
+source. `STYLE_GUIDE.md` may define prose discipline and lint allowlists, but
+those are not term entries. If a glossary referent appears inconsistent with a
+world fact, report the cross-domain inconsistency for USER resolution; do not
+resolve it by treating the world-rules prose as a second glossary.
 
 ### Required consumers
 

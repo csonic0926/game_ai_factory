@@ -7,7 +7,9 @@ record.
 ## The files it manages
 
 - `<STORY_ROOT>/state/WORLD_RULES.md` — what is TRUE in the world: ontology,
-  foundational laws, currency, decided-terms table, tone red lines.
+  foundational laws, currency, terminology philosophy, tone red lines. It
+  does not contain proprietary-term entries; those live only in the adapter
+  `GLOSSARY.csv` when that capability is available.
   Template: `../../core/schemas/templates/WORLD_RULES.template.md`.
 - `<STORY_ROOT>/state/NARRATIVE_DELIVERY.md` — how the game speaks: the
   explicitness dial, channel weighting, dialogue density.
@@ -35,6 +37,10 @@ them, and only with the USER's explicit approval of the exact wording.
 
 ## What does NOT belong in these files
 
+- Proprietary-term entries, locale mappings, register variants, or bans —
+  those live only in `<STORY_ROOT>/adapter/GLOSSARY.csv`. This module may
+  preserve terminology philosophy in `WORLD_RULES.md`, but never creates a
+  competing term table.
 - Production discipline (handoff rules, style lint, review procedure) —
   factory core and adapter `STYLE_GUIDE.md`.
 - Facts derivable from the game repo or the twin database.

@@ -1,5 +1,10 @@
 # Cross-repo factory request — 三語 glossary CSV＋使用規則（termbase for story production）
 
+> Historical authority model: this completed request records the original
+> two-source design. It was superseded on 2026-07-17 by
+> `GLOSSARY_SINGLE_SOURCE_AUDIT_REQUEST.md`; `GLOSSARY.csv` is now the sole
+> canonical source for proprietary terms.
+
 ## Request metadata
 
 - Status: done（2026-07-17 factory＋vinci_world bootstrap 完成，見文末 completion notes）

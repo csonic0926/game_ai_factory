@@ -6,8 +6,10 @@
 > not edit this file unless the USER explicitly asks.
 >
 > **Scope:** what is TRUE in this world — ontology, foundational laws,
-> currency, the decided-terms table, tone red lines. One file per game, living
-> at `<STORY_ROOT>/state/WORLD_RULES.md`.
+> currency, terminology philosophy, tone red lines. One file per game, living
+> at `<STORY_ROOT>/state/WORLD_RULES.md`. Proprietary-term entries do not live
+> here; `<STORY_ROOT>/adapter/GLOSSARY.csv` is their sole canonical source when
+> available.
 >
 > **Not this file:** how the game SPEAKS (that is
 > `<STORY_ROOT>/state/NARRATIVE_DELIVERY.md`), and production discipline
@@ -31,11 +33,11 @@
 
 - （USER 填寫：貨幣名稱、進出方向、誰與誰之間用它計價。）
 
-## 用詞表（decided terms）
+## 用詞哲學與 glossary 路標
 
-| 世界內用語 | 意義 | 決策來源 |
-|---|---|---|
-| （USER 填寫） | | |
+- （USER 填寫：不發明詞彙、技術語如何從世界因果長出來、哪些命名傾向要避免等長期原則。）
+- 專有用詞的詞條、三語對應、語域、禁詞、狀態與 provenance 只記在
+  `<STORY_ROOT>/adapter/GLOSSARY.csv`；本檔不另建詞表。
 
 ## 基調紅線
 

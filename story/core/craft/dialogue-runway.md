@@ -22,8 +22,9 @@ paths only.**
 4. The world's sovereignty files (world rules, narrative delivery) — the
    runway must not spend any token the world forbids.
 5. `<ADAPTER>/GLOSSARY.csv` when present. Missing means `NOT_AVAILABLE` and
-   the craft keeps its previous behavior; never manufacture a replacement by
-   reverse-engineering shipped locale prose.
+   the craft keeps its previous behavior. When present it is the sole
+   canonical proprietary-term source; never manufacture or override a term
+   entry from sovereignty prose, style/lint files, or shipped locale prose.
 
 ## Rules (also the self-check list)
 

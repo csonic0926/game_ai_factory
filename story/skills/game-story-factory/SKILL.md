@@ -92,14 +92,16 @@ ambiguous enough to need one clarifying question.
    variables. Contract: `<FACTORY>/docs/PROJECT_PROFILE_CONTRACT.md`
    (canonical adapter home: `<STORY_ROOT>/adapter/`).
    Resolve `<ADAPTER>/GLOSSARY.csv` at the same time: present means AVAILABLE
-   and binding under the contract; absent means `NOT_AVAILABLE`, with no
-   behavior change and no locale-file reverse engineering.
+   and the sole canonical source for proprietary terms under the contract;
+   absent means `NOT_AVAILABLE`, with no behavior change and no locale-file
+   reverse engineering.
 2. Ensure `<STORY_ROOT>` exists with the canonical layout
    (bootstrap: `<FACTORY>/scripts/init_story_root.sh <STORY_ROOT>`).
 3. Resolve the sovereignty files (USER-authored: read, never edit silently):
    - `<STORY_ROOT>/state/WORLD_RULES.md` — what is TRUE in the world
-     (ontology, laws, currency, decided terms, tone red lines). Highest
-     world-truth authority. Do not confuse with
+     (ontology, laws, currency, terminology philosophy, tone red lines), but
+     not a proprietary-term table. Highest world-truth authority. Do not
+     confuse with
      `state/world_baselines/WORLD_RULES.md`, a factory-produced artifact
      derived downstream of it — on conflict the sovereignty file wins.
    - `<STORY_ROOT>/state/NARRATIVE_DELIVERY.md` — how the game speaks
@@ -161,7 +163,8 @@ Every worker dispatch hands over, explicitly:
 3. the sovereignty files `<STORY_ROOT>/state/WORLD_RULES.md` and
    `<STORY_ROOT>/state/NARRATIVE_DELIVERY.md` (or the legacy
    `WORKFLOW_CORE_VARIABLES.md` where the project has not migrated), named
-   as the highest authority (read, never edit);
+   as the highest authority for world truth / delivery in their own domains
+   (read, never edit), never as a competing proprietary-term source;
 4. the adapter `STYLE_GUIDE.md` when present — with the reminder that it
    governs every word the worker writes, reports included;
 5. the upstream artifacts to read AND the canon files they cite, with the
@@ -185,9 +188,10 @@ and adjudicate every hit: citation-form usage (label quoted with source,
 meaning expanded nearby) passes; term-of-art usage in prose fails.
 
 **Glossary in dialogue and gates:** when `<ADAPTER>/GLOSSARY.csv` exists,
-every worker that writes or revises quoted dialogue receives it and follows
-its canon forms, en/ko counterparts, register, speaker scope, protected forms,
-and bans. Review dispatches run
+it is the sole canonical proprietary-term source. Every worker that writes or
+revises quoted dialogue receives it and follows its canon forms, en/ko
+counterparts, register, speaker scope, protected forms, and bans. Review
+dispatches run
 `python3 <FACTORY>/scripts/glossary_check.py --glossary <ADAPTER>/GLOSSARY.csv <artifact>`;
 aligned JSON locale landing also uses repeated `--locale LOCALE=PATH` inputs.
 The checker is exact-match support, not a synonym oracle. A gate that finds a
@@ -195,8 +199,10 @@ new world noun, classifier convention, or register variant requires a
 `status=pending` nomination (or records the candidate for the USER); novelty
 alone is not FAIL. Review workers never edit the glossary. Tools may add only
 pending rows; pending → canon/banned and canon/banned changes are USER-only.
-`WORLD_RULES.md` wins every conflict, and world-term promotion requires a
-reminder to update it.
+`WORLD_RULES.md`, `STYLE_GUIDE.md`, locale catalogs, and story-world artifacts
+must not be used as a second term list. Apparent conflicts between glossary
+referents and world facts are reported for USER resolution, not silently
+resolved by overriding the glossary's term entry.
 
 ## Step machines
 
@@ -275,9 +281,10 @@ Chapter hard bindings:
 - STEP 8/8.5 workers MUST use `core/craft/quoted-dialogue.md`.
 - STEP 6, STEP 7 locale landing, STEP 8, `dialogue-runway`, and
   `quoted-dialogue` MUST read `<ADAPTER>/GLOSSARY.csv` before producing quoted
-  text when it is available. Registered forms replace locale-file reverse
-  engineering as the term authority. Missing glossary is `NOT_AVAILABLE` and
-  legacy behavior remains unchanged.
+  text when it is available. It is the sole proprietary-term authority;
+  registered forms replace locale-file or sovereignty-file reverse
+  engineering. Missing glossary is `NOT_AVAILABLE` and legacy behavior
+  remains unchanged.
 - Spoken-fluency pass (USER ruling 2026-07-13): after STEP 6 saves its
   draft and after STEP 8 saves its revision, and BEFORE dispatching the
   matching `.5` gate, dispatch ONE SEPARATE fresh worker with

@@ -16,6 +16,10 @@ Two ways to use a craft (see the orchestrator `SKILL.md`):
    the sovereignty files (`WORLD_RULES.md`, `NARRATIVE_DELIVERY.md`, or a
    legacy `WORKFLOW_CORE_VARIABLES.md`).
 
+For any craft that writes or revises proprietary terms, pass the adapter
+`GLOSSARY.csv` when available. It is the sole canonical proprietary-term
+source; missing means `NOT_AVAILABLE` and preserves legacy behavior.
+
 ## Catalog
 
 | craft-name | purpose | typical input | output |
