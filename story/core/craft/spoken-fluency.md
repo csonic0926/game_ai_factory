@@ -47,6 +47,13 @@ not a gate: it changes text; gates only judge.
    read that section before touching a line. If the project has no such
    section, the generic rules below apply.
 3. From the caller: the output path for the fluency log (see Output).
+4. `<ADAPTER>/GLOSSARY.csv`, when available, belongs to the **caller and
+   canon-aware back-check**, not to the clean-room worker. The caller extracts
+   the current scene language's canon `dialogue_protected=true` forms and
+   exact `banned` forms mechanically with
+   `scripts/glossary_check.py --glossary <ADAPTER>/GLOSSARY.csv --extract-cleanroom <LOCALE> <artifact>`
+   (plus repeated `--speaker` filters when needed). Missing glossary means
+   `NOT_AVAILABLE` and preserves the former hand-picked/STYLE_GUIDE behavior.
 
 ## Freeze list (never change)
 
@@ -58,6 +65,8 @@ not a gate: it changes text; gates only judge.
   short-vs-long sentence personality contrast, register differences
   between speakers
 - canon / red-line wording (decided terms stay exactly as decided)
+- when a glossary exists, every applicable canon
+  `dialogue_protected=true` form supplied by the caller
 - narration outside quotation marks
 - in landed runtime files: routing, ids, keys, structure — text values of
   the touched dialogue fields only
@@ -73,7 +82,56 @@ the image's job survives the repair; when it cannot (the image itself is
 the defect), red-flag the line for the creation side with one line of
 diagnosis — never silently keep it because "the metaphor is content".
 
-## The work
+## Clean-room rewrite mode（淨室重寫）— DEFAULT for draft-stage dialogue (2026-07-17)
+
+Validated by ablation (owner-run experiments 2026-07-14): the register
+disease is cured by taking the rewrite OUT of the design context, not by
+piling on rules. Zero-shot suffices — the model's native spoken ear does
+the work once the context is clean; exemplars demote to taste
+calibration; world-model errors stay invisible in the clean room BY
+DESIGN and belong to the canon gate. Flow:
+
+1. **Clean-room worker.** Its ENTIRE context is plain-speech material,
+   written like a director's note — nothing in design register. It
+   contains ONLY: a one-line scene anchor; a one-line persona sketch;
+   the draft lines; each line's job as one plain phrase; hard
+   constraints as spoken rules (the glossary-derived protected terms,
+   frozen lines verbatim, glossary-derived red-line words,
+   no-acquisition promises); and any world facts the
+   lines touch, one plain line each (facts don't contaminate; register
+   does). NO craft docs, NO style guides, NO design artifacts, NO
+   exemplar prose, NO file access. The worker rewrites the whole passage
+   in one breath（一口氣）— not line-by-line patching — reads it aloud,
+   and returns lines only, plus at most two flags.
+   - Frozen lines = creative-layer decreed lines AND lines whose current
+     text is already an owner repair (those are the script's current
+     text, not teaching material).
+2. **Canon back-check gate**（canon-aware, separate context）— it reads the
+   glossary when available and runs `scripts/glossary_check.py` on the fluent
+   artifact (with `--baseline` whenever separate before/after artifacts are
+   available). Mechanical diff on the fluent text: protected terms present, frozen
+   lines verbatim, red-line words absent, every line's job delivered;
+   PLUS the world-model collocation check (imagery imposing structure a
+   canon entity does not have — see the freeze-list carve-out). A
+   violation bounces back to the clean room with ONE plain line naming
+   only the violated constraint. Checking constraints on fluent text is
+   cheap and mechanical; checking fluency on constraint-correct text
+   needs the owner's ear — this ordering is the whole point.
+3. **Owner's ear** — the cut. Owner repairs enter the project exemplar
+   library as taste calibration (economy, word preferences), not as
+   grammar rescue.
+
+The per-line repair procedure below remains for landed runtime files
+(where only the touched dialogue fields may change) and for small
+touch-ups where a whole-passage rewrite is disproportionate.
+
+The clean-room worker never reads `GLOSSARY.csv`, a style guide, shipped locale
+catalogs, or any design file. The wrapper's extraction and the back-check are
+what make glossary discipline mechanical without reintroducing design
+register into the language context. Blank locale mappings and newly observed
+world terms are reported as pending nominations; no worker may promote them.
+
+## The work (per-line repair mode)
 
 Go line by line through every quoted line, in every locale present.
 
@@ -166,6 +224,9 @@ entire scope.
    - a count of lines read and left unchanged;
    - honesty loop: end by naming the one or two repairs you are least
      confident about, so the next gate adjudicates them explicitly.
+   - when a glossary exists: the mechanically extracted protected/banned
+     forms, checker result, any speaker/register judgment, and any new-term
+     `status=pending` nomination.
 
 ## Self-check before output
 

@@ -22,6 +22,10 @@ STEP 6 and this gate:
 
 - `<STORY_ROOT>/runtime_scene_drafts/<ARTIFACT_STEM>_FLUENCY.md`
 
+Read `<ADAPTER>/GLOSSARY.csv` when it exists. Missing means
+`NOT_AVAILABLE`, so glossary-only checks are skipped without changing legacy
+behavior.
+
 ## Save output to
 
 Write the acceptance result to:
@@ -124,6 +128,31 @@ This step passes when:
 - meaning survived the repair: spot-check the log's comparison entries —
   beat, pragmatic function, information content, and character voice are
   unchanged between original and repaired lines
+
+### Glossary and term nomination
+
+When `<ADAPTER>/GLOSSARY.csv` exists, run:
+
+`python3 <FACTORY>/scripts/glossary_check.py --glossary <ADAPTER>/GLOSSARY.csv <artifact>`
+
+This step passes when:
+
+- exact `banned` forms are absent;
+- every applicable canon `dialogue_protected=true` form that entered the
+  clean-room pass is present unchanged in the result (verify the fluency log's
+  extracted list and protected-term diff);
+- the chosen register variant is allowed by `speaker_scope`;
+- en/ko counterparts, when present in this artifact, use the registered
+  glossary forms rather than a locale-file reverse-engineering guess.
+
+Exact checker failures are failures. Synonym replacement, speaker/register
+fit, and unregistered vocabulary remain gate judgments. If the draft
+introduces an unregistered world noun, classifier convention, or register
+variant, do **not** fail an otherwise valid draft merely because it is new.
+Require a `status=pending` glossary nomination, or name the candidate and its
+context in the review for USER ruling. The review worker does not edit the
+glossary. Only the USER may promote a pending row to `canon`/`banned`; on a
+world-term promotion, remind the USER to update `WORLD_RULES.md`.
 
 ### INTRO handling
 

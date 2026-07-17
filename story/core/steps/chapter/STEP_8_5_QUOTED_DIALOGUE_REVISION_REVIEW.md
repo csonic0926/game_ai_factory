@@ -9,6 +9,8 @@ Review the saved quoted-dialogue revision and decide whether it passes.
 - `<STORY_ROOT>/runtime_scene_drafts/<ARTIFACT_STEM>_DIALOGUE_REVISION.md`
 - `<STORY_ROOT>/runtime_scene_drafts/<ARTIFACT_STEM>_DIALOGUE_REVISION_FLUENCY.md` — the spoken-fluency log written by the pass that runs between STEP 8 and this gate
 - touched chapter-local rows in the runtime timeline and locale files defined by the adapter `LANDING_SPEC.md`
+- `<ADAPTER>/GLOSSARY.csv` when present; missing means `NOT_AVAILABLE` and
+  glossary-only checks are skipped
 
 ## Save output to
 
@@ -65,6 +67,24 @@ This step passes when:
 - knowledge order is unchanged
 - scene meaning is unchanged
 - no new contradiction is introduced into the landed chapter
+
+### Glossary and term nomination
+
+When the glossary exists, run `scripts/glossary_check.py` on the revised
+artifact (and its `--locale LOCALE=PATH` mode for aligned JSON catalogs when
+applicable). This step passes when exact banned forms are absent, every
+applicable protected form that entered the fluency pass survived unchanged,
+registered en/ko correspondences are used, and the speaker's variant obeys
+`register` / `speaker_scope`.
+
+Checker failures caused by this revision fail the gate. Pre-existing shipped
+locale mismatches are recorded and must not be silently attributed to STEP 8.
+Synonyms and unregistered terms remain human review: a new world noun,
+classifier convention, or register variant requires a `status=pending`
+nomination (or an explicit candidate in this review), not an automatic FAIL.
+The gate never edits the glossary. Pending → `canon`/`banned` is USER-only;
+world-term promotion also requires a reminder to update `WORLD_RULES.md`,
+which wins every conflict.
 
 ## Required stop condition
 

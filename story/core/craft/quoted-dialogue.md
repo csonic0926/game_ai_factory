@@ -12,6 +12,10 @@ Use this doc when:
 This doc handles **quoted dialogue only**.
 It should not rewrite narration outside quotation marks.
 
+Before rewriting, read `<ADAPTER>/GLOSSARY.csv` when it exists. Missing means
+`NOT_AVAILABLE` and preserves the old behavior. Do not infer authoritative
+translations by searching shipped locale prose.
+
 ## Goal
 
 Write dialogue that sounds like:
@@ -123,6 +127,22 @@ If this is the audience's first meaningful exposure to the speaker:
 - the line should help the reader place what kind of person this is
 - but do not turn the line into self-introduction boilerplate
 
+### 9) Registered vocabulary survives the rewrite
+
+When the glossary exists:
+
+- use its canon form in each locale;
+- let `register` and `speaker_scope` decide which spoken variant this speaker
+  may use;
+- keep `dialogue_protected=true` forms exact rather than polishing them into
+  synonyms;
+- use no `banned` form;
+- treat an empty locale mapping as a nomination/open item, not permission to
+  reverse-engineer an authority from shipped prose;
+- report any new world noun, classifier convention, or register variant as a
+  `status=pending` nomination. Never promote it to `canon` or `banned`; that
+  ruling is USER-only, and `WORLD_RULES.md` wins every conflict.
+
 ## Dialogue design workflow
 
 For each quoted line:
@@ -133,6 +153,8 @@ For each quoted line:
 4. identify the line's main pragmatic move
 5. write the shortest natural spoken line that performs that move
 6. align `<PRIMARY_LOCALE>` and all `<SHIPPED_LOCALES>` to the same move and force
+7. when available, run `scripts/glossary_check.py` on the result; synonym and
+   speaker-scope review remain human checks
 
 Do not confuse "shortest" with "most compressed."
 If the shortest version sounds stiff, allow a slightly looser spoken version.
@@ -176,5 +198,7 @@ Rewrite if the line feels like:
 - Did it smuggle narration or plot explanation into speech?
 - Could a different speaker say this unchanged? If yes, sharpen the voice.
 - Do `<PRIMARY_LOCALE>` and all `<SHIPPED_LOCALES>` still perform the same move?
+- Do registered forms, speaker scope, and register still match the glossary,
+  with no banned form introduced?
 
 If any answer is bad, rewrite the line.

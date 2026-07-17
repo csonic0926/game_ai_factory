@@ -28,6 +28,11 @@ Read the saved event graph when ids, links, or target checks are needed:
 
 - `<STORY_ROOT>/chapter_event_graphs/<ARTIFACT_STEM>.md`
 
+Before writing any quoted locale value, read `<ADAPTER>/GLOSSARY.csv` when it
+exists. Missing means `NOT_AVAILABLE` and keeps the prior landing behavior.
+Do not reconstruct authoritative translations by searching shipped locale
+prose.
+
 ## Save output to
 
 Write runtime data to:
@@ -86,6 +91,10 @@ Write final player-facing runtime text into the locale storage defined by the ad
 For every new locale key:
 
 - author the text in `<PRIMARY_LOCALE>` and add values for all `<SHIPPED_LOCALES>`, following the locale landing rules in the adapter `LANDING_SPEC.md`
+- when the glossary exists, use its registered zh-TW/en/ko forms exactly;
+  obey `register` / `speaker_scope`, preserve
+  `dialogue_protected=true`, and use no `banned` form. A blank locale cell is
+  an unregistered mapping to nominate, not permission to invent an authority
 - keep narration-type keys as in-game narration
 - keep choice-type keys as concrete clickable action wording
 - keep location-description keys as present-tense decision framing for the current node
@@ -143,6 +152,10 @@ The landed result must satisfy all of these checks:
 6. the landing log records how each STEP 6.7 operation group landed, or which
    operation is still blocked by a named engineering dependency
 7. the integrity checks defined by the adapter `LANDING_SPEC.md` pass
+8. when a glossary exists, `scripts/glossary_check.py` passes on the landed
+   artifact; for aligned JSON catalogs, run its repeated
+   `--locale LOCALE=PATH` mode and record any pre-existing mismatch separately
+   from newly introduced mismatch
 
 ## Block definitions
 

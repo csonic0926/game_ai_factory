@@ -22,7 +22,9 @@ that can hard-block bad output).
   be staged: `VISUAL_GRAMMAR.md`; how staged beats become runnable game data:
   `LANDING_SPEC.md`; plus optional `SYNC_SPEC.md`) — it describes the game
   repo's code, so it lives with that code and versions with the game; the
-  factory keeps the contract and the blank answer sheets (`adapters/_template/`)
+  adapter also owns the optional `GLOSSARY.csv` operational termbase for that
+  game's registered world vocabulary; the factory keeps the contract and the
+  blank answer sheets (`adapters/_template/`)
 
 The public order contract is `docs/PROJECT_PROFILE_CONTRACT.md`.
 
@@ -48,6 +50,7 @@ adapters/
 docs/PROJECT_PROFILE_CONTRACT.md        # the adapter contract
 skills/game-story-factory/SKILL.md      # the single orchestrator skill
 scripts/init_story_root.sh              # bootstrap <STORY_ROOT> canonical layout
+scripts/glossary_check.py                # exact glossary/schema/protected-term/locale review aid
 scripts/twin_db.py                      # the twin-db CRUD/query CLI
 ```
 
@@ -86,6 +89,8 @@ Master loop: `WORLD → CHARACTER → CAST ↔ CHARACTER → CAST_PASS → CHAPT
    sheets from `adapters/_template/`.
 2. Fill `<STORY_ROOT>/adapter/PROJECT_PROFILE.md`, then register the project in
    `adapters/registry.md` (`<project_id> → <absolute adapter path>`).
+   Fill `GLOSSARY.csv` when the project needs registered multilingual world
+   vocabulary; leaving it absent is `NOT_AVAILABLE` and keeps legacy behavior.
 3. World/character/cast production can start immediately.
 4. Chapter production up to STEP 6 (approved runtime draft) needs no runtime;
    writing `VISUAL_GRAMMAR.md` unblocks STEP 6.7 (shootable staging plan), and

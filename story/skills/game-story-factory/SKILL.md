@@ -91,6 +91,9 @@ ambiguous enough to need one clarifying question.
    `<PRIMARY_LOCALE>`, `<SHIPPED_LOCALES>`, `<RUNTIME_SHAPE>` and optional
    variables. Contract: `<FACTORY>/docs/PROJECT_PROFILE_CONTRACT.md`
    (canonical adapter home: `<STORY_ROOT>/adapter/`).
+   Resolve `<ADAPTER>/GLOSSARY.csv` at the same time: present means AVAILABLE
+   and binding under the contract; absent means `NOT_AVAILABLE`, with no
+   behavior change and no locale-file reverse engineering.
 2. Ensure `<STORY_ROOT>` exists with the canonical layout
    (bootstrap: `<FACTORY>/scripts/init_story_root.sh <STORY_ROOT>`).
 3. Resolve the sovereignty files (USER-authored: read, never edit silently):
@@ -181,6 +184,20 @@ review-gate workers run
 and adjudicate every hit: citation-form usage (label quoted with source,
 meaning expanded nearby) passes; term-of-art usage in prose fails.
 
+**Glossary in dialogue and gates:** when `<ADAPTER>/GLOSSARY.csv` exists,
+every worker that writes or revises quoted dialogue receives it and follows
+its canon forms, en/ko counterparts, register, speaker scope, protected forms,
+and bans. Review dispatches run
+`python3 <FACTORY>/scripts/glossary_check.py --glossary <ADAPTER>/GLOSSARY.csv <artifact>`;
+aligned JSON locale landing also uses repeated `--locale LOCALE=PATH` inputs.
+The checker is exact-match support, not a synonym oracle. A gate that finds a
+new world noun, classifier convention, or register variant requires a
+`status=pending` nomination (or records the candidate for the USER); novelty
+alone is not FAIL. Review workers never edit the glossary. Tools may add only
+pending rows; pending → canon/banned and canon/banned changes are USER-only.
+`WORLD_RULES.md` wins every conflict, and world-term promotion requires a
+reminder to update it.
+
 ## Step machines
 
 Step files live under `<FACTORY>/core/steps/`.
@@ -256,6 +273,11 @@ Chapter hard bindings:
   a scripted cutscene, STEP 7 uses `core/craft/cutscene-staging.md` only to
   emit the game's cutscene document from the approved staging operations.
 - STEP 8/8.5 workers MUST use `core/craft/quoted-dialogue.md`.
+- STEP 6, STEP 7 locale landing, STEP 8, `dialogue-runway`, and
+  `quoted-dialogue` MUST read `<ADAPTER>/GLOSSARY.csv` before producing quoted
+  text when it is available. Registered forms replace locale-file reverse
+  engineering as the term authority. Missing glossary is `NOT_AVAILABLE` and
+  legacy behavior remains unchanged.
 - Spoken-fluency pass (USER ruling 2026-07-13): after STEP 6 saves its
   draft and after STEP 8 saves its revision, and BEFORE dispatching the
   matching `.5` gate, dispatch ONE SEPARATE fresh worker with
@@ -268,6 +290,16 @@ Chapter hard bindings:
   (`<ARTIFACT_STEM>_FLUENCY.md` / `<ARTIFACT_STEM>_DIALOGUE_REVISION_FLUENCY.md`);
   STEP 6.5 / 8.5 verify the log and read three sampled lines aloud —
   annotation register in the sample ⇒ FAIL back to the integer step.
+  In default clean-room mode, the orchestrator mechanically extracts the
+  scene language's applicable canon `dialogue_protected=true` and exact
+  `banned` forms from the glossary into a plain-language constraint list with
+  `glossary_check.py --glossary <ADAPTER>/GLOSSARY.csv --extract-cleanroom <LOCALE> <artifact>`
+  (repeat `--speaker` for the scene's scopes/character ids). The
+  clean-room worker reads neither CSV nor design files. The canon-aware
+  back-check reads the glossary, runs `glossary_check.py`, verifies
+  register/speaker scope and protected-form survival, and records the result
+  in the fluency log. No glossary means the existing hand-picked constraints
+  continue unchanged.
 - STEP 10 Part A (twin write-back via `scripts/twin_db.py writeback`) runs
   whenever `<STORY_ROOT>/story_world/` exists; Part B follows
   `<ADAPTER>/SYNC_SPEC.md`, missing ⇒ SKIPPED_BY_PROFILE.
@@ -294,7 +326,9 @@ Two ways to use a craft:
    (a) `<FACTORY>/core/craft/<craft-name>.md` as its only source of truth,
    (b) the resolved profile variables it needs,
    (c) the input artifacts / target files named in the task,
-   (d) the output path (usually an existing `<STORY_ROOT>` file to revise, or a
+   (d) `<ADAPTER>/GLOSSARY.csv` for a craft that writes/revises quoted dialogue,
+       when available,
+   (e) the output path (usually an existing `<STORY_ROOT>` file to revise, or a
    named deliverable).
    **No `.5` gate** — craft mode applies a technique, it is not a pipeline stage;
    the worker self-checks against the craft doc's own criteria. Use it to run one

@@ -21,6 +21,9 @@ paths only.**
    answer ready" / "this is a fellow, not a clerk").
 4. The world's sovereignty files (world rules, narrative delivery) — the
    runway must not spend any token the world forbids.
+5. `<ADAPTER>/GLOSSARY.csv` when present. Missing means `NOT_AVAILABLE` and
+   the craft keeps its previous behavior; never manufacture a replacement by
+   reverse-engineering shipped locale prose.
 
 ## Rules (also the self-check list)
 
@@ -38,6 +41,12 @@ paths only.**
 5. **Observation before interrogation.** Any line that turns attention to
    the player states something SEEN (「你兩手空空」), never demands
    something told.
+6. **Use the registered term for this mouth.** When the glossary exists,
+   canon forms and en/ko counterparts are authoritative. Apply `register` and
+   `speaker_scope`, keep `dialogue_protected=true` forms exact, and use no
+   `banned` form. If the runway needs a new world noun, classifier convention,
+   or spoken variant, list it as a `status=pending` nomination; do not decide
+   it for the USER.
 
 ## Output
 
@@ -53,6 +62,11 @@ affection-first / place-first / object-first), each formatted as:
 The USER cuts (picks one, splices, or kills all three and re-briefs). In a
 headless pipeline run, produce the three candidates and report
 BLOCKED_ON_USER_CUT rather than picking one — the cut is USER-owned.
+
+Before handoff, run `scripts/glossary_check.py` when the glossary exists, then
+chain the separate `spoken-fluency` worker. In clean-room mode, that worker
+receives only the mechanically extracted protected/banned forms as plain
+speech, never the CSV itself; the canon-aware back-check reads the glossary.
 
 ## Downstream
 

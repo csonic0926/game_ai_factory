@@ -20,6 +20,7 @@ The canonical home of a project's adapter is inside the game repo:
   SYNC_SPEC.md            # optional — post-landing sync duties (digital twin, frames, exports)
   STYLE_GUIDE.md          # optional — narration/prose style rules for this game
   style_lint_config.json  # optional — machine-checkable STYLE_GUIDE rules for review gates
+  GLOSSARY.csv            # optional — machine-readable world-term termbase for story/dialogue production
 ```
 
 ## Adapter resolution order
@@ -88,6 +89,79 @@ must treat a missing optional capability as a hard skip, never improvise):
 Core step files reference paths ONLY under this layout (as `<STORY_ROOT>/...`)
 or through the adapter files below. If a step file needs any other project
 path, that is a factory bug.
+
+## GLOSSARY.csv — the operational termbase
+
+`<ADAPTER>/GLOSSARY.csv` is the game-owned, machine-readable answer sheet for
+world vocabulary. It records the forms story workers may use in
+`<PRIMARY_LOCALE>` and `<SHIPPED_LOCALES>`, including spoken-register variants
+and terms that must survive clean-room dialogue rewriting unchanged. The
+factory owns this schema and the blank `adapters/_template/GLOSSARY.csv`; the
+game repo owns the filled rows and versions them with its shipped text.
+
+The file is UTF-8 CSV with comma delimiters, standard CSV quoting, this exact
+header order, and one surface form per row:
+
+| Column | Contract |
+|---|---|
+| `term_id` | Stable unique `snake_case` key used by scripts and references. |
+| `zh_TW` | Registered zh-TW surface form; normally the authoring-language form. |
+| `en` | Registered English form. For EN-source catalogs, this is the authoritative catalog spelling. |
+| `ko` | Registered Korean form. |
+| `referent` | One plain-language sentence saying what the term refers to. |
+| `register` | Exactly `formal`, `folk`, or `both`. |
+| `variant_of` | `term_id` of the canonical-form row when this is a register variant; blank on the canonical row. |
+| `speaker_scope` | Exactly `all`, `villagers`, `design_only`, or one named character id in `snake_case`. `design_only` terms never enter quoted dialogue. |
+| `dialogue_protected` | Exactly `true` or `false`. A `true` canon form that occurs in source dialogue must survive same-language rewriting unchanged. |
+| `status` | Exactly `canon`, `pending`, `banned`, or `deprecated`. |
+| `provenance` | Decision/evidence source: USER ruling date, shipped commit, or named precedent. Never omit it. |
+| `notes` | Optional collocations, classifiers, avoided forms, or other usage detail. This is guidance, not a hidden machine schema. |
+
+Locale cells may be blank only when that locale has no registered authority
+yet. A worker must report the missing mapping as a nomination/open item; it
+must not reverse-engineer an authoritative term from shipped locale prose or
+silently invent one. `dialogue_protected=true` applies only to non-empty forms
+whose status is `canon`. `banned` rows are exact-match red lines and therefore
+must use `dialogue_protected=false`.
+
+### Authority and admission
+
+The sovereignty term list in `<STORY_ROOT>/state/WORLD_RULES.md` remains the
+source of truth. `GLOSSARY.csv` is its operational projection for production;
+on conflict, `WORLD_RULES.md` wins and the glossary is reported for USER
+correction. Tools may add a newly observed form only as `status=pending`.
+Changing a pending row to `canon` or `banned`, deprecating a canon row, or
+changing an existing canon/banned form is USER-owned. A USER-approved
+promotion records the ruling date in `provenance`; when it is a world term,
+the workflow also reminds the USER to add or update the sovereignty term list.
+
+### Required consumers
+
+When the file exists, every worker that writes or revises quoted dialogue
+(including chapter STEP 6, STEP 7 locale landing, STEP 8,
+`dialogue-runway`, and `quoted-dialogue`) reads it before writing:
+
+- canon forms and their en/ko counterparts are authoritative;
+- `register` and `speaker_scope` decide which variant a speaker may use;
+- `dialogue_protected=true` forms must not be synonym-replaced;
+- `banned` forms must not appear.
+
+For `spoken-fluency` clean-room mode, the clean-room worker does **not** read
+the CSV. The orchestrator mechanically extracts the scene language's
+applicable protected/banned forms and supplies them as a plain-language list;
+the canonical command is
+`python3 <FACTORY>/scripts/glossary_check.py --glossary <ADAPTER>/GLOSSARY.csv --extract-cleanroom <LOCALE> <artifact>`
+(repeat `--speaker <scope-or-character-id>` when filtering a scene). The
+canon-aware back-check reads the CSV and verifies the result. Review gates
+use `scripts/glossary_check.py`, plus human judgment for register, speaker
+scope, and unregistered-world-term nominations. A new unregistered noun,
+classifier convention, or register variant is not automatically a content
+failure: the gate must name it as a `pending` nomination (or verify that a
+pending row was added) so the USER can rule on it.
+
+If `GLOSSARY.csv` is absent, its capability is `NOT_AVAILABLE` and all
+workflows keep their previous behavior. This preserves legacy/unmigrated
+projects unchanged.
 
 ## LANDING_SPEC.md — the landing contract
 

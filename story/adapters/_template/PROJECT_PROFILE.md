@@ -24,3 +24,4 @@ Contract: see `../../docs/PROJECT_PROFILE_CONTRACT.md`.
 - `VISUAL_GRAMMAR.md`: NOT_AVAILABLE   # flip when written — unblocks chapter STEP 6.7
 - `SYNC_SPEC.md`: NOT_AVAILABLE        # chapter STEP 10 skips when absent
 - `STYLE_GUIDE.md`: NOT_AVAILABLE
+- `GLOSSARY.csv`: NOT_AVAILABLE        # optional; present means registered world terms bind dialogue production

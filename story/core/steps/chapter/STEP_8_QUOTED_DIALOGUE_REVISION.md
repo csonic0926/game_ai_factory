@@ -12,6 +12,10 @@ Read the latest landed chapter artifacts relevant to dialogue revision:
 - touched timeline / locale files for landed runtime review
 - `<STORY_ROOT>/runtime_scene_drafts/<ARTIFACT_STEM>_zh.md` when the pre-landing runtime draft is needed for comparison
 
+Before revising dialogue, read `<ADAPTER>/GLOSSARY.csv` when it exists.
+Missing means `NOT_AVAILABLE` and preserves the old behavior. Do not infer
+authoritative en/ko terms from shipped locale prose.
+
 ## Save output to
 
 Write the revised runtime data back to the touched chapter-local rows in:
@@ -38,6 +42,8 @@ Keep these invariants fixed:
 - scene meaning
 - speaker identity
 - non-quoted narration unless a quoted line cannot work without a minimal adjacent adjustment
+- glossary canon forms marked `dialogue_protected=true`
+- glossary `banned` forms remaining absent
 
 ## Revision standard
 
@@ -46,6 +52,9 @@ Revise quoted lines so they:
 - sound like the character who speaks them in this world and pressure
 - preserve the current pragmatic function of the line
 - stay aligned in intent across all `<SHIPPED_LOCALES>` when multilingual landing is present
+- use the glossary's registered form in each locale and obey its `register`
+  and `speaker_scope`; unregistered new vocabulary becomes a pending
+  nomination, never a worker-made canon decision
 - remain compatible with the already-landed scene logic
 
 ## Required checks
@@ -68,3 +77,9 @@ untouched — across all `<SHIPPED_LOCALES>`, and writes the comparison log
 to:
 
 - `<STORY_ROOT>/runtime_scene_drafts/<ARTIFACT_STEM>_DIALOGUE_REVISION_FLUENCY.md`
+
+For default clean-room mode, the orchestrator extracts applicable protected
+and banned forms from the glossary into a plain-language constraint list; the
+clean-room worker does not read the CSV. The canon-aware back-check reads the
+glossary, runs `scripts/glossary_check.py`, and records the protected-term and
+locale correspondence result in the same fluency log.

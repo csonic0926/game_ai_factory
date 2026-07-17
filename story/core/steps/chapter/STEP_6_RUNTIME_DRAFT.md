@@ -10,6 +10,10 @@ Read the saved event graph:
 
 - `<STORY_ROOT>/chapter_event_graphs/<ARTIFACT_STEM>.md`
 
+Before writing any quoted dialogue, read `<ADAPTER>/GLOSSARY.csv` when it
+exists. Missing glossary means `NOT_AVAILABLE` and preserves the prior
+workflow; do not invent a substitute termbase from shipped locale files.
+
 ## Save output to
 
 Write the runtime draft to:
@@ -67,6 +71,16 @@ When a major character, institution face, or place appears for the first time in
 
 ## Line writing standard
 
+When the glossary is available:
+
+- use its registered `<PRIMARY_LOCALE>` canon forms;
+- obey `register` and `speaker_scope` before putting a variant in a
+  character's mouth;
+- keep `dialogue_protected=true` forms exact;
+- use no `banned` form;
+- report a new world noun, classifier convention, or register variant as a
+  `status=pending` nomination rather than silently normalizing it.
+
 Write each line as one dominant readable beat.
 
 A strong line usually carries one of these:
@@ -123,7 +137,16 @@ This draft contains quoted spoken lines, so after it is saved it must pass
 runs as a SEPARATE fresh worker dispatched by the orchestrator — the STEP 6
 worker must NOT polish its own lines (a context full of design reasoning
 cannot hear its own annotation register; same independence principle as the
-review gates). The fluency worker repairs sentence grammar of quoted lines
-only, in place, and writes the comparison log to:
+review gates).
+
+In the default clean-room mode, the orchestrator reads the glossary and
+mechanically extracts the scene language's applicable canon
+`dialogue_protected=true` forms and exact `banned` forms. It supplies those as
+a plain-language hard-constraint list; the clean-room worker never reads the
+CSV itself. After the rewrite, the canon-aware back-check reads the glossary,
+runs `scripts/glossary_check.py` on the result (and a protected-term baseline
+diff whenever separate before/after artifacts are available), and verifies
+speaker/register constraints. The fluency/canon log records the original and
+rewritten lines, the extracted constraints, and the back-check result at:
 
 - `<STORY_ROOT>/runtime_scene_drafts/<ARTIFACT_STEM>_FLUENCY.md`
