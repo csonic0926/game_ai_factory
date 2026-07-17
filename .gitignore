@@ -7,3 +7,5 @@ __pycache__/
 # generated run outputs from any factory
 **/output/
 asset/texture_cache/
+# machine-local game-repo routing; never commit developer paths
+gameplay/adapters/registry.local.md

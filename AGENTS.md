@@ -1,7 +1,7 @@
 # AGENTS — game_ai_factory
 
 You are an AI agent driving game production. This repo is an **umbrella** over
-three factories: `asset/`, `story/`, `sound/`.
+four factories: `asset/`, `story/`, `gameplay/`, `sound/`.
 
 1. Read [`AI_CALLER_LANDING.md`](AI_CALLER_LANDING.md) and route to a factory.
 2. Each factory has its own `AGENTS.md` / landing + calling contract — obey it.
@@ -12,4 +12,5 @@ three factories: `asset/`, `story/`, `sound/`.
 Sub-factory entry points:
 - `asset/` → `asset/AGENTS.md`, `asset/docs/AI_CALLER_LANDING.md`, `asset/itf.py`
 - `story/` → `story/AGENTS.md`, skill `game-story-factory`
+- `gameplay/` → `gameplay/AGENTS.md`, `gameplay/docs/AI_CALLER_LANDING.md`
 - `sound/` → `sound/docs/AI_CALLER_LANDING.md`, `sound/sfx.py`

@@ -1,12 +1,13 @@
 # AI caller landing — game_ai_factory
 
-Umbrella for three game-production factories. If you are an AI agent from another
+Umbrella for four game-production factories. If you are an AI agent from another
 repo, **start here**, pick the factory, then read that factory's own landing doc.
 
 ```
 game_ai_factory/
   asset/   game asset factory  — isometric tiles, walls, props, tile re-skin, bg cleanup
   story/   game story factory  — world / character / cast / chapter narrative production
+  gameplay/ gameplay factory   — player-time trace, beat packets, reception contracts
   sound/   game sound factory  — text->SFX (ElevenLabs) + de-silence/normalize
 ```
 
@@ -16,6 +17,7 @@ game_ai_factory/
 | --- | --- | --- |
 | Floor/wall iso tiles, props, tile re-skin, validated sprites | **asset** | `asset/docs/AI_CALLER_LANDING.md` → `python3 asset/itf.py ...` |
 | World/characters/cast/chapters, staged story text | **story** | skill `game-story-factory` (installed) → `story/skills/game-story-factory/SKILL.md` |
+| Translate story anchors into a continuous playable walkthrough and production-ready beat contracts | **gameplay** | `gameplay/AGENTS.md` → `gameplay/docs/AI_CALLER_LANDING.md` |
 | A game SFX (generate + trim to drop-in) | **sound** | `sound/docs/AI_CALLER_LANDING.md` → `python3 sound/sfx.py run --spec ...` |
 
 ## Calling conventions (shared)
@@ -25,13 +27,18 @@ game_ai_factory/
   `deliverables/`.
 - **story** is a Claude **skill** (`/game-story-factory <project_id> ...`) backed
   by adapter + step machines; artifacts land in the *game repo's* `<STORY_ROOT>`.
-- All three ship a `mock`/offline path where applicable for credit-free smoke.
+- **gameplay** is intentionally **document-first** in Phase 0: resolve the
+  game-owned adapter, author one continuous Intended Player trace, segment it
+  by player-state deltas, and run a blinded First-time Player reception check.
+  Artifacts land in the game repo's `<GAMEPLAY_ROOT>`; there is no CLI/skill yet.
+- CLI factories ship a `mock`/offline path where applicable for credit-free smoke.
 
 ## Cross-factory flows (why the umbrella)
 
-The factories compose. A Vinci World cutscene, for example, draws on all three:
+The factories compose. A playable story sequence can draw on all four:
 
 - **story** produces the scene's staged beats + dialogue (locale keys),
+- **gameplay** turns its anchors into a continuous player-action/control/reception contract,
 - **asset** produces any new props/tiles the scene needs,
 - **sound** produces the SFX cues each beat fires.
 
