@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://game-ai-factory.local/gameplay/observation_mapping.schema.json",
+  "title": "Observation Adapter machine-readable mapping v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "adapter_id",
+    "source_schema_version",
+    "field_map",
+    "event_type_map",
+    "observable_fields",
+    "hidden_fields"
+  ],
+  "properties": {
+    "schema_version": { "const": "gameplay.observation_mapping.v1" },
+    "adapter_id": { "type": "string", "minLength": 1 },
+    "source_schema_version": { "type": "string", "minLength": 1 },
+    "field_map": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sequence", "monotonic_ms", "event_type"],
+      "properties": {
+        "event_id": { "$ref": "#/$defs/sourcePath" },
+        "sequence": { "$ref": "#/$defs/sourcePath" },
+        "monotonic_ms": { "$ref": "#/$defs/sourcePath" },
+        "frame": { "$ref": "#/$defs/sourcePath" },
+        "event_type": { "$ref": "#/$defs/sourcePath" },
+        "context": { "$ref": "#/$defs/sourcePath" },
+        "summary": { "$ref": "#/$defs/sourcePath" },
+        "observation_channel": {
+          "$ref": "#/$defs/sourcePath",
+          "description": "Source path to a runtime-emitted neutral channel: visual, audio, ui, input, or world_change. The reader never derives this from semantic event kind."
+        },
+        "correlation_id": { "$ref": "#/$defs/sourcePath" },
+        "correlation_role": { "$ref": "#/$defs/sourcePath" },
+        "capture_refs": { "$ref": "#/$defs/sourcePath" }
+      }
+    },
+    "event_type_map": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "enum": [
+          "player_input",
+          "gameplay_action",
+          "control",
+          "cue",
+          "presentation",
+          "world_response",
+          "state_change",
+          "capture",
+          "performance"
+        ]
+      }
+    },
+    "observable_fields": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/observableFieldProjection" },
+      "uniqueItems": true
+    },
+    "hidden_fields": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/fieldProjection" },
+      "uniqueItems": true
+    },
+    "public_context_fields": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          { "$ref": "#/$defs/sourcePath" },
+          { "not": { "pattern": "(^|\\.)(acceptance_kernel|acceptance_kernel_id|acceptance_phase|audio_path|available_actions|beat_id|branch_label|canonical_action|capture_path|capture_paths|capture_ref|capture_refs|correlation_role|cue|design_id|design_intent|design_role|emotion|event_kind|event_role|expected_action|felt_fun|feeling|fun|future|future_state|group_id|importance|intent|kind|latency|meaningful_alternative|next_action|outcome_quality|phase|player_felt|player_forecast|player_understood|probe_group|response|screenshot_path|screenshot_paths|semantic_kind|semantic_role|sheet_id|understood|video_path|video_paths|world_response)(\\.|$)" } }
+        ]
+      },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "sourcePath": {
+      "type": "string",
+      "pattern": "^[^.]+(?:\\.[^.]+)*$"
+    },
+    "fieldProjection": {
+      "type": "object",
+      "description": "Reader validation additionally rejects observable/hidden source or target paths that are equal or component-prefix parent/children.",
+      "additionalProperties": false,
+      "required": ["source", "target"],
+      "properties": {
+        "source": { "$ref": "#/$defs/sourcePath" },
+        "target": { "$ref": "#/$defs/sourcePath" }
+      }
+    },
+    "observableFieldProjection": {
+      "type": "object",
+      "description": "Observable projections cannot remap provenance, semantic roles, or capture paths under neutral target names.",
+      "additionalProperties": false,
+      "required": ["source", "target"],
+      "properties": {
+        "source": {
+          "allOf": [
+            { "$ref": "#/$defs/sourcePath" },
+            { "not": { "pattern": "^(schema_version|run_id|session_id|source_event_id|event_type|correlation_id|correlation_role|capture_refs)(\\.|$)" } },
+            { "not": { "pattern": "(^|\\.)(acceptance_kernel|acceptance_kernel_id|acceptance_phase|audio_path|beat_id|branch_label|canonical_action|capture_path|capture_paths|capture_ref|capture_refs|design_id|design_intent|design_role|emotion|event_kind|event_role|felt_fun|feeling|fun|group_id|meaningful_alternative|player_felt|player_forecast|player_understood|probe_group|screenshot_path|screenshot_paths|semantic_kind|semantic_role|sheet_id|understood|video_path|video_paths)(\\.|$)" } }
+          ]
+        },
+        "target": {
+          "allOf": [
+            { "$ref": "#/$defs/sourcePath" },
+            { "not": { "pattern": "(^|\\.)(acceptance_kernel|acceptance_kernel_id|acceptance_phase|audio_path|available_actions|beat_id|branch_label|canonical_action|capture_path|capture_paths|capture_ref|capture_refs|correlation_role|cue|design_id|design_intent|design_role|emotion|event_kind|event_role|expected_action|felt_fun|feeling|fun|future|future_state|group_id|importance|intent|kind|latency|meaningful_alternative|next_action|outcome_quality|phase|player_felt|player_forecast|player_understood|probe_group|response|screenshot_path|screenshot_paths|semantic_kind|semantic_role|sheet_id|understood|video_path|video_paths|world_response)(\\.|$)" } }
+          ]
+        }
+      }
+    }
+  }
+}

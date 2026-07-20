@@ -1,9 +1,12 @@
 # Gameplay Grammar State — `<PROJECT_ID>`
 
-This game-owned ledger is derived gameplay-design state, not runtime truth.
-Update it only from a human-approved Intended Player trace.
+This game-owned ledger is derived gameplay-design state, not runtime truth or
+Beat Sheet authority. Update it only from a human-approved Intended Player
+trace bound to an exact Beat Sheet version.
 
 - Last approved trace/packet:
+- Source Beat Sheet id/version/checksum:
+- Approval/acceptance refs:
 - State version/date:
 
 ## Recent player verbs

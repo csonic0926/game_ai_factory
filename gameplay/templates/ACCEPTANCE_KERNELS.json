@@ -1,0 +1,32 @@
+{
+  "schema_version": "gameplay.acceptance_kernels.v1",
+  "sheet_binding": {
+    "path": "<GAME_REPO_RELATIVE_BEAT_SHEET_PATH>",
+    "sheet_id": "<SHEET_ID>",
+    "version_token": "<VERSION_TOKEN>",
+    "checksum": "<CHECKSUM>"
+  },
+  "kernels": [
+    {
+      "kernel_id": "<KERNEL_ID>",
+      "required_evidence_modes": ["LIVE_BLIND_RUN"],
+      "selectors": [
+        { "phase": "cue", "match": { "event_kind": "cue" } },
+        { "phase": "action_or_attempt", "match": { "event_kind": "gameplay_action" } },
+        { "phase": "world_response", "match": { "event_kind": "world_response" } },
+        { "phase": "carry_forward", "match": { "event_kind": "state_change" } }
+      ],
+      "ordered_sequences": [
+        {
+          "sequence_id": "<STABLE_SEQUENCE_ID>",
+          "after_phase": "world_response",
+          "before_phase": "carry_forward",
+          "matches": [
+            { "match": { "event_kind": "presentation", "observable": { "<KEY>": "<EXPECTED_VALUE>" } } },
+            { "match": { "event_kind": "control", "observable": { "<KEY>": "<EXPECTED_VALUE>" } } }
+          ]
+        }
+      ]
+    }
+  ]
+}

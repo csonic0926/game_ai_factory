@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://game-ai-factory.local/gameplay/raw_manifest.schema.json",
+  "title": "Gameplay raw evidence manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "session_id",
+    "evidence_mode",
+    "build",
+    "setup",
+    "display",
+    "raw_events_path",
+    "capture_roots"
+  ],
+  "properties": {
+    "schema_version": { "const": "gameplay.raw_manifest.v1" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "session_id": { "type": "string", "minLength": 1 },
+    "evidence_mode": {
+      "enum": [
+        "LIVE_BLIND_RUN",
+        "RECORDED_RUN",
+        "CONTROLLED_BRANCH_PROBE",
+        "STATIC_RUNTIME_ASSERTION"
+      ]
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["build_id", "content_revision"],
+      "properties": {
+        "build_id": { "type": "string", "minLength": 1 },
+        "content_revision": { "type": "string", "minLength": 1 }
+      }
+    },
+    "setup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["save_or_checkpoint", "seed", "locale", "input_mode", "platform"],
+      "properties": {
+        "save_or_checkpoint": { "type": "string", "minLength": 1 },
+        "seed": { "type": ["string", "integer"] },
+        "locale": { "type": "string", "minLength": 1 },
+        "input_mode": { "type": "string", "minLength": 1 },
+        "platform": { "type": "string", "minLength": 1 }
+      }
+    },
+    "display": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["viewport_width", "viewport_height", "window_mode"],
+      "properties": {
+        "viewport_width": { "type": "integer", "minimum": 1 },
+        "viewport_height": { "type": "integer", "minimum": 1 },
+        "window_mode": { "type": "string", "minLength": 1 }
+      }
+    },
+    "performance_context": { "type": "object" },
+    "started_at": { "type": "string" },
+    "raw_events_path": { "type": "string", "minLength": 1 },
+    "capture_roots": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "probe_group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["group_id", "baseline_checkpoint"],
+      "properties": {
+        "group_id": { "type": "string", "minLength": 1 },
+        "baseline_checkpoint": { "type": "string", "minLength": 1 },
+        "branch_label": { "type": "string", "minLength": 1 }
+      }
+    },
+    "observation_window": {
+      "type": "object",
+      "description": "Optional producer-declared complete contiguous sequence window. Required before absence can be reported as SATISFIED_NO_MATCH.",
+      "additionalProperties": false,
+      "required": ["start_sequence", "end_sequence", "coverage_status", "coverage_basis"],
+      "properties": {
+        "start_sequence": { "type": "integer", "minimum": 0 },
+        "end_sequence": { "type": "integer", "minimum": 0 },
+        "coverage_status": { "const": "COMPLETE" },
+        "coverage_basis": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "evidence_mode": { "const": "CONTROLLED_BRANCH_PROBE" } },
+        "required": ["evidence_mode"]
+      },
+      "then": {
+        "required": ["probe_group", "performance_context"],
+        "properties": {
+          "probe_group": { "required": ["branch_label"] }
+        }
+      }
+    }
+  ]
+}

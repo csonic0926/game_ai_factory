@@ -1,0 +1,25 @@
+{
+  "schema_version": "gameplay.raw_manifest.v1",
+  "run_id": "<RUN_ID>",
+  "session_id": "<SESSION_ID>",
+  "evidence_mode": "LIVE_BLIND_RUN",
+  "build": {
+    "build_id": "<BUILD_ID>",
+    "content_revision": "<CONTENT_REVISION>"
+  },
+  "setup": {
+    "save_or_checkpoint": "<SAVE_OR_CHECKPOINT>",
+    "seed": "<SEED>",
+    "locale": "<LOCALE>",
+    "input_mode": "<INPUT_MODE>",
+    "platform": "<PLATFORM>"
+  },
+  "display": {
+    "viewport_width": 1,
+    "viewport_height": 1,
+    "window_mode": "<WINDOW_MODE>"
+  },
+  "performance_context": {},
+  "raw_events_path": "<GAME_REPO_RELATIVE_OR_RUN_RELATIVE_JSONL_PATH>",
+  "capture_roots": []
+}

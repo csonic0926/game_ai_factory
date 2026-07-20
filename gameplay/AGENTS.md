@@ -1,59 +1,96 @@
 # AI Caller Landing — gameplay_factory
 
-You are an AI agent translating approved story anchors into a continuous,
-player-time gameplay design for a game.
+You are an AI agent producing and independently checking a concrete gameplay
+experience from design authority through actual runtime evidence.
 
 ## Start here
 
 1. Read `docs/PROJECT_ADAPTER_CONTRACT.md`.
-2. Resolve the target game repo in this order: an explicit game-repo path in
-   the invocation → the current working directory's Git root → the optional,
-   ignored `adapters/registry.local.md` entry for an explicit `project_id`.
-   Never discover a game by scanning sibling directories or from a committed
-   developer path.
-3. Set `<GAMEPLAY_ROOT>` to `<GAME_REPO>/design/gameplay`, validate that it is
-   inside the game repo and outside this factory repo, and resolve the adapter only at
-   `<GAMEPLAY_ROOT>/adapter/`.
-4. Read both resolved answer files: `PROJECT_GAMEPLAY_PROFILE.md` and
-   `PRODUCTION_ADAPTER.md`. A missing or incomplete answer file means
-   `BLOCKED_BY_ADAPTER`; do not invent project capabilities.
-5. Read `docs/AI_CALLER_LANDING.md`, then use the document-first Phase 0
-   workflow. There is intentionally no skill, step machine, or CLI yet.
+2. Resolve the target game repo: explicit path -> current Git root -> ignored
+   local registry for an explicit project id. Never scan sibling repos.
+3. Set `<GAMEPLAY_ROOT>` to `<GAME_REPO>/design/gameplay`; reject any output
+   inside this factory or outside the game repo.
+4. Read all three game-owned answers under `<GAMEPLAY_ROOT>/adapter/`:
+   `PROJECT_GAMEPLAY_PROFILE.md`, `PRODUCTION_ADAPTER.md`, and
+   `OBSERVATION_ADAPTER.md`. Missing/incomplete answers mean
+   `BLOCKED_BY_ADAPTER`.
+5. Read `docs/AI_CALLER_LANDING.md` and follow the manual production loop.
+   There is no creative step machine or gameplay skill yet; `reader.py` only
+   validates and reconstructs actual evidence.
 
 ## Hard rules
 
-- **Walkthrough first.** Author one continuous Playable Walkthrough Trace in
-  player time. Do not fill gaps between pairs of story beats independently.
-- **Segment second.** Beat boundaries emerge from player-state delta detection
-  after the trace exists; do not outline packets first.
-- **Keep evidence partitions separate.** `visible_and_known` records only what
-  is actually available to the player. `design_intent` and design annotations
-  must never leak into it.
-- **Blind the verifier.** A fresh First-time Player session receives only the
-  sequential `visible_and_known` projection. It must not receive the canonical
-  action, available-action enumeration, deltas, anchors, or design intent.
-- **Compile only the intended trace.** The Intended Player trace is canonical.
-  The First-time Player report diagnoses reception failures; it is never an
-  alternate production source.
-- **Adapters are authority.** Verbs, systems, presentation modes, rhythm axes,
-  budgets, engine mappings, and validation commands come from the resolved
-  game-owned adapter. None belong in factory core.
-- **Artifacts land in the game repo.** Traces, verifier projections/reports,
-  beat packets, grammar state, and filled adapter answers live under the
-  project's `<GAMEPLAY_ROOT>`, never under this factory.
-- **Paths are portable.** Persist game-repo-relative paths in filled adapters.
-  Resolve absolute paths only for the active run; never write a developer's
-  home-directory or drive-specific path into versioned factory files.
-- **Fail closed on ownership.** Before any write, resolve the destination and
-  reject it if it is outside `<GAME_REPO>` or inside the factory repo.
-- **Human playtest remains final.** The simulated First-time Player is only a
-  paper-stage prefilter.
-- If a required delta cannot be delivered within declared capabilities or
-  budget, emit `unresolved_delta`; do not silently change the story anchor or
-  pretend the runtime can prove player understanding.
+- **Quantity demand before authoring.** Author and freshly review a Span
+  Quant Sheet — span boundaries, duration ruling, and an
+  implementation-blind playable-content inventory with derived floors —
+  before any Beat Sheet. Only `PASS_QUANT_REVIEW` may proceed to authoring.
+- **Sufficiency never comes from the implementation.** Reading game code or
+  counting existing content to decide what is enough lets supply define
+  demand and passes every thin span. The quant author answers from player
+  expectation for the genre/situation/duration and attests implementation
+  blindness; per-unit time claims are challenged at quant review so six
+  clicks are never called five minutes.
+- **Beat Sheet authority.** Create or resolve an exact-version Gameplay
+  Experience Beat Sheet against the approved Span Quant Sheet, with its
+  mandatory exact-span Quantitative Experience Budget restating the approved
+  quant floors, before realization. A sheet may tighten a floor but never
+  loosen one without a new quant version. USER rulings and AI assumptions
+  remain separate.
+- **Fresh review gates.** Author and reviewer use file-only handoffs. A
+  reviewer judges PASS/FAIL and never repairs/passes its own input.
+- **Walkthrough first, segment second.** Realize one continuous player-time
+  trace, then derive packet boundaries from player-state/intent/control/payoff
+  changes.
+- **Complete engagement, not forced choices.** Decision, mastery, discovery,
+  expression, and payoff/recovery have different completeness rules. Do not
+  add fake alternatives.
+- **Non-gameplay does not self-promote.** Teleporter input, dialogue advance,
+  raw inputs, straight locomotion, objective arrival, passive state change,
+  control return, or presentation do not independently count as gameplay.
+- **Decision proof is consequence proof.** A decision requires at least two
+  contemporaneously reachable alternatives and controlled/equivalent evidence
+  of distinct observable response/carry-forward consequences. Labels or input
+  differences alone do not count.
+- **Causal carry-forward.** A world response must generate the next player
+  situation/intent/open question; unrelated objective re-issuance is not a
+  gameplay chain.
+- **Exact lineage.** Beat Sheets bind the exact Span Quant Sheet
+  version/checksum; walkthroughs, packets, observation plans, runs, and
+  acceptance bind the exact Beat Sheet version/checksum. Changed authority at
+  any level makes downstream artifacts `STALE`.
+- **Instrumentation ships with gameplay.** Every packet has an observation
+  contract. Missing logging/capture hooks prevent production completion.
+- **Fail closed before production.** A required kernel with no evidence path
+  is `BLOCKED_BY_OBSERVABILITY`.
+- **Keep evidence partitions separate.** Raw events, derived timeline, blind
+  interpretation, and acceptance comparison are different artifacts. Raw logs
+  never claim understanding, feeling, fun, or meaningfulness.
+- **Paper prefilter is not runtime acceptance.** Design-authored
+  `visible_and_known` can prefilter reception only. Runtime blind input comes
+  solely from actual build evidence through `reader.py`/an equivalent reader.
+- **Blind the runtime reader.** No Beat Sheet/trace/packet/code, semantic
+  design ids, canonical action, available-action enumeration, hidden/future
+  state, or implementation notes.
+- **Counterfactual honesty.** One golden path cannot prove alternatives or
+  failure adjustment. Use controlled branch/failure/performance probes.
+- **Factory pass is not fun.** `PASS_FACTORY_CONFORMANCE` remains separate
+  from `HUMAN_PLAYTEST_ACCEPTED`.
+- **Quantitative gate before segment claims.** Run `measure-budget` before
+  packet compilation and again on fresh production evidence before acceptance.
+  Only `PASS_EXPERIENCE_BUDGET` may proceed; `NO_GAMEPLAY`, failure, or
+  inconclusive evidence cannot be called a gameplay segment.
+- **Adapters are authority.** Core never invents game verbs, systems, engine
+  hooks, event names, budgets, or capture capabilities.
+- **Artifacts land in the game repo.** Factory owns only contracts, blanks,
+  schemas, and reader code.
+- **Paths stay portable.** Persist game-repo-relative paths; absolute paths are
+  active-run values only.
 
-## Contract files
+## Core contracts
 
+- `docs/GAMEPLAY_EXPERIENCE_BEAT_SHEET_CONTRACT.md`
 - `docs/PLAYABLE_WALKTHROUGH_TRACE_CONTRACT.md`
 - `docs/PLAYABLE_BEAT_PACKET_CONTRACT.md`
+- `docs/RUNTIME_OBSERVATION_AND_ACCEPTANCE_CONTRACT.md`
 - `docs/PROJECT_ADAPTER_CONTRACT.md`
+- `docs/OBSERVATION_READER.md`

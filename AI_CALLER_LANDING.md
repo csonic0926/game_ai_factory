@@ -17,7 +17,7 @@ game_ai_factory/
 | --- | --- | --- |
 | Floor/wall iso tiles, props, tile re-skin, validated sprites | **asset** | `asset/docs/AI_CALLER_LANDING.md` → `python3 asset/itf.py ...` |
 | World/characters/cast/chapters, staged story text | **story** | skill `game-story-factory` (installed) → `story/skills/game-story-factory/SKILL.md` |
-| Translate story anchors into a continuous playable walkthrough and production-ready beat contracts | **gameplay** | `gameplay/AGENTS.md` → `gameplay/docs/AI_CALLER_LANDING.md` |
+| Author, realize, instrument, observe, and independently verify a gameplay experience against actual runtime evidence | **gameplay** | `gameplay/AGENTS.md` → `gameplay/docs/AI_CALLER_LANDING.md` |
 | A game SFX (generate + trim to drop-in) | **sound** | `sound/docs/AI_CALLER_LANDING.md` → `python3 sound/sfx.py run --spec ...` |
 
 ## Calling conventions (shared)
@@ -27,10 +27,13 @@ game_ai_factory/
   `deliverables/`.
 - **story** is a Claude **skill** (`/game-story-factory <project_id> ...`) backed
   by adapter + step machines; artifacts land in the *game repo's* `<STORY_ROOT>`.
-- **gameplay** is intentionally **document-first** in Phase 0: resolve the
-  game-owned adapter, author one continuous Intended Player trace, segment it
-  by player-state deltas, and run a blinded First-time Player reception check.
-  Artifacts land in the game repo's `<GAMEPLAY_ROOT>`; there is no CLI/skill yet.
+- **gameplay** is quant-first: a Span Quant Sheet fixes span/duration and an
+  implementation-blind playable-content demand before any Beat Sheet, then
+  versioned Experience Beat Sheet authority, continuous player-time
+  realization, observation-bearing production packets, actual runtime
+  evidence, blinded readback, and fresh conformance acceptance. The creative
+  workflow is manual during pilots; `gameplay/reader.py` is a
+  runtime-evidence reader, not a creative CLI/skill or acceptance oracle.
 - CLI factories ship a `mock`/offline path where applicable for credit-free smoke.
 
 ## Cross-factory flows (why the umbrella)

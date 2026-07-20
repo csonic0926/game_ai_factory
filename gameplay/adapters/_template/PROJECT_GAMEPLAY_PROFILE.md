@@ -9,6 +9,7 @@ Replace every `TBD`. This filled file belongs in the game repo at
 - `<STORY_ANCHOR_SOURCE>`: TBD_REPO_RELATIVE_PATH_OR_INTERFACE
 - `<CURRENT_STATE_SOURCE>`: TBD_REPO_RELATIVE_PATH_OR_INTERFACE
 - `<PRIMARY_LOCALE>`: TBD
+- Target game mode/platform assumptions: TBD
 
 `<GAME_REPO>` is the active call's resolved Git root and `<GAMEPLAY_ROOT>` is
 the fixed `<GAME_REPO>/design/gameplay`; neither is stored here. Keep
@@ -19,6 +20,14 @@ Explain how an author selects the exact story-anchor range and current-state
 snapshot without copying a stale summary:
 
 TBD
+
+## Player frames, core fantasy, and sovereignty
+
+- Declared player frames (first-time/returning/expert/etc.): TBD
+- What each frame already knows/can do/wants: TBD
+- Allowed mistakes/navigation drift/risk/attention assumptions: TBD
+- Core player fantasy/desires this gameplay serves: TBD
+- Gameplay sovereignty/player-control red lines: TBD
 
 ## Player verbs
 
@@ -33,6 +42,16 @@ List only implemented or production-approved verbs. Add rows as needed.
 Describe relevant movement, interaction, combat/minigame, inventory,
 progression, failure/retry, and navigation systems. Mark absent systems
 `NOT_AVAILABLE`.
+
+TBD
+
+## Engagement and challenge generators
+
+Describe how this project supports decision, execution/mastery,
+discovery/interpretation, expression/social, and payoff/recovery. For each,
+name meaningful alternatives or skill dimensions, feedback/adjustment,
+evidence/hypothesis changes, world recognition, and failure/retry conventions.
+Mark unsupported modes `NOT_AVAILABLE`.
 
 TBD
 
@@ -84,9 +103,11 @@ capability that cannot be used; do not leave a limit blank.
 | New assets | TBD | TBD | TBD |
 | New sound | TBD | TBD | TBD |
 | Engineering/data work | TBD | TBD | TBD |
+| Player attention/readability | TBD | TBD | TBD |
 
 ## Human review and evidence
 
 - Trace/packet approval owner: TBD
 - Where USER rejections are recorded: TBD_PATH
+- Where USER gameplay rulings/Beat Sheet approvals are recorded: TBD_PATH
 - Human playtest gate and evidence path: TBD

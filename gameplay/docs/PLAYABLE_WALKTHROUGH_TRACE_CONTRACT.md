@@ -1,132 +1,117 @@
-# Playable Walkthrough Trace Contract v0
+# Playable Walkthrough Trace Contract v1
 
-## Purpose
+## Purpose and authority binding
 
-The first gameplay-factory artifact is one continuous **Intended Player**
-rollout through actual player time. It is not a plot summary and not a set of
-independent fillers between story beats. Beat segmentation happens only after
-the trace exists.
+The Playable Walkthrough Trace is one continuous **Intended Player**
+realization of a Gameplay Experience Beat Sheet in actual player time. It is
+not the highest design authority, a plot summary, or independent filler
+between story anchors. Segmentation happens only after the full trace exists.
 
-This contract is project-agnostic. Every verb, system, presentation mode,
-rhythm axis, capacity, and budget named in a real trace must resolve through
-the game-owned adapter.
-
-## Settled decisions carried by v0
-
-- **D1:** walkthrough-first continuous rollout;
-- **D2:** beat candidates emerge from player-state delta detection;
-- **D3:** runtime, world, player-knowledge, and player-affect are distinct
-  delta classes; `player_knowledge_delta` is a formal moment annotation;
-- **D4:** Intended Player authors the canonical trace; a fresh First-time
-  Player receives a blinded observable projection only;
-- **D5:** every required delta has a Delivery and Proof or becomes an
-  `unresolved_delta`;
-- **D6:** project and production facts enter through game-owned adapters;
-- **D7:** v0 remains document-first.
+Before authoring, bind the exact Beat Sheet path, sheet id, version token,
+checksum, authority status, and design-review result. A changed binding makes
+the trace `STALE`. Bind the sheet's exact Quantitative Experience Budget and
+machine-readable selector projection too. Every project verb, system,
+presentation mode, rhythm axis, capacity, and budget resolves through the
+game-owned adapters.
 
 ## Formal object map
 
 For moment index `t`:
 
-- `S`: immutable story anchors and causal constraints for this trace;
-- `R_t`: runtime/system state known to design (flags, objective stage, map,
-  control mode, and other adapter-declared state);
+- `B`: exact Gameplay Experience Beat Sheet version;
+- `S`: story anchors and causal constraints;
+- `R_t`: runtime/system state known to design;
 - `W_t`: narrative world state;
-- `K_t`: player-knowledge ledger—only knowledge already delivered;
-- `G_t`: persistent gameplay grammar state (recent verbs, rhythm position,
-  expectations, budget/cost history, feedback/handoff conventions);
-- `A_g`: project gameplay adapter (capabilities and constraints);
-- `A_p`: production adapter (runtime mappings and validators);
-- `m_t`: one trace moment;
-- `a_t`: the canonical Intended Player action in `m_t`;
-- `d_t`: typed state deltas caused or exposed by the moment.
-
-The conceptual transition is:
+- `K_t`: player-knowledge ledger containing delivered knowledge only;
+- `G_t`: derived gameplay grammar state;
+- `A_g`: Project Gameplay Profile;
+- `A_p`: Production Adapter;
+- `A_o`: Observation Adapter;
+- `m_t`: one trace moment, including Intended Player action `a_t` and typed
+  deltas `d_t`.
 
 ```text
-m_t = rollout(S, R_t, W_t, K_t, G_t, A_g, A_p, declared_budget)
-(R_{t+1}, W_{t+1}, K_{t+1}) = apply(R_t, W_t, K_t, a_t, game_response_t, d_t)
-G_{t+1} = update_grammar_after_approved_moment(G_t, m_t)
+m_t = rollout(B, S, R_t, W_t, K_t, G_t, A_g, A_p, A_o, budget)
+(R_{t+1}, W_{t+1}, K_{t+1}) = apply(R_t, W_t, K_t, a_t, response_t, d_t)
+G_{t+1} = update_after_approved_trace(G_t, m_t)
 ```
 
-The equations define causality, not an implementation requirement. Drafting a
-moment does not itself write runtime state. Persistent grammar state is updated
-only from the human-approved canonical trace, never from verifier guesses.
+These equations define causality, not an implementation. Drafting does not
+mutate runtime state. Grammar state updates only from a human-approved trace.
 
-### Allowed and forbidden causal arrows
+Allowed arrows:
 
-Allowed:
+- `B` constrains experience, curve, red lines, and acceptance kernels;
+- adapters constrain available action, delivery, cost, implementation, and
+  evidence paths;
+- visible state informs player intent/action;
+- action plus response produces typed deltas;
+- delivered evidence advances `K_t`.
 
-- adapters constrain available actions, delivery, cost, and runtime proof;
-- visible game state informs player intent and action;
-- action plus game response produces typed deltas;
-- delivered evidence advances `K_t`;
-- approved trace history updates `G_t`.
+Forbidden arrows:
 
-Forbidden:
+- walkthrough realization rewriting a Beat Sheet beat;
+- design intent or future knowledge entering `visible_and_known`;
+- paper-stage verifier guesses becoming canonical production;
+- paper projection/report becoming runtime observation or acceptance;
+- trace annotation becoming runtime truth without implementation/evidence;
+- one persisted field serving both player observation and hidden design state.
 
-- `design_intent -> visible_and_known` without an actual delivery event;
-- future story anchors or future knowledge -> current player decision;
-- First-time Player guesses -> canonical production trace;
-- trace annotation -> runtime truth without production implementation and
-  validation;
-- one persisted field silently serving as both player observation and hidden
-  design state.
+## Required artifact sections
 
-## Artifact sections
-
-A trace contains:
-
-1. **Header and source ledger** — trace id, scope, source paths/versions,
-   adapter resolution, starting state, declared budget, and open constraints.
-2. **Continuous rollout** — natural prose following the player's actual time
-   across the whole scope.
-3. **Moment annotations** — the minimum schema below, in the same sequence as
-   the prose.
-4. **Delta/Delivery/Proof ledger** — all required deltas, including unresolved
-   ones.
-5. **Continuity audit** — invariants and candidate segmentation signals.
-
-Both prose and structured moments are required. v0 does not decide whether the
-author writes prose-first or structured-first; that is Phase 0 question O4.
+1. **Header/source ledger** — trace id/status; exact Beat Sheet binding; story,
+   state, grammar, and all three adapter versions; budget and constraints.
+2. **Starting state** — separate runtime, world, player knowledge, grammar,
+   allocation/budget, and external production state.
+3. **Continuous rollout** — uninterrupted prose across the entire span.
+4. **Moment annotations** — structured moments in the same order.
+5. **Delta/Delivery/Proof ledger** — every required delta and blocker.
+6. **Beat coverage/continuity audit** — ordered Beat Sheet coverage, curve,
+   red lines, invariants, and segmentation signals.
+7. **Paper-stage blind prefilter** — design-only reception evidence, never
+   runtime acceptance.
+8. **Quantitative allocation audit** — exact start/end, planned first-play
+   time, control/presentation/traversal intervals, and one-to-one kernel refs
+   for every required content count. This is a design allocation, not a
+   substitute for the runtime `measure-budget` gate.
 
 ## Minimum moment schema
 
 ```yaml
-moment_id: stable id, ordered within the trace
-player_intent: what the player currently wants to do
-visible_and_known: >
-  only what is perceptible or already known to the player at this exact time;
-  include visible affordance/control/feedback cues here when they truly exist
-available_actions:
-  - adapter-supported actions actually possible now
-action_taken: the Intended Player's canonical action
-game_response: immediate visible/audible/system response in player time
-knowledge_update: human-readable description of what the player can now infer
-control_owner: adapter-declared owner that distinguishes player and game control
-design_intent: hidden author intent; never copied into the blinded projection
+moment_id: stable id ordered within the trace
+source_experience_beats: exact Beat Sheet beat ids realized here
+player_intent: current player purpose/question
+visible_and_known: only perceptible or previously delivered information
+available_actions: adapter-supported actions possible now
+action_taken: Intended Player canonical action
+game_response: immediate observable response
+knowledge_update: qualified inference now fairly available
+control_owner: adapter-declared owner
+design_intent: hidden author intent, excluded from blind projection
+engagement:
+  primary_mode: decision | execution/mastery | discovery/interpretation | expression/social | payoff/recovery
+  player_work: concrete work
+  agency_or_challenge: mode-specific source
+  commitment: concrete stake or zero-commitment rationale
+  carry_forward: how this result forms the next purpose/question
 state_deltas:
   runtime_delta: []
   world_delta: []
   player_knowledge_delta: []
-  player_affect_delta: [] | NOT_FORMALIZED_IN_V0
+  player_affect_delta: [] | NOT_FORMALIZED
 delivery_and_proof_refs: []
+acceptance_kernel_refs: []
 boundary_signals: []
 ```
 
-`knowledge_update` is the readable landing point. Each non-empty update must
-agree with a formal `player_knowledge_delta` entry containing before, after,
-delivery, and reception-proof reference. A fact cannot enter `K_{t+1}` merely
-because it appears in `design_intent`.
+`knowledge_update` must agree with a formal `player_knowledge_delta` containing
+before, after, delivery, and reception-proof refs. A fact cannot enter `K_t`
+because it appears in design intent. Affect stays qualified; never claim a
+player certainly felt an emotion.
 
-`player_affect_delta` is a distinct slot so it cannot be conflated with player
-knowledge. Its required granularity is unresolved in O2: v0 permits a
-beat-level affect intent, or the explicit value `NOT_FORMALIZED_IN_V0`, but
-does not permit an unqualified claim that a player definitely felt an emotion.
+## Delta -> Delivery -> Proof -> Observation
 
-## Delta → Delivery → Proof
-
-Every required delta entry contains:
+Every required delta contains:
 
 ```yaml
 delta_id: stable id
@@ -137,83 +122,94 @@ delivery: caused_by_player | witnessed_by_player | offstage
 proof:
   kind: runtime_validation | reception_contract
   checks: []
-source_anchor: source reference, or NONE for authored connective state
+observation_refs: acceptance kernel and Observation Adapter paths
+source_anchor: exact source ref, or NONE for connective state
 ```
 
-- Required runtime/world deltas use exact validation declared by the production
-  adapter. A missing exact mapping produces `unresolved_delta`; it does not
-  downgrade silently to design opinion.
-- Knowledge/affect deltas use a **reception contract** proving that the game
-  provided fair, clear, non-interfering conditions—not that a human mind was
-  forced into a state.
-- An `offstage` player-knowledge delta is invalid unless the player later
-  receives observable evidence; until then it may change world state but not
-  `K_t`.
+Runtime/world deltas use Production Adapter assertions. Knowledge/affect use
+reception conditions, not forced-psychology claims. An offstage knowledge
+delta is invalid until the player receives evidence.
 
-Reception checks cover, when applicable:
-
-- required information is actually perceptible;
-- camera frames the relevant object/event;
-- HUD and presentation layers do not interfere;
-- control takeover and return are signaled and ordered;
-- dialogue, objective, state change, and completion feedback appear in the
-  intended order.
-
-If delivery or proof cannot be supplied:
+If a mapping or evidence path is absent:
 
 ```yaml
 unresolved_delta:
   delta_id: stable id
-  reason: concrete capability, budget, pacing, or story constraint
+  reason: concrete capability, budget, pacing, story, or evidence constraint
   required_capability_or_story_revision: concrete requirement
+  blocker: unresolved_delta | BLOCKED_BY_OBSERVABILITY
 ```
 
-Do not quietly drop or rewrite the anchor.
+Do not drop or rewrite the source beat/anchor.
 
-## Blinded verifier projection
+## Paper-stage blind projection
 
-The First-time Player input is the ordered projection:
+The paper prefilter is:
 
 ```text
-B(trace) = [visible_and_known(m_1), visible_and_known(m_2), ...]
+B_paper(trace) = [visible_and_known(m_1), visible_and_known(m_2), ...]
 ```
 
-Each value is revealed one at a time by a facilitator. The projection excludes
-all other fields, including moment ids when they carry semantic hints, story
-anchors, future observations, `available_actions`, canonical `action_taken`,
-`game_response`, deltas, proofs, boundary signals, and `design_intent`.
+A facilitator reveals one payload at a time. It excludes semantic moment ids,
+anchors, future observations, available-action enumeration, canonical action,
+response, deltas, proofs, kernels, boundary signals, and design intent. The
+fresh reader records a response before the next reveal.
 
-If the verifier's intended action meaningfully diverges, record the reception
-finding before revealing canonical future material. The verifier report is QA
-evidence only; production compiles exclusively from the approved Intended
-Player trace.
+This can diagnose whether the design document offers sufficient cues. It
+cannot prove the build presents them. Runtime blind input must later come only
+from actual evidence through the observation reader.
 
-## Invariants and review
+## Fresh realization review gate
 
-- **Continuity:** each moment begins from the prior moment's resulting state;
-  no teleporting intent, knowledge, control, or world state.
-- **No lookahead:** intent/action uses only current `visible_and_known` plus
-  prior `K_t`.
-- **Action legality:** canonical `action_taken` is in `available_actions` and
-  supported by `A_g`.
-- **Control legality:** actions and response respect `control_owner`; takeover
-  and return are explicit.
-- **Knowledge causality:** every knowledge update cites observable delivery in
-  this or a prior moment.
-- **State ownership:** runtime/world/knowledge/grammar state remain separately
-  identifiable; no field mutates two layers implicitly.
-- **Budget/capacity:** declared costs stay inside adapter limits or emit an
-  unresolved delta.
-- **Blinding:** the stored verifier input can be derived from
-  `visible_and_known` alone.
-- **Canonical-source rule:** packets cite trace slices; verifier behavior never
-  becomes production source.
+A fresh reviewer returns `PASS_REALIZATION_REVIEW` or
+`FAIL_REALIZATION_REVIEW`, makes no source edits, and checks:
 
-## Open questions preserved
+- exact Beat Sheet binding and complete ordered beat/kernel coverage;
+- continuous state/control/time with no lookahead;
+- mode-specific work, agency/challenge/payoff, commitment, and failure paths;
+- build/hold/release/recovery/rest curve and red lines;
+- observable response and causal carry-forward rather than unrelated tasks;
+- action/control legality and adapter budget/capacity;
+- every kernel has an Observation Adapter path or blocks before packets;
+- the exact-span quantitative allocation meets every sheet threshold and does
+  not count teleporter input, dialogue advance, raw inputs, straight
+  locomotion, objective arrival, or passive state changes as gameplay;
+- decision allocations identify controlled/equivalent evidence for two
+  contemporaneously reachable alternatives with distinct response and
+  carry-forward consequences;
+- the paper projection contains only `visible_and_known`.
 
-- O1: human-derived “feels like playing” reject rubric;
-- O2: player-affect formalization beyond the distinct v0 slot;
-- O3: First-time Player drift neighborhood;
-- O4: prose-first versus structured-first authoring order;
-- O5: edge cases at the story-staging/gameplay-presentation boundary (the v0
-  ownership rule is in `PROJECT_ADAPTER_CONTRACT.md`).
+On failure, identify the first transformation that lost meaning and route to
+Beat Sheet design or walkthrough realization. The reviewer never fixes and
+passes its own work.
+
+## Invariants
+
+- **Continuity:** each moment begins from the prior resulting state.
+- **No lookahead:** intent/action uses only current observation plus prior
+  delivered knowledge.
+- **Action/control legality:** action is possible and respects current owner.
+- **Knowledge causality:** each update cites observable delivery.
+- **State ownership:** runtime, world, knowledge, grammar, decision/budget,
+  and external execution state remain distinct.
+- **Authority fidelity:** trace never silently alters Beat Sheet work,
+  response, curve, carry-forward, or red lines.
+- **Engagement completeness:** the primary mode has real work and challenge or
+  a valid upstream payoff; compliance-only moments are not gameplay beats.
+- **Budget/capacity:** limits hold or an unresolved delta is explicit.
+- **Blinding:** paper input derives from `visible_and_known` alone.
+- **Kernel observability:** every required runtime chain resolves through
+  `A_o`, or production is blocked.
+- **Quantitative sufficiency:** an input/control/movement-bearing interval is
+  not a gameplay beat without a complete engagement chain, and an under-budget
+  span cannot be called a gameplay segment or proceed to packet compilation.
+- **Canonical source:** packets cite approved trace slices; verifier behavior
+  never becomes production source.
+
+## Open pilot questions
+
+- human-derived “feels like playing” reject rubric;
+- affect formalization beyond a distinct qualified slot;
+- acceptable paper/runtime reader drift neighborhoods;
+- prose-first versus structured-first authoring order;
+- ambiguous story-staging/gameplay-presentation boundary cases.

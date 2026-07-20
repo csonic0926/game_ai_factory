@@ -1,172 +1,245 @@
 # AI caller landing — gameplay_factory
 
-Use this factory when the missing question is not “what happens next?” but
-“how does the player personally experience it?”
+Use this factory to author a concrete gameplay experience, realize it in
+continuous player time, make production observable, and compare actual runtime
+experience with the locked design authority.
 
-Phase 0 is a manual document workflow. Do not create a CLI, step machine, or
-skill until real project traces have tested the contracts across at least two
-or three beats.
+The creative workflow is manual during the pilot phase. `../reader.py` is a
+runtime evidence tool, not a creative step machine or acceptance oracle.
 
-The manual invocation must identify the operation and either name the game
-repo or be launched from it:
+## Invocation
+
+Identify the operation and target game repo:
 
 ```text
 factory: <FACTORY_REPO>/gameplay
-operation: onboard | author_trace | segment_trace | reception_review
+operation: onboard | quantify_span | author_experience | realize_walkthrough |
+           compile_packets | landing_review | observe_runtime |
+           runtime_acceptance
 game_repo: <explicit path, or CURRENT_GIT_ROOT>
-project_id: <required only for registry.local.md lookup>
+project_id: <only for optional registry.local.md lookup>
+span/sheet/run: <operation-specific id>
 ```
 
-## Resolve the target game repo
+## Resolve ownership before reading/writing
 
-Resolve `<GAME_REPO>` before reading inputs or creating outputs:
+Resolve `<GAME_REPO>` from explicit path -> current Git root -> ignored local
+registry for an explicit project id. Set `<GAMEPLAY_ROOT>` to
+`<GAME_REPO>/design/gameplay`. Reject a root inside this factory, any output
+outside the game repo, sibling scanning, inferred projects, and committed
+absolute developer paths.
 
-1. use the explicit game-repo path in the invocation, when supplied;
-2. otherwise use the current working directory's Git root;
-3. only for an explicit `project_id`, optionally consult the ignored
-   `../adapters/registry.local.md` machine-local phonebook.
+Read `PROJECT_GAMEPLAY_PROFILE.md`, `PRODUCTION_ADAPTER.md`, and
+`OBSERVATION_ADAPTER.md` at `<GAMEPLAY_ROOT>/adapter/`. An ordinary production
+call never creates missing answers. Missing/blank/inconsistent answers mean
+`BLOCKED_BY_ADAPTER`.
 
-Then set `<GAMEPLAY_ROOT>` to the fixed game-owned location
-`<GAME_REPO>/design/gameplay`. Reject the call if that resolution falls inside
-the factory repo. Never scan sibling directories or rely on a committed
-absolute developer path.
+## Explicit onboarding only
 
-## Onboard a game repo
-
-For an explicit onboarding request, create only these game-owned paths:
+Create only missing paths/files; never overwrite:
 
 ```text
-<GAME_REPO>/design/gameplay/adapter/
-<GAME_REPO>/design/gameplay/state/
+<GAMEPLAY_ROOT>/adapter/PROJECT_GAMEPLAY_PROFILE.md
+<GAMEPLAY_ROOT>/adapter/PRODUCTION_ADAPTER.md
+<GAMEPLAY_ROOT>/adapter/OBSERVATION_ADAPTER.md
+<GAMEPLAY_ROOT>/state/GAMEPLAY_GRAMMAR_STATE.md
+<GAMEPLAY_ROOT>/state/EXPERIENCE_LESSONS.md
 ```
 
-Seed the two adapter answer sheets from `../adapters/_template/` and the blank
-grammar state from `../templates/GAMEPLAY_GRAMMAR_STATE.md`. Never overwrite
-an existing answer or state file. Fill and version them in the game repo.
-Create `traces/`, `beat_packets/`, and `qa/` only when their first real
-artifact is produced. No onboarding output may land under this factory.
+Seed from `../adapters/_template/` and `../templates/`. Create other artifact
+directories only when their first real game-owned artifact is produced.
 
 ## Preconditions
 
-Resolve and read the project adapter per
-[`PROJECT_ADAPTER_CONTRACT.md`](PROJECT_ADAPTER_CONTRACT.md). Continue only
-when all of these are available:
+- exact story anchors and causal constraints;
+- exact current runtime/world/player-knowledge state;
+- three complete adapter answers;
+- current grammar/experience derived state;
+- a recognizable start/end gameplay span;
+- an approved Span Quant Sheet (span boundaries, duration ruling,
+  implementation-blind playable-content inventory, derived floors) before any
+  Beat Sheet authoring;
+- a sheet-level exact-span Quantitative Experience Budget restating the
+  approved quant floors, with its game-owned machine-readable selector
+  projection;
+- an Observation Adapter evidence path for any acceptance claim.
 
-- story anchors expressed as required state deltas plus causal constraints;
-- current runtime/world/player-knowledge state;
-- a filled `PROJECT_GAMEPLAY_PROFILE.md`;
-- a filled `PRODUCTION_ADAPTER.md`;
-- current `GAMEPLAY_GRAMMAR_STATE.md`, or a newly initialized blank state for
-  the project's first trace.
+Do not infer verbs, budgets, engine hooks, events, camera/HUD behavior, or
+capture capability from code and silently convert inference into authority.
 
-If no adapter resolves, or an answer is missing, report
-`BLOCKED_BY_ADAPTER`. Do not infer verbs, camera behavior, HUD behavior,
-budget, or runtime schemas from a story document. Initialization is allowed
-only when onboarding was explicitly requested; an ordinary production call
-must not silently replace or regenerate an incomplete adapter.
+## Manual production loop
 
-## Manual Phase 0 workflow
+### 1. Quantify the span — demand before supply
 
-### 1. Establish the input ledger
+Use `../modules/span-quant/` and `../templates/SPAN_QUANT_SHEET.md`. In
+order: fix the span's recognizable start/end situations and observable
+boundary requirements (step 0); rule the first-play target/min/max duration
+(step 1); then, implementation-blind, inventory what there is to play for
+that long from player expectation for the genre/situation/duration (step 2),
+and derive the budget floors arithmetically from the inventory.
 
-Record the exact story-anchor source, current-state source, adapter path, and
-grammar-state version in the trace header. Separate:
+Do not read game code or count existing content to decide sufficiency —
+supply defining demand is the dead loop that passes six-click spans. Save to
+`<GAMEPLAY_ROOT>/span_quants/<span_id>.md`.
 
-- observable/player state;
-- derived design state and player-knowledge ledger;
-- decision/allocation state such as budget and selected delivery mechanisms;
-- external production/runtime state.
+Run a fresh file-only quant review using `../templates/QUANT_REVIEW.md`. The
+reviewer challenges every unit's qualification and per-unit time claim,
+verifies the inventory fills the duration without inflation or padding, edits
+nothing, and writes `PASS_QUANT_REVIEW`/`FAIL_QUANT_REVIEW` under `qa/`. Only
+`PASS_QUANT_REVIEW` may proceed to Beat Sheet authoring.
 
-A draft trace does not mutate story canon or runtime state.
-Repo-relative adapter paths are resolved against the already validated
-`<GAME_REPO>` Git root.
+### 2. Author the Gameplay Experience Beat Sheet to satisfy the quant
 
-### 2. Roll out the Intended Player continuously
+Use `GAMEPLAY_EXPERIENCE_BEAT_SHEET_CONTRACT.md`,
+`../modules/experience-beat-sheet/`, and the blank template. The sheet is the
+highest semantic authority and contains concrete situations, player purpose,
+mode-complete work/agency/challenge/payoff, commitment, observable response,
+intended change, carry-forward, failure/recovery, curve/red lines, and an
+acceptance kernel per beat. The sheet binds the approved Span Quant Sheet
+path/version/checksum, and its Quantitative Experience Budget restates the
+approved quant floors — exact observable runtime start/end boundaries,
+first-play target/min/max duration (optional replay target), minimum control
+ratio, maximum presentation/traversal-only gaps, and minimum/maximum
+content/narrative counts and narrative time. The sheet may tighten a floor
+but never loosen one without a new quant version.
 
-Use the blank
-[`PLAYABLE_WALKTHROUGH_TRACE.md`](../templates/PLAYABLE_WALKTHROUGH_TRACE.md)
-and the
-[`trace contract`](PLAYABLE_WALKTHROUGH_TRACE_CONTRACT.md). Write through the
-whole requested span in player time before deciding beat packets. Preserve
-control handoffs, immediate feedback, recent verbs, pacing, what the player
-knows, and what they are waiting to learn.
+Save to `<GAMEPLAY_ROOT>/experience_beat_sheets/<sheet_id>.md`. USER rulings
+and AI assumptions remain separate. Auto/headless work is
+`AI_DRAFT_FOR_REVIEW`, never USER-approved by implication.
+Save its exact-bound machine-readable projection beside it using
+`../templates/QUANTITATIVE_EXPERIENCE_BUDGET.json` and
+`../schemas/experience_budget.schema.json`. Do not put a run id or session id
+in this authority artifact; runtime ownership is supplied to the measurement
+invocation.
 
-The trace is the canonical production source after approval.
+Run a fresh file-only design review. The reviewer audits supply against the
+quant floors — every content-count floor names its supplying beats and the
+summed engaged time fills the duration minimum — edits nothing, and writes
+`PASS_DESIGN_REVIEW`/`FAIL_DESIGN_REVIEW` under `qa/`.
 
-### 3. Annotate deltas, delivery, and proof
+### 3. Preflight adapters and observability
 
-For every runtime, world, player-knowledge, or proposed player-affect delta:
+Bind the exact sheet version/checksum and read current state/three adapters.
+For every acceptance kernel, identify cue, attempt, response, carry-forward,
+captures, timing, and required live/recorded/branch/static evidence modes. If
+any required chain is missing, stop `BLOCKED_BY_OBSERVABILITY` before
+production.
 
-1. state the before/after change;
-2. choose `caused_by_player`, `witnessed_by_player`, or `offstage` delivery;
-3. attach exact runtime validation or a reception contract;
-4. emit `unresolved_delta` when the adapter or budget cannot support it.
+### 4. Realize one continuous Intended Player walkthrough
 
-The artifact must contain both continuous player-time prose and structured
-moments. Whether authors draft prose first or structure first remains an open
-Phase 0 question; do not hard-code an authoring order.
+Use `PLAYABLE_WALKTHROUGH_TRACE_CONTRACT.md` and its template. Roll out the
+whole span in player time before segmenting. Keep observables, hidden design,
+runtime/world/knowledge/grammar/allocation/external state distinct. Preserve
+the Beat Sheet's engagement completeness, curve, red lines, and causal
+carry-forward.
 
-### 4. Segment the finished trace
+Run a fresh realization review. Then optionally run the paper-stage blind
+prefilter by revealing only one design-authored `visible_and_known` value at a
+time. Its PASS is `PASS_PAPER_PREFILTER`, not runtime evidence.
 
-Apply the boundary signals in
-[`PLAYABLE_BEAT_PACKET_CONTRACT.md`](PLAYABLE_BEAT_PACKET_CONTRACT.md): player
-intent, core verb, control mode, player understanding, expectation payoff, and
-handoff to a new situation. Compile trace slices into beat packets; never
-invent missing gameplay during packet compilation.
+### 4.5 Run the quantitative sufficiency gate before packet compilation
 
-### 5. Run a blinded First-time Player session
+Use the exact first-play observed timeline plus any required controlled branch
+timelines, the acceptance kernels, and the sheet-bound budget:
 
-Use a fresh model/session. A facilitator reveals the trace's
-`visible_and_known` values one moment at a time and nothing else. Do not send
-the story anchors, canonical action, enumerated available actions, response,
-deltas, design intent, packet, or future moments.
-
-At each reveal, ask the verifier to record:
-
-- what it believes the immediate objective is;
-- what action it would try next and why;
-- what it may have missed or misread;
-- whether it believes it has control;
-- what feedback it expects.
-
-Compare that report with the canonical trace outside the verifier session.
-The first meaningful divergence is a reception finding; do not feed the
-canonical answer back and call the continuation independent. Revise the
-canonical trace, regenerate the blind projection, and rerun with another
-fresh session. The allowed drift neighborhood is intentionally not fixed in
-v0 and must be calibrated by the pilot.
-
-### 6. Human review and production handoff
-
-Record USER rejections as evidence for the future “feels like playing” rubric;
-do not manufacture that rubric from factory opinion. Human approval remains
-the Phase 0 gate. Only approved Intended Player trace slices compile into
-production-facing beat packets.
-
-Production uses each packet's runtime contract plus the resolved
-`PRODUCTION_ADAPTER.md`. Asset and sound orders may then route to the sibling
-factories. Reception-contract checks supplement, but never replace, a human
-playtest of the runtime result.
-
-## Canonical game-repo outputs
-
-Under the resolved `<GAMEPLAY_ROOT>`:
-
-```text
-adapter/
-  PROJECT_GAMEPLAY_PROFILE.md
-  PRODUCTION_ADAPTER.md
-state/
-  GAMEPLAY_GRAMMAR_STATE.md
-traces/<trace_id>/
-  PLAYABLE_WALKTHROUGH_TRACE.md
-  FIRST_TIME_PLAYER_INPUT.md
-  FIRST_TIME_PLAYER_REPORT.md
-beat_packets/<packet_id>.md
-qa/<trace_id>_RECEPTION_REVIEW.md
+```bash
+python3 gameplay/reader.py measure-budget \
+  --game-repo <GAME_REPO> \
+  --run-id <FIRST_PLAY_RUN_ID> \
+  --session-id <FIRST_PLAY_SESSION_ID> \
+  --timeline <FIRST_PLAY_OBSERVED_GAMEPLAY_TRACE.json> \
+  --timeline <CONTROLLED_BRANCH_TRACE_IF_REQUIRED.json> \
+  --kernels <ACCEPTANCE_KERNELS.json> \
+  --budget <QUANTITATIVE_EXPERIENCE_BUDGET.json> \
+  --out <EXPERIENCE_BUDGET_RESULT.json>
 ```
 
-`FIRST_TIME_PLAYER_INPUT.md` is a mechanically/manual-derived sequential
-projection containing only `visible_and_known` values. It is stored for audit,
-but should be revealed progressively rather than handed to the verifier as a
-complete future timeline.
+Only `PASS_EXPERIENCE_BUDGET` may proceed to packet compilation. A result of
+`FAIL_EXPERIENCE_BUDGET`, `NO_GAMEPLAY`, or `INCONCLUSIVE_EVIDENCE` blocks the
+span. Pressing a teleporter, advancing dialogue, raw input counts, straight
+locomotion, reaching an objective trigger, passive state change, control
+return, movement, and arrival do not independently count as gameplay. Never
+call a blocked/under-budget span a gameplay segment. One evidence chain may
+fill at most one decision/combat/world-interaction quota, and presentation
+overlap is removed from effective player-control time.
+
+### 5. Compile production packets and observation plans
+
+Segment only the approved full trace with its exact-span
+`PASS_EXPERIENCE_BUDGET` result. Each packet contains experience,
+player-action, runtime, and observation contracts; it binds the exact Beat
+Sheet/trace/kernel versions. Instrumentation is part of the same job as
+gameplay implementation. Fresh packet review returns PASS/FAIL without edits.
+
+### 6. Production landing and fresh landing review
+
+The caller implements game code/data plus instrumentation through the
+Production/Observation Adapters. Story/asset/sound orders retain
+sheet/beat/packet provenance. A fresh landing reviewer checks both runtime and
+instrumentation mappings, not only happy-path deltas. Missing logging/capture
+hooks prevents production-complete status.
+
+### 7. Run the actual build and read evidence
+
+Produce game-owned raw logs/captures with build, content, save/checkpoint,
+seed, locale, input/platform/viewport, session, and evidence-mode provenance.
+Use `OBSERVATION_READER.md` to validate, normalize, reconstruct, and build the
+runtime blind input. Missing refs, bad order, mixed provenance, or forbidden
+interpretation fields produce `INCONCLUSIVE_EVIDENCE`.
+
+Run at least the modes required by the kernels. One recorded golden path
+cannot prove alternatives or failure adjustment.
+
+Re-run `measure-budget` against the production build's fresh exact-span
+evidence. Only its `PASS_EXPERIENCE_BUDGET` result can enter runtime
+acceptance; a pre-packet result never substitutes for fresh production
+evidence.
+
+### 8. Fresh blinded runtime reading
+
+A fresh player/reader sees only actual sequential observations, one reveal at
+a time. It records purpose, attempted action, alternatives, expected response,
+confidence, misread, and model update. It sees no design/implementation/future
+material. Save the separate report; never write interpretation into raw or
+derived timeline state.
+
+### 9. Fresh runtime acceptance
+
+Only now may a fresh acceptance reviewer read both locked authority and
+observation chains. It compares each kernel, allowed drift, curve/control/
+presentation order, the fresh `PASS_EXPERIENCE_BUDGET` result, and red lines;
+points to actual evidence; identifies the
+first lost transformation; edits nothing; and emits exactly one factory
+verdict:
+
+```text
+PASS_FACTORY_CONFORMANCE
+FAIL_IMPLEMENTATION_FIDELITY
+FAIL_RECEPTION
+FAIL_DESIGN
+BLOCKED_BY_ADAPTER
+BLOCKED_BY_OBSERVABILITY
+INCONCLUSIVE_EVIDENCE
+```
+
+A pass separately records `PENDING_HUMAN_PLAYTEST` unless humans have actually
+accepted it. Factory conformance does not claim fun or universal emotion.
+
+## Canonical game-owned outputs
+
+See `PROJECT_ADAPTER_CONTRACT.md` for the complete layout. The three lineages
+must remain separate and traceable:
+
+```text
+Authority: Span Quant Sheet -> Beat Sheet -> walkthrough -> packets/observation plans
+Observation: actual build -> raw/captures -> canonical timeline -> blind report
+Acceptance: locked authority + observed evidence -> verdict + failure route
+```
+
+## Pilot/automation boundary
+
+Do not hard-code a creative step machine or claim factory completion from
+contracts/tests alone. A real project span must close the full loop, a
+deliberate implementation/reception mismatch must be rejected, and a second
+different gameplay shape must prove portability before creative automation is
+stabilized.

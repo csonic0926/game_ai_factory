@@ -1,0 +1,226 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://game-ai-factory.local/gameplay/experience_budget.schema.json",
+  "title": "Quantitative Experience Budget and measurement selectors v1",
+  "$defs": {
+    "match": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "event_kind": {
+          "enum": [
+            "player_input",
+            "gameplay_action",
+            "control",
+            "cue",
+            "presentation",
+            "world_response",
+            "state_change",
+            "capture",
+            "performance"
+          ]
+        },
+        "event_id": { "type": "string", "minLength": 1 },
+        "correlation_id": { "type": "string", "minLength": 1 },
+        "observable": { "type": "object", "minProperties": 1 }
+      },
+      "minProperties": 1
+    },
+    "sheet_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sheet_id", "version_token", "checksum"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sheet_id": { "type": "string", "minLength": 1 },
+        "version_token": { "type": "string", "minLength": 1 },
+        "checksum": { "type": "string", "minLength": 1 }
+      }
+    },
+    "boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["boundary_id", "match"],
+      "properties": {
+        "boundary_id": { "type": "string", "minLength": 1 },
+        "match": { "$ref": "#/$defs/match" }
+      }
+    },
+    "number_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum", "maximum"],
+      "properties": {
+        "minimum": { "type": "number", "minimum": 0 },
+        "maximum": { "type": "number", "minimum": 0 }
+      }
+    },
+    "count_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum", "maximum"],
+      "properties": {
+        "minimum": { "type": "integer", "minimum": 0 },
+        "maximum": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "interval_selector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["interval_id", "start_match", "end_match"],
+      "properties": {
+        "interval_id": { "type": "string", "minLength": 1 },
+        "start_match": { "$ref": "#/$defs/match" },
+        "end_match": { "$ref": "#/$defs/match" }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "budget_id",
+    "sheet_binding",
+    "exact_span",
+    "thresholds",
+    "interval_selectors",
+    "gameplay_measurements",
+    "non_gameplay_activity_selectors"
+  ],
+  "properties": {
+    "schema_version": { "const": "gameplay.experience_budget.v1" },
+    "budget_id": { "type": "string", "minLength": 1 },
+    "sheet_binding": { "$ref": "#/$defs/sheet_binding" },
+    "exact_span": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start_boundary",
+        "end_boundary"
+      ],
+      "properties": {
+        "start_boundary": { "$ref": "#/$defs/boundary" },
+        "end_boundary": { "$ref": "#/$defs/boundary" }
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "first_play_duration_ms",
+        "minimum_player_control_ratio",
+        "maximum_presentation_only_gap_ms",
+        "maximum_traversal_only_gap_ms",
+        "content_counts",
+        "narrative_presentation_time_ms"
+      ],
+      "properties": {
+        "first_play_duration_ms": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["target", "minimum", "maximum"],
+          "properties": {
+            "target": { "type": "number", "minimum": 0 },
+            "minimum": { "type": "number", "minimum": 0 },
+            "maximum": { "type": "number", "minimum": 0 }
+          }
+        },
+        "replay_target_duration_ms": { "type": "number", "minimum": 0 },
+        "minimum_player_control_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+        "maximum_presentation_only_gap_ms": { "type": "number", "minimum": 0 },
+        "maximum_traversal_only_gap_ms": { "type": "number", "minimum": 0 },
+        "content_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "complete_gameplay_beats",
+            "meaningful_decisions",
+            "combat_encounters",
+            "world_interactions",
+            "narrative_presentations"
+          ],
+          "properties": {
+            "complete_gameplay_beats": { "$ref": "#/$defs/count_range" },
+            "meaningful_decisions": { "$ref": "#/$defs/count_range" },
+            "combat_encounters": { "$ref": "#/$defs/count_range" },
+            "world_interactions": { "$ref": "#/$defs/count_range" },
+            "narrative_presentations": { "$ref": "#/$defs/count_range" }
+          }
+        },
+        "narrative_presentation_time_ms": { "$ref": "#/$defs/number_range" }
+      }
+    },
+    "interval_selectors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["player_control", "presentation", "traversal"],
+      "properties": {
+        "player_control": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/interval_selector" }
+        },
+        "presentation": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/interval_selector" }
+        },
+        "traversal": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/interval_selector" }
+        }
+      }
+    },
+    "gameplay_measurements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["measurement_id", "kernel_id", "categories"],
+        "properties": {
+          "measurement_id": { "type": "string", "minLength": 1 },
+          "kernel_id": { "type": "string", "minLength": 1 },
+          "categories": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "complete_gameplay_beat",
+                "meaningful_decision",
+                "combat_encounter",
+                "world_interaction"
+              ]
+            },
+            "contains": { "const": "complete_gameplay_beat" }
+          }
+        }
+      }
+    },
+    "non_gameplay_activity_selectors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["activity_id", "activity_type", "match"],
+        "properties": {
+          "activity_id": { "type": "string", "minLength": 1 },
+          "activity_type": {
+            "enum": [
+              "teleporter_activation",
+              "dialogue_advance",
+              "raw_input",
+              "straight_locomotion",
+              "objective_arrival",
+              "passive_state_change",
+              "presentation",
+              "control_transition",
+              "control_return"
+            ]
+          },
+          "match": { "$ref": "#/$defs/match" }
+        }
+      }
+    }
+  }
+}

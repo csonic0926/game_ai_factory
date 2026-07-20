@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://game-ai-factory.local/gameplay/raw_event.schema.json",
+  "title": "Gameplay raw event envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "session_id",
+    "sequence",
+    "monotonic_ms",
+    "event_type",
+    "context",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": { "const": "gameplay.raw_event.v1" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "session_id": { "type": "string", "minLength": 1 },
+    "source_event_id": { "type": "string", "minLength": 1 },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "monotonic_ms": { "type": "number", "minimum": 0 },
+    "frame": { "type": ["integer", "null"], "minimum": 0 },
+    "event_type": { "type": "string", "minLength": 1 },
+    "context": {
+      "type": "object",
+      "properties": {
+        "scene_id": { "type": ["string", "null"] },
+        "map_id": { "type": ["string", "null"] },
+        "encounter_id": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "payload": { "type": "object" },
+    "correlation_id": {
+      "anyOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "null" }
+      ]
+    },
+    "correlation_role": { "enum": ["cue", "action", "response", null] },
+    "capture_refs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["correlation_id"],
+        "properties": { "correlation_id": { "type": "string" } }
+      },
+      "then": {
+        "required": ["correlation_role"],
+        "properties": { "correlation_role": { "enum": ["cue", "action", "response"] } }
+      }
+    },
+    {
+      "if": {
+        "required": ["correlation_role"],
+        "properties": { "correlation_role": { "enum": ["cue", "action", "response"] } }
+      },
+      "then": {
+        "required": ["correlation_id"],
+        "properties": { "correlation_id": { "type": "string", "minLength": 1 } }
+      }
+    }
+  ]
+}

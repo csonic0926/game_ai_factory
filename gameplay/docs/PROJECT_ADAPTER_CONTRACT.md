@@ -1,166 +1,190 @@
-# Gameplay Project Adapter Contract v0
+# Gameplay Project Adapter Contract v1
 
 ## Ownership model
 
-Gameplay Factory core is project-agnostic. The factory owns this contract and
-blank answer sheets. Each game repo owns the filled answers describing that
-game's current capabilities and versions them with the code/data they describe.
+Gameplay Factory core is project-agnostic. The factory owns contracts,
+schemas, reader tools, and blank answer sheets. Each game repo owns filled
+answers and versions them beside the code/data/evidence they describe.
 
-The three layers are:
+There are three independent answer surfaces:
 
-1. **Factory core** — trace/delta/packet contracts, budgets, continuity and
-   blinding invariants. It contains no project verbs or engine facts.
-2. **Project gameplay adapter** — `PROJECT_GAMEPLAY_PROFILE.md`: verbs,
-   systems, presentation modes, control semantics, rhythm axes, feedback and
-   per-beat budget/capacity.
-3. **Production adapter** — `PRODUCTION_ADAPTER.md`: runtime files/schemas,
-   trigger/control/camera/dialogue/objective mappings, asset/sound/code hooks,
-   and validation commands.
+1. **Project Gameplay Profile** — player frames, verbs, systems, spaces,
+   engagement generators, presentation/control, grammar, budgets, and review.
+2. **Production Adapter** — how approved packets land into runtime code/data,
+   other factories, and mechanical validation.
+3. **Observation Adapter** — how instrumentation captures actual play, maps it
+   to canonical evidence, supports reproducible sessions/probes, and blinds
+   the runtime reader.
 
-## Canonical adapter location
+Production tests cannot substitute for observation. The Observation Adapter
+may physically be a mandatory independent section of the Production Adapter,
+but its ownership, completeness, version, and blocker semantics remain
+separate. The factory blank template uses a separate file.
 
-The filled answers live in the game repo:
+## Canonical location
 
 ```text
-<GAMEPLAY_ROOT>/adapter/            # fixed: <GAME_REPO>/design/gameplay/adapter/
-  PROJECT_GAMEPLAY_PROFILE.md       # required
-  PRODUCTION_ADAPTER.md             # required
+<GAME_REPO>/design/gameplay/adapter/
+  PROJECT_GAMEPLAY_PROFILE.md
+  PRODUCTION_ADAPTER.md
+  OBSERVATION_ADAPTER.md
 ```
 
-Factory-owned blank sheets remain in `gameplay/adapters/_template/`.
+Factory blanks remain under `gameplay/adapters/_template/`.
 
-## Runtime roots and portable paths
+## Portable roots and resolution
 
-`<GAME_REPO>` and `<GAMEPLAY_ROOT>` are runtime values, not machine paths
-stored in a filled adapter:
+`<GAME_REPO>` is an active-call absolute Git root. `<GAMEPLAY_ROOT>` is the
+fixed `<GAME_REPO>/design/gameplay`. Neither absolute path is stored in filled
+answers. Versioned paths are relative to the game repo.
 
-1. Resolve `<GAME_REPO>` as an absolute Git root for the active call.
-2. Resolve `<GAMEPLAY_ROOT>` at the fixed portable location
-   `<GAME_REPO>/design/gameplay`.
-3. Reject the resolution if it is inside the factory
-   repo.
+Resolve in this order:
 
-All versioned paths to game-owned files should be relative to `<GAME_REPO>`.
-Absolute paths may exist only in an ignored machine-local registry or in
-ephemeral run state. This lets any clone or fork use the same filled adapter.
+1. explicit game-repo path in the invocation;
+2. current working directory's Git root;
+3. ignored `gameplay/adapters/registry.local.md`, only for an explicit
+   project id.
 
-## Game-repo and adapter resolution order
+Then read all three files at the fixed adapter location. Reject a game root
+inside this factory. Never scan siblings, borrow another factory's registry,
+infer a game from engine code, or commit developer paths.
 
-An AI caller must resolve the target game repo in this exact order:
+A missing file, `TBD`, inconsistent version, missing referenced file, or
+undeclared capability produces `BLOCKED_BY_ADAPTER`. A required acceptance
+kernel that the Observation Adapter cannot support produces
+`BLOCKED_BY_OBSERVABILITY` before packet production.
 
-1. game-repo path explicitly stated in the invocation;
-2. the current working directory's Git root;
-3. `gameplay/adapters/registry.local.md`, only when the invocation supplies an
-   exact `<PROJECT_ID>` and the machine-local file exists.
+## Project Gameplay Profile answers
 
-The caller then resolves the adapter only at `<GAMEPLAY_ROOT>/adapter/` and
-reads both required files before authoring a trace. The optional local
-registry maps project ids to game-repo roots; it is a convenience pointer, not
-authority and never a copy of the answers. Its tracked format is documented in
-`gameplay/adapters/registry.example.md`.
+The profile declares:
 
-There is no factory-local project adapter fallback. Scanning sibling folders,
-inferring a game from another factory's registry, or committing developer
-paths are contract defects.
+- project id and authoritative story/current-state sources;
+- primary locale, game mode/platform assumptions, and target player frames;
+- core fantasy/player desires and gameplay sovereignty/red lines;
+- implemented or production-approved verbs and their preconditions/results;
+- systems, spaces, engagement/decision/challenge generators, and
+  failure/retry conventions;
+- presentation modes, control ownership, camera/HUD/feedback capabilities;
+- gameplay grammar/rhythm/repetition/expectation/handoff conventions;
+- explicit time, complexity, content, asset, sound, engineering, and
+  attention budgets;
+- approval owner, USER-ruling evidence, and human playtest evidence.
 
-If no adapter resolves, or any required section is `TBD`, blank, inconsistent,
-or points to a missing file, stop with `BLOCKED_BY_ADAPTER`. Do not borrow a
-story adapter or inspect engine code and silently turn inference into contract.
+Project-specific verbs, modes, budgets, or commercial/fantasy rulings in
+factory core are defects.
 
-## Required project profile answers
+## Production Adapter answers
 
-`PROJECT_GAMEPLAY_PROFILE.md` defines:
+The production adapter declares:
 
-| Answer | Contract |
-| --- | --- |
-| `<PROJECT_ID>` | Stable exact id; may be used by the optional local registry. |
-| `<STORY_ANCHOR_SOURCE>` | Authoritative story-anchor location/interface; game-owned paths are relative to `<GAME_REPO>`, not copied summaries. |
-| `<CURRENT_STATE_SOURCE>` | Authoritative runtime/world/current-progress source; game-owned paths are relative to `<GAME_REPO>`. |
-| `<PRIMARY_LOCALE>` | Authoring language for prose artifacts. |
-| Player verbs | Exhaustive currently supported verbs relevant to design, with preconditions and result/feedback. |
-| Systems and spaces | Player-facing systems and traversal/interaction constraints. |
-| Presentation modes | Supported free play, dialogue, AVG, cutscene, combat, overlays, etc.; unsupported modes explicit. |
-| Control model | Legal owners, takeover/return cues, input-lock semantics. |
-| Camera/HUD/reception capabilities | What can frame, hide, focus, notify, and confirm. |
-| Gameplay grammar | Project-defined rhythm axes, repetition rules, expectations, completion and handoff conventions. |
-| Budget/capacity | Per-beat limits for time, complexity, content, assets, engineering, and any other project cost. |
-| Human review | Who approves traces/packets and where rejection evidence is recorded. |
+- target runtime files/schemas and id/reference/order grammar;
+- exact mappings for triggers, actions, control, camera, presentation, HUD,
+  objectives, state transitions, feedback, failure/recovery, and handoff;
+- how runtime/world deltas are asserted and validated;
+- asset, sound, story, localization, and code integration surfaces while
+  preserving Beat Sheet/beat/packet provenance;
+- exact integrity, build, launch, headless, screenshot, and playtest commands;
+- instrumentation landing surfaces shared with the Observation Adapter;
+- unsupported capabilities and escalation owner.
 
-Project-specific verbs or budget numbers anywhere in factory core are a
-contract defect.
+Implementation must land gameplay and required instrumentation together.
+Mechanical tests can prove state/reference behavior but not player reception.
 
-## Required production adapter answers
+## Observation Adapter answers
 
-`PRODUCTION_ADAPTER.md` defines:
+The observation adapter declares:
 
-1. target runtime files and authoritative schemas;
-2. id/key grammar and reference rules;
-3. mappings for triggers, control ownership, camera, presentation/dialogue,
-   objectives, state transitions, and completion feedback;
-4. how runtime/world deltas are asserted and validated;
-5. which reception conditions have runtime-observable proxies, without
-   claiming those proxies prove human understanding;
-6. asset, sound, localization, and code integration surfaces;
-7. exact integrity, headless, screenshot, or playtest commands when available;
-8. unsupported capabilities and escalation owner.
+- instrumentation enablement, source log/capture schemas and paths;
+- build/session/save/checkpoint/seed/locale/input/platform/viewport provenance;
+- raw input versus resolved action, control, camera, HUD/modal, presentation,
+  state before/delta/after, feedback/reward, audio/VFX, spatial, timing, and
+  capture mappings;
+- append-only order, monotonic clock, frame/sequence, and correlation rules;
+- reproducible `LIVE_BLIND_RUN`, `RECORDED_RUN`,
+  `CONTROLLED_BRANCH_PROBE`, and `STATIC_RUNTIME_ASSERTION` procedures;
+- machine-readable normalization mapping or equivalent adapter tool;
+- machine-readable exact-span boundary, control, presentation, traversal,
+  non-gameplay activity, and acceptance-kernel measurement selectors used by
+  the Quantitative Experience Budget gate;
+- public observable versus hidden/private provenance fields;
+- blind redaction and capture rules;
+- observability matrix and explicit `NOT_OBSERVABLE` gaps;
+- reader/integrity commands and evidence destinations.
 
-Missing capabilities are stated as `NOT_AVAILABLE`; authors must skip them or
-emit an unresolved delta, never improvise.
+Raw evidence and blind payloads never contain design intent, semantic
+sheet/beat ids, canonical expected action, future data, or mental/evaluative
+claims.
+
+## State partitions
+
+- runtime/world sources remain authoritative execution state;
+- Span Quant Sheets, Beat Sheets, walkthroughs, packets, and plans are
+  authority/decision state;
+- grammar/experience lessons are derived design state;
+- raw evidence is append-only observation state;
+- canonical timelines are derived observable state;
+- blind reports/acceptance are interpretation/QA state.
+
+No persisted object silently serves more than one role.
 
 ## Canonical game-owned layout
 
 ```text
-<GAMEPLAY_ROOT>/
+design/gameplay/
   adapter/
     PROJECT_GAMEPLAY_PROFILE.md
     PRODUCTION_ADAPTER.md
+    OBSERVATION_ADAPTER.md
+  span_quants/<span_id>.md
+  experience_beat_sheets/<sheet_id>.md
+  experience_beat_sheets/<sheet_id>_QUANTITATIVE_EXPERIENCE_BUDGET.json
+  walkthroughs/<trace_id>/
+    PLAYABLE_WALKTHROUGH_TRACE.md
+    PAPER_BLIND_INPUT.md
+    PAPER_BLIND_REPORT.md
+  beat_packets/<packet_id>.md
+  observation_plans/<packet_or_span_id>.md
+  runtime_evidence/<run_id>/
+    RAW_MANIFEST.json
+    <project-native logs and captures>
+    CANONICAL_EVENT_STREAM.json
+    OBSERVED_GAMEPLAY_TRACE.json
+    OBSERVED_GAMEPLAY_TRACE.md
+    RUNTIME_BLIND_INPUT.json
+    RUNTIME_BLIND_REPORT.md
+    INTEGRITY_REPORT.json
+    EXPERIENCE_BUDGET_RESULT.json
+  qa/
+    <span_id>_QUANT_REVIEW.md
+    <span_id>_DESIGN_REVIEW.md
+    <span_id>_REALIZATION_REVIEW.md
+    <span_id>_PACKET_REVIEW.md
+    <span_id>_LANDING_REVIEW.md
+    <span_id>_RUNTIME_ACCEPTANCE.md
   state/
     GAMEPLAY_GRAMMAR_STATE.md
-  traces/<trace_id>/
-    PLAYABLE_WALKTHROUGH_TRACE.md
-    FIRST_TIME_PLAYER_INPUT.md
-    FIRST_TIME_PLAYER_REPORT.md
-  beat_packets/<packet_id>.md
-  qa/<trace_id>_RECEPTION_REVIEW.md
+    EXPERIENCE_LESSONS.md
 ```
 
-The gameplay grammar state is derived/statistical design state, not runtime
-truth. Runtime/world sources stay authoritative for execution state. Player
-knowledge stays its own ledger and advances only through trace-supported
-delivery.
+## Story/gameplay/production boundary
 
-## Story / gameplay / production boundary (v0)
+- Story owns canon, causality, character meaning, approved prose, and story
+  anchors/staging constraints.
+- Gameplay owns the approved experience curve and concrete player work,
+  continuous player time, control/action/reception contracts, observation
+  requirements, readback, and conformance acceptance.
+- Production owns implementation through declared capabilities and returns
+  runtime plus evidence.
+- Asset/sound factories receive provenance-preserving orders; no gameplay core
+  hard-coupling is allowed.
 
-- **Story Factory owns** what happens, canon/causality, character meaning, and
-  approved story text/staging constraints.
-- **Gameplay Factory owns** the continuous player-time experience around those
-  anchors: intent, supported action, control choreography, delivery choice,
-  reception conditions, pacing continuity, and packet contracts.
-- **Production owns** encoding an approved packet through declared engine/data
-  capabilities and returning validation evidence.
+Conflicts never silently override authority. Route the first blocked/lost
+transformation to story, experience design, realization, production,
+presentation/reception, or observation.
 
-`story/core/craft/cutscene-staging.md` remains responsible for converting an
-already approved story staging plan into the target cutscene document. It does
-not decide the surrounding playable walkthrough, when control should be
-returned, whether HUD/objective layers interfere, or how the cutscene hands
-off to the next player action; those are gameplay packet responsibilities.
+## Onboarding
 
-When story staging and a gameplay reception/control requirement conflict,
-neither side silently overrides the other. Record an `unresolved_delta` and
-route the specific capability or story-revision need to its owner. This v0
-boundary preserves O5 as a pilot-review question for ambiguous edge cases
-without leaving current ownership undefined.
-
-## Onboarding and first pilot
-
-Select the game repo explicitly or by running from its Git working tree.
-Create `<GAMEPLAY_ROOT>/adapter/` from the two blank answer sheets and
-`<GAMEPLAY_ROOT>/state/GAMEPLAY_GRAMMAR_STATE.md` from the blank state
-template. Never overwrite an existing file. Fill and version all answers in
-the game repo.
-
-The Phase 0 pilot is the game explicitly named by the caller; it is never
-selected by committed factory state. A developer who needs project-id routing
-from the factory directory may create ignored
-`gameplay/adapters/registry.local.md` using `registry.example.md` as the
-format. Factory documents must not preselect or infer a pilot project.
+Only an explicit onboarding request may create game-owned adapter/state paths.
+Seed the three blank adapter sheets plus the grammar/experience blank states;
+never overwrite existing files. Ordinary production calls fail closed rather
+than generating missing answers. No factory document preselects a pilot game.

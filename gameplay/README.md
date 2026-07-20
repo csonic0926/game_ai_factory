@@ -1,42 +1,68 @@
 # Gameplay Factory
 
-The Gameplay Factory translates required story/world changes into the way a
-player experiences them over continuous play time:
+Gameplay Factory owns a closed production-conformance loop:
 
 ```text
-story anchors + current state + project adapters + gameplay grammar state
-  -> Intended Player continuous walkthrough
-  -> delta-driven beat segmentation + blinded First-time Player check
-  -> playable beat packets for production
+versioned Span Quant Sheet (span -> duration -> playable-content demand)
+  -> versioned Gameplay Experience Beat Sheet (supply satisfies demand)
+  -> continuous player-time walkthrough
+  -> production packets + observation contracts
+  -> caller implementation + instrumentation
+  -> actual runtime logs/captures
+  -> canonical observed timeline + blinded runtime reading
+  -> fresh conformance acceptance or routed failure
 ```
 
-Phase 0 is deliberately **document-first and manual**. The factory currently
-owns contracts, blank answer sheets, and artifact templates—not a CLI, skill,
-or step machine. Filled adapters and all produced traces/packets live in the
-game repo under `<GAMEPLAY_ROOT>`.
+Quantity is decided first: the quant sheet fixes the span, rules the
+duration, and inventories what there is to play — implementation-blind, from
+player expectation, so supply never defines demand. A Beat Sheet may only be
+authored against approved quant floors.
 
-AI callers start at [`docs/AI_CALLER_LANDING.md`](docs/AI_CALLER_LANDING.md).
+Its factory verdict asks whether an implementation preserved an approved
+experience. It does not promise that every player feels the same thing, prove
+that a structure is fun, or replace human playtesting.
+
+## Current implementation status
+
+The factory owns the v1 contracts, blank game-owned answer/artifact templates,
+canonical raw evidence schemas, and dependency-free reference reader. The
+creative workflow remains manual while real project pilots calibrate it; there
+is no gameplay skill or creative step machine yet.
+
+`reader.py` can validate raw evidence, normalize through a project mapping,
+reconstruct player time/latency, build a sequential runtime-blind projection,
+prepare kernel evidence refs, and measure the quant-derived, sheet-bound
+quantitative budget against an invocation-selected runtime run/session. Its objective budget
+status is not a factory/human acceptance verdict. It does not implement game
+instrumentation, play the build, or interpret player psychology.
+
+The full factory request is not complete until real game-owned pilots prove
+the loop, including a deliberate mismatch and a second gameplay shape.
+See [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) for the
+explicit implemented/unproven boundary.
 
 ## Layout
 
 ```text
-AGENTS.md                         caller rules
-docs/AI_CALLER_LANDING.md        manual Phase 0 workflow
-docs/*_CONTRACT.md               trace, packet, and adapter contracts
-adapters/registry.example.md     optional local phonebook format (no projects)
-adapters/registry.local.md       ignored machine-local project routing
-adapters/_template/              blank project + production answer sheets
-templates/                       blank game-owned artifact shapes
+AGENTS.md                         hard caller rules
+docs/AI_CALLER_LANDING.md        manual end-to-end workflow
+docs/*_CONTRACT.md               authority/trace/packet/adapter/evidence contracts
+docs/OBSERVATION_READER.md       reader formats and commands
+modules/span-quant/              manual quant-demand authoring/review module
+modules/experience-beat-sheet/   manual authoring/review module
+adapters/_template/              three blank game-owned adapter answers
+schemas/                         canonical evidence/mapping/kernel JSON schemas
+templates/                       blank game-owned artifacts
+reader.py                        runtime evidence reference tool
+tests/                            factory reader tests only
 ```
 
 ## Ownership boundary
 
-- **Factory repo:** project-agnostic questions, schemas, invariants, and blank
-  templates.
-- **Game repo:** project answers, story-anchor inputs, walkthroughs, packets,
-  reports, grammar state, and production mappings.
+- **Factory repo:** project-agnostic questions, contracts, schemas, tools,
+  invariants, and blank templates.
+- **Game repo:** filled adapters, Beat Sheets, walkthroughs, packets,
+  observation plans, implementation mappings, logs/captures, timelines, blind
+  reports, acceptance reports, grammar state, and experience lessons.
 
-The caller receives the game repo explicitly or resolves it from the current
-Git working tree. Versioned adapter paths are relative to that root. A local
-registry is only a convenience for calls launched from the factory directory;
-it is ignored and is never project authority.
+AI callers start at [`docs/AI_CALLER_LANDING.md`](docs/AI_CALLER_LANDING.md).

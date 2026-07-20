@@ -1,0 +1,223 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://game-ai-factory.local/gameplay/acceptance_kernels.schema.json",
+  "title": "Acceptance-kernel evidence selectors v1",
+  "$defs": {
+    "positive_phase": {
+      "enum": ["cue", "action_or_attempt", "world_response", "carry_forward"]
+    },
+    "match": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "event_kind": {
+          "enum": [
+            "player_input",
+            "gameplay_action",
+            "control",
+            "cue",
+            "presentation",
+            "world_response",
+            "state_change",
+            "capture",
+            "performance"
+          ]
+        },
+        "event_id": { "type": "string", "minLength": 1 },
+        "correlation_id": { "type": "string", "minLength": 1 },
+        "observable": { "type": "object", "minProperties": 1 }
+      },
+      "minProperties": 1
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "sheet_binding", "kernels"],
+  "properties": {
+    "schema_version": { "const": "gameplay.acceptance_kernels.v1" },
+    "sheet_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sheet_id", "version_token", "checksum"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sheet_id": { "type": "string", "minLength": 1 },
+        "version_token": { "type": "string", "minLength": 1 },
+        "checksum": { "type": "string", "minLength": 1 }
+      }
+    },
+    "kernels": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kernel_id", "required_evidence_modes", "selectors"],
+        "properties": {
+          "kernel_id": { "type": "string", "minLength": 1 },
+          "required_evidence_modes": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "LIVE_BLIND_RUN",
+                "RECORDED_RUN",
+                "CONTROLLED_BRANCH_PROBE",
+                "STATIC_RUNTIME_ASSERTION"
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "controlled_probe_group_ids": {
+            "type": "array",
+            "description": "Exact raw-manifest probe_group.group_id values applicable to this kernel. Required only when CONTROLLED_BRANCH_PROBE is a required evidence mode.",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": ".*\\S.*"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "selectors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["phase", "match"],
+              "properties": {
+                "phase": { "enum": ["cue", "action_or_attempt", "world_response", "carry_forward", "negative_check"] },
+                "match": { "$ref": "#/$defs/match" },
+                "window": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["start_phase", "end_phase"],
+                  "properties": {
+                    "start_phase": { "enum": ["cue", "action_or_attempt", "world_response", "carry_forward"] },
+                    "end_phase": { "enum": ["cue", "action_or_attempt", "world_response", "carry_forward"] }
+                  }
+                }
+              },
+              "allOf": [
+                {
+                  "if": { "properties": { "phase": { "const": "negative_check" } }, "required": ["phase"] },
+                  "then": { "required": ["window"] },
+                  "else": { "not": { "required": ["window"] } }
+                }
+              ]
+            },
+            "minItems": 4,
+            "allOf": [
+              {
+                "contains": { "type": "object", "properties": { "phase": { "const": "cue" } }, "required": ["phase"] },
+                "minContains": 1,
+                "maxContains": 1
+              },
+              {
+                "contains": { "type": "object", "properties": { "phase": { "const": "action_or_attempt" } }, "required": ["phase"] },
+                "minContains": 1,
+                "maxContains": 1
+              },
+              {
+                "contains": { "type": "object", "properties": { "phase": { "const": "world_response" } }, "required": ["phase"] },
+                "minContains": 1,
+                "maxContains": 1
+              },
+              {
+                "contains": { "type": "object", "properties": { "phase": { "const": "carry_forward" } }, "required": ["phase"] },
+                "minContains": 1,
+                "maxContains": 1
+              }
+            ]
+          },
+          "ordered_sequences": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["sequence_id", "after_phase", "before_phase", "matches"],
+              "properties": {
+                "sequence_id": { "type": "string", "minLength": 1 },
+                "after_phase": {
+                  "enum": ["cue", "action_or_attempt", "world_response"]
+                },
+                "before_phase": {
+                  "enum": ["action_or_attempt", "world_response", "carry_forward"]
+                },
+                "matches": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["match"],
+                    "properties": {
+                      "match": { "$ref": "#/$defs/match" }
+                    }
+                  }
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": { "after_phase": { "const": "cue" } },
+                    "required": ["after_phase"]
+                  },
+                  "then": {
+                    "properties": {
+                      "before_phase": {
+                        "enum": ["action_or_attempt", "world_response", "carry_forward"]
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": { "after_phase": { "const": "action_or_attempt" } },
+                    "required": ["after_phase"]
+                  },
+                  "then": {
+                    "properties": {
+                      "before_phase": {
+                        "enum": ["world_response", "carry_forward"]
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": { "after_phase": { "const": "world_response" } },
+                    "required": ["after_phase"]
+                  },
+                  "then": {
+                    "properties": {
+                      "before_phase": { "const": "carry_forward" }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "required_evidence_modes": {
+                  "contains": { "const": "CONTROLLED_BRANCH_PROBE" }
+                }
+              },
+              "required": ["required_evidence_modes"]
+            },
+            "then": {
+              "required": ["controlled_probe_group_ids"]
+            },
+            "else": {
+              "not": { "required": ["controlled_probe_group_ids"] }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
