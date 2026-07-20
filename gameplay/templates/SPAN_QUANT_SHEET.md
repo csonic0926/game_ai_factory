@@ -4,6 +4,10 @@ Quantity demand for one gameplay span, authored before any Beat Sheet. The
 Beat Sheet must satisfy this sheet; this sheet never bends to fit an existing
 implementation.
 
+The unit of gameplay is one meaningful choice:
+`information -> guess -> commitment -> consequence -> later-emotion influence`.
+The demand is a cadence of choice arrivals, not a total duration.
+
 ## Identity, authority, and version
 
 - **Quant id:** `<SPAN_ID>`
@@ -36,46 +40,86 @@ Never merge these into USER rulings.
 Exact event selectors are bound later in the Beat Sheet's machine-readable
 budget and preflighted against the Observation Adapter.
 
-## Step 1 — Duration ruling
+## Step 1 — Cadence contract
 
-- **First-play duration (target / minimum / maximum ms):**
-- **Optional replay target duration ms:** `NONE | <NUMBER>`
-- **Ruling source:** USER ruling ref/date, or explicit AI draft assumption
+- **Factory canonical beat:** one new meaningful choice arrives every
+  **3–5 seconds**; maximum arrival gap **5000 ms**.
+- **Project override:** `NONE | <explicit USER-ruling ref in the game repo's
+  PROJECT_GAMEPLAY_PROFILE.md>` — the factory never infers a different beat.
+- **Cadence used by this sheet (target range / max arrival gap ms):**
 
-Duration is a pacing decision from story/arc rhythm, never from how much
-content happens to exist.
+Total span duration is free: a single choice (a search, a held objective) may
+stay open for hours, provided new choices keep arriving on the beat inside
+it. A choice need not resolve within one beat; arrivals hold the tempo,
+resolutions do not.
 
-## Step 2 — Playable-content inventory (implementation-blind)
+- **Course length estimate (production scoping only — target / min / max ms):**
+- **Estimate basis:** expected course of play at the cadence. This is never
+  an experience target; do not shrink or pad content to hit it.
 
-Answer from player expectation for this genre, situation, and duration: what
+## Step 2 — Desire line and playable-content inventory (implementation-blind)
+
+Answer from player expectation for this genre, situation, and cadence: what
 is there to play? Do not read game code or count existing content to decide
 what is enough — supply must never define demand.
 
-| Unit id | Engagement kind | Concrete player work | Engaged time per unit ms (min / typical) | Instances | Subtotal ms (min) | Why this is not a click |
-| --- | --- | --- | ---: | ---: | ---: | --- |
-|  | decision \| combat \| world_interaction \| execution/mastery \| discovery \| expression \| payoff/recovery |  |  |  |  |  |
+- **Desire line (the span's main want):**
 
-Non-gameplay activity (teleporter press, dialogue advance, raw input,
-straight locomotion, objective arrival, passive state change, control return,
-presentation) may not enter this table.
+Every unit takes its emotional sign relative to the desire line: accelerating
+it is positive, obstructing it is negative, deferred value is neutral now and
+pays later.
 
-- **Sum of minimum engaged time ms:**
-- **Duration minimum ms it must fill:**
-- **Engaged-time fill ratio (sum / duration minimum):**
-- **Expected narrative/presentation time ms (total / longest single gap):**
-- **Expected traversal time ms (total / longest single gap):**
+| Unit id | Kind | The choice posed (what the player guesses) | Later emotion influenced + sign vs desire line | Info given → basic guess if all hints missed | Dwell per arrival ms (anticipate + watch) | Arrival rate or instances |
+| --- | --- | --- | --- | --- | ---: | --- |
+|  | generator \| one_shot |  |  |  |  |  |
 
-A sum that only reaches the duration by inflating per-unit time is the exact
-failure this sheet exists to prevent.
+- `generator`: a structure that keeps emitting choices while live (junctions
+  during a search, roaming encounters, drop take/leave calls).
+- `one_shot`: a choice that arises once.
+- A unit with a certain outcome and nothing to guess may not enter the
+  table. Non-gameplay activity (teleporter press, dialogue advance, raw
+  input, straight commute, objective arrival, passive state change, control
+  return, presentation) never qualifies on its own.
+- Micro-arrivals inside an execution phrase (e.g. QTE pulses) hold the beat
+  as arrivals; they are not separate quota units.
+- Walking with a live guess is anticipation dwell inside an open choice.
+  Commute with nothing to guess is dead time and counts against the arrival
+  gap. Never shrink a search to satisfy a gap bound.
 
-## Derived budget floors
+## Cadence sustainability walk
 
-These values become the Beat Sheet's Quantitative Experience Budget. The Beat
-Sheet may tighten them; it may never loosen them without a new quant version.
+Walk the expected course; every stretch must hold the beat.
+
+| Course stretch | Live generators / pending one-shots | Longest expected arrival gap ms | Within max gap? |
+| --- | --- | ---: | --- |
+|  |  |  |  |
+
+- **Longest arrival gap anywhere in the course ms:**
+- **Stretch where it occurs, and why it is acceptable or how it is fixed:**
+
+## Chain rule — consequences carry the next hints
+
+| Choice | Its observable consequence | Next choice it delivers hints for |
+| --- | --- | --- |
+|  |  |  |
+
+A consequence that ends without seeding the next guess breaks the chain;
+name the break and the missing hint material.
+
+## Derived budget floors (legacy projection)
+
+These values project into the Beat Sheet's machine-readable
+`QUANTITATIVE_EXPERIENCE_BUDGET.json` (duration-based schema v1). They are
+derived from the cadence and course estimate; runtime cadence measurement is
+not yet implemented, so the gap caps below act as crude arrival-gap proxies.
+The Beat Sheet may tighten them; it may never loosen them without a new
+quant version.
 
 - **Minimum player-control ratio (0–1):**
-- **Maximum uninterrupted presentation-only gap ms:**
-- **Maximum uninterrupted traversal-only/no-gameplay gap ms:**
+- **Maximum uninterrupted presentation-only gap ms:** (≤ max arrival gap
+  unless an explicit override rules otherwise)
+- **Maximum uninterrupted commute/no-guess traversal gap ms:** (≤ max
+  arrival gap; searching with a live guess is not traversal dead time)
 
 | Required content/time measure | Minimum | Maximum | Supplied by inventory units |
 | --- | ---: | ---: | --- |
@@ -97,14 +141,21 @@ Sheet may tighten them; it may never loosen them without a new quant version.
 
 - [ ] Span start/end are recognizable player situations with observable
       boundary requirements.
-- [ ] The duration ruling has an explicit source.
-- [ ] Every inventory unit is qualified gameplay with concrete player work.
-- [ ] No non-gameplay activity entered the inventory.
-- [ ] Per-unit engaged times are defensible against genre expectation, not
-      inflated to make the sum reach the duration.
-- [ ] Minimum engaged time fills the duration minimum at the declared control
-      ratio, with the remainder explicitly presentation/traversal inside the
-      gap limits.
+- [ ] The cadence is the factory canonical beat, or an explicit USER-ruled
+      override is referenced; no inferred tempo.
+- [ ] Every inventory unit poses a real guess and answers the three
+      qualification questions: which later emotion it influences and how,
+      what information lets the player guess, and whether a basic guess
+      survives when every hint is missed.
+- [ ] No certain-outcome click entered the table.
+- [ ] Emotional signs are computed relative to the declared desire line.
+- [ ] Dwell and arrival-rate claims are defensible against player
+      expectation, not inflated to hold the beat on paper.
+- [ ] The cadence walk covers the whole course and names the longest gap.
+- [ ] Every major consequence delivers the next choice's hints; chain breaks
+      are named.
+- [ ] The course length estimate is scoping only; no content was shrunk or
+      padded to fit it.
 - [ ] Derived floors are arithmetic consequences of the inventory, and every
       content-count floor names its supplying units.
 - [ ] The blindness attestation is truthful.

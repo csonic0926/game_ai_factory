@@ -7,10 +7,11 @@ one gameplay span. It states the player experience production must preserve;
 it does not prescribe engine APIs, scene paths, data rows, or asset names.
 
 Above it sits one quantity authority: the **Span Quant Sheet** fixes the
-span's boundaries, duration ruling, and implementation-blind playable-content
-inventory with derived budget floors before any Beat Sheet is authored. The
-Beat Sheet decides what the experience means; the quant sheet decides how
-much there must be. Supply satisfies demand, never the reverse.
+span's boundaries, cadence contract, and implementation-blind
+playable-content inventory with derived budget floors before any Beat Sheet
+is authored. The Beat Sheet decides what the experience means; the quant
+sheet decides how often meaningful choices must arrive. Supply satisfies
+demand, never the reverse.
 
 The authority chain is:
 
@@ -214,8 +215,10 @@ claim that every player certainly felt or understood it.
 ### 10. Carry-forward
 
 How the response and intended change create the next intent, choice tendency,
-or open question. A new unrelated objective issued by the system does not
-count as carry-forward.
+or open question — and deliver the hint material for the next choice's guess
+(chain rule). A consequence that ends without seeding the next guess breaks
+the chain. A new unrelated objective issued by the system does not count as
+carry-forward.
 
 ### 11. Failure, misread, and recovery
 
@@ -303,9 +306,11 @@ The reviewer checks:
 
 - the sheet binds an approved Span Quant Sheet with `PASS_QUANT_REVIEW`, its
   budget floors equal or tighten the quant floors, every quant content-count
-  floor names its supplying beats, and the supplying beats' summed engaged
-  time fills the duration minimum without inflated per-beat time or padding
-  beats inserted only to reach a floor;
+  floor names its supplying beats, and no padding beats were inserted only to
+  reach a floor;
+- the beat flow holds the quant cadence — no stretch runs past the maximum
+  arrival gap without a live choice arrival — and every beat's world
+  response delivers hint material for the next beat's choice (chain rule);
 - every beat is a concrete player situation;
 - purpose can grow from information available at runtime;
 - the primary mode has real work and complete agency/challenge/payoff;

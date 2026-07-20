@@ -135,7 +135,8 @@ relationship reading, or expectation.
 
 #### 9. Carry-forward
 
-How the response/change creates the next intent, tendency, or open question.
+How the response/change creates the next intent, tendency, or open question,
+and the hint material it delivers for the next choice's guess (chain rule).
 
 #### 10. Failure, misread, and recovery
 
@@ -168,9 +169,12 @@ acceptable_drift: []
 - [ ] Every acceptance kernel has an Observation Adapter evidence path.
 - [ ] The budget binds an approved Span Quant Sheet with `PASS_QUANT_REVIEW`
       and every floor equals or tightens the quant floor.
-- [ ] Every quant content-count floor names its supplying beats, and their
-      summed engaged time fills the duration minimum without inflated
-      per-beat time or padding beats.
+- [ ] Every quant content-count floor names its supplying beats, with no
+      padding beats inserted only to reach a floor.
+- [ ] The beat flow holds the quant cadence: no stretch runs past the
+      maximum arrival gap without a live choice arrival.
+- [ ] Every beat's carry-forward delivers hint material for the next beat's
+      choice; chain breaks are named and resolved.
 - [ ] The exact-span Quantitative Experience Budget contains every mandatory
       threshold/range and matches its machine-readable projection.
 - [ ] Gameplay counts use complete reviewed engagement chains, not event labels,

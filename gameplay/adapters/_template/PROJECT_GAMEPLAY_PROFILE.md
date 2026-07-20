@@ -84,6 +84,10 @@ TBD
 
 ## Gameplay grammar
 
+- Choice-cadence override: `NONE | <USER-ruling ref/date + target range and
+  max arrival gap ms>` — the factory's canonical beat is one new meaningful
+  choice every 3–5 seconds (max arrival gap 5000 ms); only an explicit USER
+  ruling recorded here changes it, and the factory never infers a tempo.
 - Project-defined rhythm axes and legal values: TBD
 - Recent-verb repetition limits/preferences: TBD
 - Player expectation/payoff conventions: TBD

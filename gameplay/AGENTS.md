@@ -21,15 +21,35 @@ experience from design authority through actual runtime evidence.
 ## Hard rules
 
 - **Quantity demand before authoring.** Author and freshly review a Span
-  Quant Sheet — span boundaries, duration ruling, and an
+  Quant Sheet — span boundaries, cadence contract, and an
   implementation-blind playable-content inventory with derived floors —
   before any Beat Sheet. Only `PASS_QUANT_REVIEW` may proceed to authoring.
+- **Cadence is the demand.** The factory's canonical beat is one new
+  meaningful choice arriving every 3–5 seconds (max arrival gap 5000 ms). A
+  project changes tempo only through an explicit USER ruling in its Gameplay
+  Profile; never infer a beat. Total span duration is free — a choice may
+  stay open for hours — provided new choices keep arriving on the beat
+  inside it. Arrivals hold the tempo, resolutions do not.
+- **A meaningful choice is the unit.** One unit = information -> guess ->
+  commitment -> consequence -> later-emotion influence. Every counted unit
+  answers three questions: which later emotion it influences and how; what
+  information lets the player guess; whether a basic guess survives when
+  every hint is missed. No guess, no unit — a certain-outcome click never
+  counts.
+- **Consequences carry the next hints.** Each choice's observable
+  consequence must deliver the hint material for the next choice. A span is
+  threaded by one desire line; sub-events take their emotional sign relative
+  to it.
+- **Walking while guessing is engagement.** Traversal with a live guess (a
+  search) is anticipation dwell inside an open choice; only commute with
+  nothing to guess counts against the arrival gap. Never shrink a search to
+  satisfy a gap bound.
 - **Sufficiency never comes from the implementation.** Reading game code or
   counting existing content to decide what is enough lets supply define
   demand and passes every thin span. The quant author answers from player
-  expectation for the genre/situation/duration and attests implementation
-  blindness; per-unit time claims are challenged at quant review so six
-  clicks are never called five minutes.
+  expectation for the genre/situation/cadence and attests implementation
+  blindness; dwell and arrival-rate claims are challenged at quant review so
+  six clicks are never called five minutes.
 - **Beat Sheet authority.** Create or resolve an exact-version Gameplay
   Experience Beat Sheet against the approved Span Quant Sheet, with its
   mandatory exact-span Quantitative Experience Budget restating the approved

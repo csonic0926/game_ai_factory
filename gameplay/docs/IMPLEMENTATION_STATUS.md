@@ -6,9 +6,17 @@ criteria. Contracts and synthetic tool tests are not a production pilot.
 ## Implemented in factory core
 
 - quant-first demand ordering: Span Quant Sheet template/module (span
-  boundaries -> duration ruling -> implementation-blind playable-content
+  boundaries -> cadence contract -> implementation-blind playable-content
   inventory -> derived floors), fresh quant review gate, and
   Beat-Sheet-satisfies-quant design review checks;
+- choice-cadence demand semantics: the meaningful-choice unit (information
+  -> guess -> commitment -> consequence -> later-emotion influence) with
+  three-question qualification, the factory canonical beat (3–5 s arrivals,
+  5000 ms max gap, explicit-USER-override only), generator/one-shot
+  inventory with a cadence sustainability walk, the chain rule
+  (consequences deliver the next choice's hints), desire-line emotional
+  signs, and the search-vs-commute traversal distinction — enforced at
+  paper gates (quant review + design review);
 - v1 Gameplay Experience Beat Sheet authority/authoring/review contract;
 - exact version/checksum lineage into walkthroughs, packets, observation
   plans, runtime evidence, and acceptance;
@@ -43,6 +51,11 @@ criteria. Contracts and synthetic tool tests are not a production pilot.
   calibration levers (instruction tuning; an optional independent code-view
   subagent producing a supply-side gameplay report) are deferred to the tune
   phase;
+- runtime cadence measurement does not exist: `reader.py` and the budget
+  schema still measure the duration/control/gap ontology, and choice-arrival
+  events are not yet an Observation Adapter concept. The quant cadence is
+  enforced on paper only; the budget JSON's gap caps act as crude
+  arrival-gap proxies until the tune phase defines arrival measurement;
 - the creative step machine/`.5` worker automation remains intentionally
   deferred until pilot formats stabilize.
 

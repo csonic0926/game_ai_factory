@@ -56,7 +56,7 @@ directories only when their first real game-owned artifact is produced.
 - three complete adapter answers;
 - current grammar/experience derived state;
 - a recognizable start/end gameplay span;
-- an approved Span Quant Sheet (span boundaries, duration ruling,
+- an approved Span Quant Sheet (span boundaries, cadence contract,
   implementation-blind playable-content inventory, derived floors) before any
   Beat Sheet authoring;
 - a sheet-level exact-span Quantitative Experience Budget restating the
@@ -73,19 +73,26 @@ capture capability from code and silently convert inference into authority.
 
 Use `../modules/span-quant/` and `../templates/SPAN_QUANT_SHEET.md`. In
 order: fix the span's recognizable start/end situations and observable
-boundary requirements (step 0); rule the first-play target/min/max duration
-(step 1); then, implementation-blind, inventory what there is to play for
-that long from player expectation for the genre/situation/duration (step 2),
-and derive the budget floors arithmetically from the inventory.
+boundary requirements (step 0); adopt the factory canonical cadence — one
+new meaningful choice every 3–5 seconds, max arrival gap 5000 ms — unless
+the game repo's Gameplay Profile records an explicit USER-ruled override
+(step 1); then, implementation-blind, declare the desire line and inventory
+the generators and one-shots that can hold that beat, from player
+expectation for the genre/situation/cadence (step 2). Walk the course for
+cadence sustainability, check the chain rule (each consequence delivers the
+next choice's hints), and derive the legacy budget floors arithmetically.
 
-Do not read game code or count existing content to decide sufficiency —
-supply defining demand is the dead loop that passes six-click spans. Save to
-`<GAMEPLAY_ROOT>/span_quants/<span_id>.md`.
+The unit is a meaningful choice (information -> guess -> commitment ->
+consequence -> later-emotion influence); a certain-outcome click never
+enters the inventory. Do not read game code or count existing content to
+decide sufficiency — supply defining demand is the dead loop that passes
+six-click spans. Save to `<GAMEPLAY_ROOT>/span_quants/<span_id>.md`.
 
 Run a fresh file-only quant review using `../templates/QUANT_REVIEW.md`. The
-reviewer challenges every unit's qualification and per-unit time claim,
-verifies the inventory fills the duration without inflation or padding, edits
-nothing, and writes `PASS_QUANT_REVIEW`/`FAIL_QUANT_REVIEW` under `qa/`. Only
+reviewer challenges every unit's guess, emotion mechanism, missed-hint
+fallback, and dwell/arrival claims, verifies the beat holds across the whole
+course without inflation or padding, edits nothing, and writes
+`PASS_QUANT_REVIEW`/`FAIL_QUANT_REVIEW` under `qa/`. Only
 `PASS_QUANT_REVIEW` may proceed to Beat Sheet authoring.
 
 ### 2. Author the Gameplay Experience Beat Sheet to satisfy the quant
@@ -113,8 +120,9 @@ in this authority artifact; runtime ownership is supplied to the measurement
 invocation.
 
 Run a fresh file-only design review. The reviewer audits supply against the
-quant floors — every content-count floor names its supplying beats and the
-summed engaged time fills the duration minimum — edits nothing, and writes
+quant demand — every content-count floor names its supplying beats, the beat
+flow holds the cadence with no stretch past the max arrival gap, and every
+carry-forward delivers the next choice's hints — edits nothing, and writes
 `PASS_DESIGN_REVIEW`/`FAIL_DESIGN_REVIEW` under `qa/`.
 
 ### 3. Preflight adapters and observability

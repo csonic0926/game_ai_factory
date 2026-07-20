@@ -29,9 +29,11 @@ The fresh reviewer judges only. Do not edit the Beat Sheet in this pass.
 - `PASS_QUANT_REVIEW` artifact present:
 - Every budget floor equals or tightens the quant floor (never loosens):
 - Every quant content-count floor names its supplying beats:
-- Supplying beats' summed engaged time fills the duration minimum without
-  inflated per-beat time:
 - No padding beats inserted only to reach a floor:
+- Beat flow holds the quant cadence (no stretch past the max arrival gap
+  without a live choice arrival):
+- Every beat's carry-forward delivers hint material for the next beat's
+  choice; chain breaks named:
 
 ## Quantitative Experience Budget gate
 

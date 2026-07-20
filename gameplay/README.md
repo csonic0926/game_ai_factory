@@ -3,7 +3,7 @@
 Gameplay Factory owns a closed production-conformance loop:
 
 ```text
-versioned Span Quant Sheet (span -> duration -> playable-content demand)
+versioned Span Quant Sheet (span -> cadence -> playable-content demand)
   -> versioned Gameplay Experience Beat Sheet (supply satisfies demand)
   -> continuous player-time walkthrough
   -> production packets + observation contracts
@@ -13,10 +13,12 @@ versioned Span Quant Sheet (span -> duration -> playable-content demand)
   -> fresh conformance acceptance or routed failure
 ```
 
-Quantity is decided first: the quant sheet fixes the span, rules the
-duration, and inventories what there is to play — implementation-blind, from
-player expectation, so supply never defines demand. A Beat Sheet may only be
-authored against approved quant floors.
+Quantity is decided first: the quant sheet fixes the span, adopts the
+factory's canonical cadence (one new meaningful choice every 3–5 seconds
+unless a project USER ruling overrides it), and inventories the generators
+and one-shots that can hold that beat — implementation-blind, from player
+expectation, so supply never defines demand. Total duration is free when the
+beat holds. A Beat Sheet may only be authored against approved quant floors.
 
 Its factory verdict asks whether an implementation preserved an approved
 experience. It does not promise that every player feels the same thing, prove
