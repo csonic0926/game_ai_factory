@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://game-ai-factory.local/gameplay/next_gameplay_unit_input.schema.json",
+  "title": "Next Gameplay Unit Input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project_id",
+    "project_model_path",
+    "frontier",
+    "applicable_action_ids",
+    "recent_patterns",
+    "design_constraints"
+  ],
+  "properties": {
+    "schema_version": {"const": "next_gameplay_unit_input.v1"},
+    "project_id": {"type": "string", "minLength": 1},
+    "project_model_path": {"type": "string", "minLength": 1},
+    "applicable_action_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "recent_patterns": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "design_constraints": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "frontier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision",
+        "current_state",
+        "objective_id",
+        "objective_locale",
+        "completion_condition",
+        "successor_handoff",
+        "evidence_refs"
+      ],
+      "properties": {
+        "decision": {"enum": ["COMPLETE_CURRENT_UNIT", "ADVANCE_TO_NEXT_UNIT"]},
+        "current_state": {"type": "string", "minLength": 1},
+        "objective_id": {"type": "string", "minLength": 1},
+        "objective_locale": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "key_column", "locale_column", "key"],
+          "properties": {
+            "path": {"type": "string", "minLength": 1},
+            "key_column": {"type": "string", "minLength": 1},
+            "locale_column": {"type": "string", "minLength": 1},
+            "key": {"type": "string", "minLength": 1},
+            "expected_text": {"type": "string", "minLength": 1}
+          }
+        },
+        "completion_condition": {"type": "string", "minLength": 1},
+        "successor_handoff": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "description"],
+          "properties": {
+            "status": {"enum": ["WIRED", "MISSING", "UNKNOWN"]},
+            "description": {"type": "string", "minLength": 1}
+          }
+        },
+        "evidence_refs": {"$ref": "#/$defs/evidence_refs"}
+      }
+    }
+  },
+  "$defs": {
+    "evidence_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "path", "contains"],
+        "properties": {
+          "role": {"type": "string", "minLength": 1},
+          "path": {"type": "string", "minLength": 1},
+          "contains": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    }
+  }
+}

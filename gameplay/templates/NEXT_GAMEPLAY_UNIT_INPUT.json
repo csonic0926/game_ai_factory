@@ -1,0 +1,37 @@
+{
+  "schema_version": "next_gameplay_unit_input.v1",
+  "project_id": "TBD",
+  "project_model_path": "design/gameplay/adapter/GAMEPLAY_DESIGN_MODEL.json",
+  "frontier": {
+    "decision": "COMPLETE_CURRENT_UNIT",
+    "current_state": "TBD",
+    "objective_id": "TBD",
+    "objective_locale": {
+      "path": "TBD_REPO_RELATIVE_LOCALE_CSV",
+      "key_column": "keys",
+      "locale_column": "zh",
+      "key": "TBD_LOCALE_KEY",
+      "expected_text": "TBD_PLAYER_FACING_TEXT"
+    },
+    "completion_condition": "TBD",
+    "successor_handoff": {
+      "status": "UNKNOWN",
+      "description": "TBD"
+    },
+    "evidence_refs": [
+      {
+        "role": "runtime_selection",
+        "path": "TBD_REPO_RELATIVE_PATH",
+        "contains": ["TBD_OBJECTIVE_SELECTION_TOKEN"]
+      },
+      {
+        "role": "runtime_completion",
+        "path": "TBD_REPO_RELATIVE_PATH",
+        "contains": ["TBD_OBJECTIVE_COMPLETION_TOKEN"]
+      }
+    ]
+  },
+  "applicable_action_ids": ["TBD_ACTION_ID"],
+  "recent_patterns": [],
+  "design_constraints": []
+}

@@ -1,70 +1,111 @@
 # Gameplay Factory
 
-Gameplay Factory owns a closed production-conformance loop:
+Gameplay Factory is currently calibrating a compact **Case 3** creative front
+end: continue a factory-readable game repo by resolving its primary progression
+driver and next objective, mechanically compiling the implemented player
+actions/rewards, authoring the whole objective gameplay in one pass, and
+compiling it into persistent model-independent production plans.
 
 ```text
-versioned Span Quant Sheet (span -> cadence -> playable-content demand)
-  -> versioned Gameplay Experience Beat Sheet (supply satisfies demand)
-  -> continuous player-time walkthrough
-  -> production packets + observation contracts
-  -> caller implementation + instrumentation
-  -> actual runtime logs/captures
-  -> canonical observed timeline + blinded runtime reading
-  -> fresh conformance acceptance or routed failure
+stable game-owned progression/action model + objective frontier
+  -> prepare.py context                         # Step 1, mechanical
+  -> NEXT_GAMEPLAY_UNIT_CONTEXT.md
+  -> one creative author                       # Step 2
+  -> OBJECTIVE_GAMEPLAY.md
+  -> user-selected planner                     # Step 3
+  -> PRODUCTION_PLAN_MANIFEST.json + production_plans/*.md
+  -> plan.py validate
+  -> original caller executes plans            # Step 4, automatic
 ```
 
-Quantity is decided first: the quant sheet fixes the span, adopts the
-factory's canonical cadence (one new meaningful choice every 3–5 seconds
-unless a project USER ruling overrides it), and inventories the generators
-and one-shots that can hold that beat — implementation-blind, from player
-expectation, so supply never defines demand. Total duration is free when the
-beat holds. A Beat Sheet may only be authored against approved quant floors.
+The previous quant-first chain remains present for existing pilot artifacts:
 
-Its factory verdict asks whether an implementation preserved an approved
-experience. It does not promise that every player feels the same thing, prove
-that a structure is fun, or replace human playtesting.
+```text
+Span Quant -> Gameplay Experience Beat Sheet -> walkthrough -> packets
+```
 
-## Current implementation status
+It is not automatically run for new Case 3 objective design while the compact
+format is measured on real repos. Runtime evidence validation and blinded
+acceptance remain separate downstream concerns.
 
-The factory owns the v1 contracts, blank game-owned answer/artifact templates,
-canonical raw evidence schemas, and dependency-free reference reader. The
-creative workflow remains manual while real project pilots calibrate it; there
-is no gameplay skill or creative step machine yet.
+## Case boundary
 
-`reader.py` can validate raw evidence, normalize through a project mapping,
-reconstruct player time/latency, build a sequential runtime-blind projection,
-prepare kernel evidence refs, and measure the quant-derived, sheet-bound
-quantitative budget against an invocation-selected runtime run/session. Its objective budget
-status is not a factory/human acceptance verdict. It does not implement game
-instrumentation, play the build, or interpret player psychology.
+- **Case 1:** blank/genre-only request — future idea factory.
+- **Case 2:** non-factory repo — future onboarding/refactoring flow.
+- **Case 3:** factory-produced/onboarded repo with readable progression and
+  action/reward state — current supported creative workflow.
 
-The full factory request is not complete until real game-owned pilots prove
-the loop, including a deliberate mismatch and a second gameplay shape.
-See [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) for the
-explicit implemented/unproven boundary.
+## Step 1
+
+`GAMEPLAY_DESIGN_MODEL.json` stores the primary progression driver and
+action/reward vocabulary once. `prepare.py context` merges it with a small
+per-objective frontier input, then verifies game-repo ownership, progression evidence,
+locale text plus runtime wiring, the current/next objective, completion state,
+and player actions with rewards. It emits:
+
+- `READY_FOR_HOW_DESIGN`
+- `READY_FOR_NEW_GAMEPLAY_DESIGN`
+- `BLOCKED_BY_MATERIAL`
+
+It never treats locale-only text as implemented gameplay and never creates an
+output directory before ownership validation.
+
+## Step 2
+
+One author uses the compact Step 1 result to produce one complete
+`OBJECTIVE_GAMEPLAY.md`. Necessary-action, problem, pressure, player-desire,
+action/reward, and meaningful-choice deductions occur inside that pass rather
+than becoming separate workers and review artifacts.
+
+## Step 3
+
+The factory user may choose a Plan Mode model or an ordinary model. Both must
+write the same persistent game-owned contract: one
+`PRODUCTION_PLAN_MANIFEST.json` plus `N` Markdown plans split by coherent
+change/file/state ownership. `plan.py validate` binds them to the exact
+`OBJECTIVE_GAMEPLAY.md` SHA-256, requires coverage for every numbered row,
+checks dependencies and portable repo paths, and rejects shared planned-file
+ownership. The plans compile design into production requirements; they may
+return `BLOCKED_BY_PLAN_GAP` but may not redesign gameplay silently.
+
+## Step 4
+
+`READY_FOR_EXECUTION` is an intermediate control signal, not a final answer to
+an ordinary "make gameplay" request. The original caller automatically
+executes dependency-ready plans with normal coding/data work and invokes asset,
+story, or sound factories when the plan requires them. Only an explicit
+plan-only request stops after Step 3. Step 4 adds no Gameplay Factory reviewer;
+normal production tests and validation remain part of the implementation work.
+
+See [`docs/CASE3_OBJECTIVE_GAMEPLAY_WORKFLOW.md`](docs/CASE3_OBJECTIVE_GAMEPLAY_WORKFLOW.md).
+
+## Runtime evidence tooling
+
+`reader.py` remains the dependency-free evidence tool. It validates raw
+evidence, normalizes project mappings, reconstructs timelines, produces
+runtime-blind inputs, prepares same-run causal evidence chains, and measures
+declared budgets. It does not create gameplay or claim that an experience is
+fun.
 
 ## Layout
 
 ```text
-AGENTS.md                         hard caller rules
-docs/AI_CALLER_LANDING.md        manual end-to-end workflow
-docs/*_CONTRACT.md               authority/trace/packet/adapter/evidence contracts
-docs/OBSERVATION_READER.md       reader formats and commands
-modules/span-quant/              manual quant-demand authoring/review module
-modules/experience-beat-sheet/   manual authoring/review module
-adapters/_template/              three blank game-owned adapter answers
-schemas/                         canonical evidence/mapping/kernel JSON schemas
-templates/                       blank game-owned artifacts
-reader.py                        runtime evidence reference tool
-tests/                            factory reader tests only
+AGENTS.md                              hard caller rules
+docs/CASE3_OBJECTIVE_GAMEPLAY_WORKFLOW.md
+prepare.py                             Step 1 context validator/compiler
+plan.py                                Step 3 production-plan validator
+schemas/next_gameplay_unit_input.schema.json
+schemas/gameplay_design_model.schema.json
+schemas/production_plan_manifest.schema.json
+templates/GAMEPLAY_DESIGN_MODEL.json
+templates/NEXT_GAMEPLAY_UNIT_INPUT.json
+templates/OBJECTIVE_GAMEPLAY.md
+templates/PRODUCTION_PLAN_MANIFEST.json
+templates/PRODUCTION_PLAN.md
+reader.py                              runtime evidence reference tool
+tests/                                 preparation + planning + reader tests
+docs/*_CONTRACT.md                     current and previous-pilot contracts
 ```
 
-## Ownership boundary
-
-- **Factory repo:** project-agnostic questions, contracts, schemas, tools,
-  invariants, and blank templates.
-- **Game repo:** filled adapters, Beat Sheets, walkthroughs, packets,
-  observation plans, implementation mappings, logs/captures, timelines, blind
-  reports, acceptance reports, grammar state, and experience lessons.
-
-AI callers start at [`docs/AI_CALLER_LANDING.md`](docs/AI_CALLER_LANDING.md).
+Factory-side files are project-agnostic. Filled inputs, contexts, objective
+gameplay, implementation artifacts, and evidence always land in the game repo.

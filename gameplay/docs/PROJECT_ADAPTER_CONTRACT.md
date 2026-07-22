@@ -21,6 +21,12 @@ may physically be a mandatory independent section of the Production Adapter,
 but its ownership, completeness, version, and blocker semantics remain
 separate. The factory blank template uses a separate file.
 
+Case 3 objective authoring additionally requires a compact machine-checked
+projection, `GAMEPLAY_DESIGN_MODEL.json`. It does not replace the three answer
+surfaces; it records the primary progression driver plus implemented player
+actions/rewards once so every objective worker does not reread and summarize
+the full profile/codebase.
+
 ## Canonical location
 
 ```text
@@ -28,6 +34,7 @@ separate. The factory blank template uses a separate file.
   PROJECT_GAMEPLAY_PROFILE.md
   PRODUCTION_ADAPTER.md
   OBSERVATION_ADAPTER.md
+  GAMEPLAY_DESIGN_MODEL.json
 ```
 
 Factory blanks remain under `gameplay/adapters/_template/`.
@@ -45,9 +52,10 @@ Resolve in this order:
 3. ignored `gameplay/adapters/registry.local.md`, only for an explicit
    project id.
 
-Then read all three files at the fixed adapter location. Reject a game root
-inside this factory. Never scan siblings, borrow another factory's registry,
-infer a game from engine code, or commit developer paths.
+Then read all three answer files at the fixed adapter location. Case 3
+objective preparation additionally reads `GAMEPLAY_DESIGN_MODEL.json`. Reject
+a game root inside this factory. Never scan siblings, borrow another factory's
+registry, infer a game from engine code, or commit developer paths.
 
 A missing file, `TBD`, inconsistent version, missing referenced file, or
 undeclared capability produces `BLOCKED_BY_ADAPTER`. A required acceptance
@@ -135,6 +143,7 @@ design/gameplay/
     PROJECT_GAMEPLAY_PROFILE.md
     PRODUCTION_ADAPTER.md
     OBSERVATION_ADAPTER.md
+    GAMEPLAY_DESIGN_MODEL.json
   span_quants/<span_id>.md
   experience_beat_sheets/<sheet_id>.md
   experience_beat_sheets/<sheet_id>_QUANTITATIVE_EXPERIENCE_BUDGET.json
@@ -164,6 +173,14 @@ design/gameplay/
   state/
     GAMEPLAY_GRAMMAR_STATE.md
     EXPERIENCE_LESSONS.md
+  objective_gameplay/
+    <objective_id>/
+      NEXT_GAMEPLAY_UNIT_INPUT.json
+      NEXT_GAMEPLAY_UNIT_CONTEXT.md
+      OBJECTIVE_GAMEPLAY.md
+      PRODUCTION_PLAN_MANIFEST.json
+      production_plans/
+        <plan_id>_<change_unit>.md
 ```
 
 ## Story/gameplay/production boundary
@@ -185,6 +202,7 @@ presentation/reception, or observation.
 ## Onboarding
 
 Only an explicit onboarding request may create game-owned adapter/state paths.
-Seed the three blank adapter sheets plus the grammar/experience blank states;
-never overwrite existing files. Ordinary production calls fail closed rather
-than generating missing answers. No factory document preselects a pilot game.
+Seed the three blank adapter sheets, `GAMEPLAY_DESIGN_MODEL.json`, and the
+grammar/experience blank states; never overwrite existing files. Ordinary
+production calls fail closed rather than generating missing answers. No
+factory document preselects a pilot game.

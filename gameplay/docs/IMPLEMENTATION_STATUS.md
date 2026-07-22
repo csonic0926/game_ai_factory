@@ -5,6 +5,32 @@ criteria. Contracts and synthetic tool tests are not a production pilot.
 
 ## Implemented in factory core
 
+- Case 3 objective-gameplay front end: explicit blank/foreign/factory-native
+  case boundary, primary-progression-first object model, script-first Step 1,
+  and one-artifact Step 2 contract;
+- dependency-free `prepare.py context` ownership guard and material compiler:
+  stable project model + small objective frontier merge, exact repo evidence
+  tokens, locale CSV lookup, runtime objective selection /
+  completion proof, action/reward validation, compact context rendering, and
+  the distinct `READY_FOR_HOW_DESIGN`, `READY_FOR_NEW_GAMEPLAY_DESIGN`, and
+  `BLOCKED_BY_MATERIAL` states;
+- blank `GAMEPLAY_DESIGN_MODEL.json`, `NEXT_GAMEPLAY_UNIT_INPUT.json`, and
+  `OBJECTIVE_GAMEPLAY.md` templates plus machine-readable schemas and
+  adversarial preparation tests;
+- model-independent Case 3 production planning: the factory user may choose a
+  Plan Mode or ordinary model, while both persist the same SHA-bound
+  `PRODUCTION_PLAN_MANIFEST.json` plus `N` Markdown change-unit plans;
+- dependency-free `plan.py validate` checks exact objective-row coverage,
+  source hash freshness, required plan sections/metadata, portable ownership,
+  existing repo evidence, plan dependency cycles, ready/blocked consistency,
+  and exclusive planned-path ownership;
+- production-plan schemas/templates and adversarial tests, plus one real IMT
+  sample compiling the nine-row objective into two non-overlapping plans;
+- automatic Step 4 caller handoff: a normal high-level gameplay-production
+  request treats `READY_FOR_EXECUTION` as intermediate, requires the original
+  caller/orchestrator to execute the persisted plans without a second user
+  prompt, and reserves plan-only stopping for explicit requests;
+
 - quant-first demand ordering: Span Quant Sheet template/module (span
   boundaries -> cadence contract -> implementation-blind playable-content
   inventory -> derived floors), fresh quant review gate, and
@@ -37,6 +63,12 @@ criteria. Contracts and synthetic tool tests are not a production pilot.
 - unit tests using synthetic evidence.
 
 ## Not yet proven or complete
+
+- the compact Case 3 Step 1/Step 2/Step 3 format now has one real-project
+  design and planning sample, but its planning token cost and implementation
+  usefulness are not proven until production executes the persisted plans;
+- Case 1 idea discovery and Case 2 foreign-repo onboarding/refactoring are not
+  implemented by this workflow;
 
 - no real game-owned Beat Sheet -> implementation -> actual build evidence
   pilot has been supplied or run from this factory task;

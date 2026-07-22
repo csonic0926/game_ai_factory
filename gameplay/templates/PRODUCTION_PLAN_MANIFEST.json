@@ -1,0 +1,30 @@
+{
+  "schema_version": "production_plan_manifest.v1",
+  "project_id": "<PROJECT_ID>",
+  "objective_id": "<OBJECTIVE_ID>",
+  "objective_gameplay_path": "design/gameplay/objective_gameplay/<OBJECTIVE_ID>/OBJECTIVE_GAMEPLAY.md",
+  "objective_gameplay_sha256": "<SHA256_OF_OBJECTIVE_GAMEPLAY_UTF8_BYTES>",
+  "planning_status": "READY_FOR_EXECUTION",
+  "plans": [
+    {
+      "plan_id": "P01",
+      "path": "design/gameplay/objective_gameplay/<OBJECTIVE_ID>/production_plans/P01_<CHANGE_UNIT>.md",
+      "title": "<INDEPENDENT_CHANGE_UNIT>",
+      "status": "READY_FOR_EXECUTION",
+      "objective_rows": [1],
+      "depends_on": [],
+      "work_types": ["CONTENT_DATA", "CODE", "TEST"],
+      "existing_repo_refs": ["<EXISTING_REPO_RELATIVE_PATH>"],
+      "planned_paths": ["<OWNED_REPO_RELATIVE_PATH_TO_CREATE_OR_CHANGE>"]
+    }
+  ],
+  "row_coverage": [
+    {
+      "objective_row": 1,
+      "disposition": "IMPLEMENT",
+      "plan_ids": ["P01"],
+      "rationale": "<WHY_THIS_ROW_REQUIRES_THIS_CHANGE_UNIT>"
+    }
+  ],
+  "blocked_gaps": []
+}

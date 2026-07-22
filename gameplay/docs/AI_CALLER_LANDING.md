@@ -1,11 +1,17 @@
 # AI caller landing — gameplay_factory
 
-Use this factory to author a concrete gameplay experience, realize it in
-continuous player time, make production observable, and compare actual runtime
-experience with the locked design authority.
+Use this factory to continue a factory-readable game's primary progression,
+author the complete gameplay for one objective, later make production
+observable, and compare actual runtime experience with locked design authority.
 
-The creative workflow is manual during the pilot phase. `../reader.py` is a
-runtime evidence tool, not a creative step machine or acceptance oracle.
+The current Case 3 creative entry is
+[`CASE3_OBJECTIVE_GAMEPLAY_WORKFLOW.md`](CASE3_OBJECTIVE_GAMEPLAY_WORKFLOW.md):
+script-first material preparation followed by one complete
+`OBJECTIVE_GAMEPLAY.md`, then persistent production plans compiled by the
+user's selected planning model. The older quant/Beat Sheet/walkthrough loop
+below is retained for existing pilot lineages and is **not** automatically run
+for new Case 3 work. `../reader.py` is a runtime evidence tool, not a creative
+step machine or acceptance oracle.
 
 ## Invocation
 
@@ -13,9 +19,9 @@ Identify the operation and target game repo:
 
 ```text
 factory: <FACTORY_REPO>/gameplay
-operation: onboard | quantify_span | author_experience | realize_walkthrough |
-           compile_packets | landing_review | observe_runtime |
-           runtime_acceptance
+operation: produce_objective | prepare_objective | author_objective | plan_production |
+           legacy_quantify_span | realize_walkthrough | compile_packets | landing_review |
+           observe_runtime | runtime_acceptance
 game_repo: <explicit path, or CURRENT_GIT_ROOT>
 project_id: <only for optional registry.local.md lookup>
 span/sheet/run: <operation-specific id>
@@ -29,10 +35,10 @@ registry for an explicit project id. Set `<GAMEPLAY_ROOT>` to
 outside the game repo, sibling scanning, inferred projects, and committed
 absolute developer paths.
 
-Read `PROJECT_GAMEPLAY_PROFILE.md`, `PRODUCTION_ADAPTER.md`, and
-`OBSERVATION_ADAPTER.md` at `<GAMEPLAY_ROOT>/adapter/`. An ordinary production
-call never creates missing answers. Missing/blank/inconsistent answers mean
-`BLOCKED_BY_ADAPTER`.
+Read `GAMEPLAY_DESIGN_MODEL.json`, `PROJECT_GAMEPLAY_PROFILE.md`,
+`PRODUCTION_ADAPTER.md`, and `OBSERVATION_ADAPTER.md` at
+`<GAMEPLAY_ROOT>/adapter/`. An ordinary production call never creates missing
+answers. Missing/blank/inconsistent answers mean `BLOCKED_BY_ADAPTER`.
 
 ## Explicit onboarding only
 
@@ -42,6 +48,7 @@ Create only missing paths/files; never overwrite:
 <GAMEPLAY_ROOT>/adapter/PROJECT_GAMEPLAY_PROFILE.md
 <GAMEPLAY_ROOT>/adapter/PRODUCTION_ADAPTER.md
 <GAMEPLAY_ROOT>/adapter/OBSERVATION_ADAPTER.md
+<GAMEPLAY_ROOT>/adapter/GAMEPLAY_DESIGN_MODEL.json
 <GAMEPLAY_ROOT>/state/GAMEPLAY_GRAMMAR_STATE.md
 <GAMEPLAY_ROOT>/state/EXPERIENCE_LESSONS.md
 ```
@@ -49,7 +56,65 @@ Create only missing paths/files; never overwrite:
 Seed from `../adapters/_template/` and `../templates/`. Create other artifact
 directories only when their first real game-owned artifact is produced.
 
-## Preconditions
+## Current Case 3 creative preconditions
+
+- the repo is already factory-produced/onboarded rather than blank or foreign;
+- its primary progression driver and production frontier can be evidenced;
+- the current/next objective has locale text plus runtime selection and
+  completion wiring;
+- implemented player actions and their rewards can be evidenced, or their
+  absence can be proven as a legitimate new-gameplay trigger.
+
+Run Step 1:
+
+```bash
+python3 gameplay/prepare.py context \
+  --game-repo <GAME_REPO> \
+  --input design/gameplay/objective_gameplay/<objective_id>/NEXT_GAMEPLAY_UNIT_INPUT.json \
+  --out design/gameplay/objective_gameplay/<objective_id>/NEXT_GAMEPLAY_UNIT_CONTEXT.md
+```
+
+Only `READY_FOR_HOW_DESIGN` or `READY_FOR_NEW_GAMEPLAY_DESIGN` starts Step 2.
+One creative worker then writes the whole
+`design/gameplay/objective_gameplay/<objective_id>/OBJECTIVE_GAMEPLAY.md`.
+Do not split its internal necessary-action/problem/pressure/desire/choice
+deductions into separate workers.
+
+Then use either Plan Mode or an ordinary model chosen by the factory user to
+inspect the repo and persist:
+
+```text
+design/gameplay/objective_gameplay/<objective_id>/
+  PRODUCTION_PLAN_MANIFEST.json
+  production_plans/<plan_id>_<change_unit>.md
+```
+
+Both planning protocols use the same schema/templates and must leave no
+required production knowledge only in chat/session state. Split plans by
+coherent code/data/state ownership and independent verification boundary, not
+one plan per objective row. Validate before execution:
+
+```bash
+python3 gameplay/plan.py validate \
+  --game-repo <GAME_REPO> \
+  --manifest design/gameplay/objective_gameplay/<objective_id>/PRODUCTION_PLAN_MANIFEST.json
+```
+
+Only `READY_FOR_EXECUTION` begins production. `BLOCKED_BY_PLAN_GAP` routes the
+specific contradiction or missing design decision back to Step 2; it does not
+authorize the production planner to invent replacement gameplay.
+
+`produce_objective` is the default interpretation of a natural-language request
+to make, add, continue, or improve gameplay. `READY_FOR_EXECUTION` is therefore
+an intermediate phase result: the original caller must immediately execute the
+dependency-ready plans using ordinary repo production and other factories as
+needed. Do not return a plan-only answer or wait for a second "write the code"
+prompt unless the user explicitly selected `plan_production`, said plan-only,
+or prohibited implementation. A planner-only model returns control and the
+persisted paths to its outer orchestrator, which must continue with an
+execution-capable model when available.
+
+## Previous pilot preconditions (existing lineages only)
 
 - exact story anchors and causal constraints;
 - exact current runtime/world/player-knowledge state;
@@ -67,7 +132,7 @@ directories only when their first real game-owned artifact is produced.
 Do not infer verbs, budgets, engine hooks, events, camera/HUD behavior, or
 capture capability from code and silently convert inference into authority.
 
-## Manual production loop
+## Previous pilot production loop (not the default Case 3 creative entry)
 
 ### 1. Quantify the span — demand before supply
 

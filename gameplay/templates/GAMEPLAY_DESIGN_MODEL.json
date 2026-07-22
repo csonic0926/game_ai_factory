@@ -1,0 +1,40 @@
+{
+  "schema_version": "gameplay_design_model.v1",
+  "project_id": "TBD",
+  "primary_progression_driver": {
+    "system_id": "TBD",
+    "system_kind": "mission_chain | stage_sequence | spatial_poi_frontier | other",
+    "progression_unit": "TBD",
+    "description": "TBD",
+    "evidence_refs": [
+      {
+        "role": "progression_authority",
+        "path": "TBD_REPO_RELATIVE_PATH",
+        "contains": ["TBD_EXACT_TOKEN"]
+      }
+    ]
+  },
+  "player_actions": [
+    {
+      "action_id": "TBD",
+      "description": "TBD",
+      "availability": "TBD",
+      "rewards": [
+        {
+          "reward_id": "TBD",
+          "kind": "TBD",
+          "description": "TBD"
+        }
+      ],
+      "evidence_refs": [
+        {
+          "role": "runtime_action",
+          "path": "TBD_REPO_RELATIVE_PATH",
+          "contains": ["TBD_ACTION_TOKEN"]
+        }
+      ]
+    }
+  ],
+  "recent_patterns": [],
+  "design_constraints": []
+}
