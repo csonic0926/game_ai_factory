@@ -1,0 +1,39 @@
+{
+  "schema_version": "gameplay_gap_input.v1",
+  "project_id": "<PROJECT_ID>",
+  "gap_status": "OPEN",
+  "project_model_path": "design/gameplay/adapter/GAMEPLAY_DESIGN_MODEL.json",
+  "anchor": {
+    "objective_id": "<EXISTING_OBJECTIVE_ID>",
+    "objective_gameplay_path": "design/gameplay/objective_gameplay/<OBJECTIVE_DIR>/OBJECTIVE_GAMEPLAY.md",
+    "objective_gameplay_sha256": "<SHA256_OF_ANCHOR_OBJECTIVE_GAMEPLAY_UTF8_BYTES>",
+    "affected_rows": [1]
+  },
+  "gap": {
+    "gap_id": "<STABLE_GAP_ID>",
+    "summary": "<ONE_CONCRETE_MISSING_OR_BROKEN_GAMEPLAY_CONTRACT>",
+    "progression_window": "<WHEN_INSIDE_THE_ANCHORED_OBJECTIVE_THIS_OCCURS>",
+    "observed_break": "<WHAT_THE_RUNTIME_OR_IMPLEMENTATION_CURRENTLY_DOES>",
+    "player_visible_contradiction": "<WHAT_VISIBLE_SIGNALS_OR_EXPECTATIONS_FAIL_TO_RECONCILE>",
+    "evidence_refs": [
+      {
+        "role": "runtime_observation",
+        "path": "<GAME_REPO_RELATIVE_EVIDENCE_PATH>",
+        "contains": ["<EXACT_EVIDENCE_TOKEN>"]
+      },
+      {
+        "role": "implementation_state",
+        "path": "<GAME_REPO_RELATIVE_CODE_OR_DATA_PATH>",
+        "contains": ["<EXACT_IMPLEMENTATION_TOKEN>"]
+      }
+    ]
+  },
+  "authority": {
+    "state": "OMITTED_OR_AMBIGUOUS",
+    "required_player_visible_result": "",
+    "evidence_refs": []
+  },
+  "affected_action_ids": ["<ACTION_ID_FROM_GAMEPLAY_DESIGN_MODEL>"],
+  "preserve": ["<LOCKED_BEHAVIOR_OR_NON_GOAL>"],
+  "user_rulings": []
+}

@@ -1,0 +1,33 @@
+{
+  "schema_version": "repair_plan_manifest.v1",
+  "project_id": "<PROJECT_ID>",
+  "gap_id": "<GAP_ID>",
+  "anchor_objective_id": "<OBJECTIVE_ID>",
+  "anchor_objective_gameplay_path": "design/gameplay/objective_gameplay/<OBJECTIVE_DIR>/OBJECTIVE_GAMEPLAY.md",
+  "anchor_objective_gameplay_sha256": "<SHA256_OF_ANCHOR_OBJECTIVE_GAMEPLAY_UTF8_BYTES>",
+  "repair_source_path": "design/gameplay/repairs/<GAP_ID>/GAMEPLAY_REPAIR.md",
+  "repair_source_sha256": "<SHA256_OF_REPAIR_SOURCE_UTF8_BYTES>",
+  "planning_status": "READY_FOR_EXECUTION",
+  "plans": [
+    {
+      "plan_id": "R01",
+      "path": "design/gameplay/repairs/<GAP_ID>/production_plans/R01_<CHANGE_UNIT>.md",
+      "title": "<BOUNDED_REPAIR_CHANGE_UNIT>",
+      "status": "READY_FOR_EXECUTION",
+      "repair_rows": [1],
+      "depends_on": [],
+      "work_types": ["CODE", "TEST"],
+      "existing_repo_refs": ["<EXISTING_REPO_RELATIVE_PATH>"],
+      "planned_paths": ["<OWNED_REPO_RELATIVE_PATH_TO_CREATE_OR_CHANGE>"]
+    }
+  ],
+  "repair_coverage": [
+    {
+      "repair_row": 1,
+      "disposition": "IMPLEMENT",
+      "plan_ids": ["R01"],
+      "rationale": "<WHY_THIS_REPAIR_ROW_REQUIRES_THIS_CHANGE_UNIT>"
+    }
+  ],
+  "blocked_gaps": []
+}

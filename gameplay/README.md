@@ -1,10 +1,10 @@
 # Gameplay Factory
 
-Gameplay Factory is currently calibrating a compact **Case 3** creative front
-end: continue a factory-readable game repo by resolving its primary progression
-driver and next objective, mechanically compiling the implemented player
-actions/rewards, authoring the whole objective gameplay in one pass, and
-compiling it into persistent model-independent production plans.
+Gameplay Factory has two compact **Case 3** production paths for an already
+factory-readable game repo. The canonical caller entry and router is
+[`AGENTS.md`](AGENTS.md).
+
+**Progression production** makes/completes the primary progression's next unit:
 
 ```text
 stable game-owned progression/action model + objective frontier
@@ -17,6 +17,24 @@ stable game-owned progression/action model + objective frontier
   -> plan.py validate
   -> original caller executes plans            # Step 4, automatic
 ```
+
+**Gap repair** closes one evidenced player-visible break inside an existing
+objective without regenerating it:
+
+```text
+exact existing OBJECTIVE_GAMEPLAY.md + one evidenced gap
+  -> repair.py context
+  -> GAMEPLAY_REPAIR_CONTEXT.md
+  -> direct planning when authority already exists
+     OR one bounded author -> GAMEPLAY_REPAIR.md
+  -> user-selected repair planner
+  -> REPAIR_PLAN_MANIFEST.json + production_plans/*.md
+  -> repair_plan.py validate
+  -> original caller executes repair plans
+```
+
+When both a concrete known gap and forward progression are active, repair the
+gap first unless the user explicitly defers it.
 
 The previous quant-first chain remains present for existing pilot artifacts:
 
@@ -79,6 +97,33 @@ normal production tests and validation remain part of the implementation work.
 
 See [`docs/CASE3_OBJECTIVE_GAMEPLAY_WORKFLOW.md`](docs/CASE3_OBJECTIVE_GAMEPLAY_WORKFLOW.md).
 
+## Gap repair
+
+`repair.py context` binds an exact existing objective id/path/SHA and affected
+rows to one concrete gap, exact runtime/implementation/test evidence, and only
+the affected actions from the stable project model. It emits:
+
+- `READY_FOR_DIRECT_REPAIR_PLAN`
+- `READY_FOR_REPAIR_DESIGN`
+- `BLOCKED_BY_REPAIR_MATERIAL`
+
+Explicit existing requirements and persisted user rulings skip creative
+authoring. Missing/ambiguous design gets one compact `GAMEPLAY_REPAIR.md`; the
+base `OBJECTIVE_GAMEPLAY.md` remains unchanged.
+
+`repair_plan.py validate` binds every repair plan to both the exact base
+objective and exact repair source SHA-256, requires coverage for every repair
+row, and enforces dependencies, portable ownership, and non-overlapping
+planned paths. `READY_FOR_EXECUTION` automatically returns to production.
+Tests prove implementation behavior but do not self-award final experiential
+closure. Gap inputs persist routing state: `OPEN` enters repair,
+`IMPLEMENTED_PENDING_ACCEPTANCE` waits for the named closure authority, and
+only that user/fresh reviewer may mark `CLOSED`; `DEFERRED` requires a user
+decision.
+
+See
+[`docs/CASE3_GAMEPLAY_REPAIR_WORKFLOW.md`](docs/CASE3_GAMEPLAY_REPAIR_WORKFLOW.md).
+
 ## Runtime evidence tooling
 
 `reader.py` remains the dependency-free evidence tool. It validates raw
@@ -92,16 +137,25 @@ fun.
 ```text
 AGENTS.md                              hard caller rules
 docs/CASE3_OBJECTIVE_GAMEPLAY_WORKFLOW.md
+docs/CASE3_GAMEPLAY_REPAIR_WORKFLOW.md
 prepare.py                             Step 1 context validator/compiler
 plan.py                                Step 3 production-plan validator
+repair.py                              repair context validator/compiler
+repair_plan.py                         repair production-plan validator
 schemas/next_gameplay_unit_input.schema.json
 schemas/gameplay_design_model.schema.json
 schemas/production_plan_manifest.schema.json
+schemas/gameplay_gap_input.schema.json
+schemas/repair_plan_manifest.schema.json
 templates/GAMEPLAY_DESIGN_MODEL.json
 templates/NEXT_GAMEPLAY_UNIT_INPUT.json
 templates/OBJECTIVE_GAMEPLAY.md
 templates/PRODUCTION_PLAN_MANIFEST.json
 templates/PRODUCTION_PLAN.md
+templates/GAMEPLAY_GAP_INPUT.json
+templates/GAMEPLAY_REPAIR.md
+templates/REPAIR_PLAN_MANIFEST.json
+templates/REPAIR_PRODUCTION_PLAN.md
 reader.py                              runtime evidence reference tool
 tests/                                 preparation + planning + reader tests
 docs/*_CONTRACT.md                     current and previous-pilot contracts

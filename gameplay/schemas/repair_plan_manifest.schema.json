@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://game-ai-factory.local/gameplay/repair_plan_manifest.schema.json",
+  "title": "Gameplay Repair Plan Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project_id",
+    "gap_id",
+    "anchor_objective_id",
+    "anchor_objective_gameplay_path",
+    "anchor_objective_gameplay_sha256",
+    "repair_source_path",
+    "repair_source_sha256",
+    "planning_status",
+    "plans",
+    "repair_coverage",
+    "blocked_gaps"
+  ],
+  "properties": {
+    "schema_version": {"const": "repair_plan_manifest.v1"},
+    "project_id": {"type": "string", "minLength": 1},
+    "gap_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "anchor_objective_id": {"type": "string", "minLength": 1},
+    "anchor_objective_gameplay_path": {"type": "string", "minLength": 1},
+    "anchor_objective_gameplay_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "repair_source_path": {"type": "string", "minLength": 1},
+    "repair_source_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "planning_status": {
+      "enum": ["READY_FOR_EXECUTION", "BLOCKED_BY_PLAN_GAP"]
+    },
+    "plans": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/plan"}
+    },
+    "repair_coverage": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/coverage"}
+    },
+    "blocked_gaps": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    }
+  },
+  "$defs": {
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plan_id",
+        "path",
+        "title",
+        "status",
+        "repair_rows",
+        "depends_on",
+        "work_types",
+        "existing_repo_refs",
+        "planned_paths"
+      ],
+      "properties": {
+        "plan_id": {"type": "string", "minLength": 1},
+        "path": {"type": "string", "minLength": 1},
+        "title": {"type": "string", "minLength": 1},
+        "status": {
+          "enum": ["READY_FOR_EXECUTION", "BLOCKED_BY_PLAN_GAP"]
+        },
+        "repair_rows": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "integer", "minimum": 1}
+        },
+        "depends_on": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "work_types": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "CONTENT_DATA",
+              "CODE",
+              "UI",
+              "ASSET",
+              "AUDIO",
+              "LOCALIZATION",
+              "TEST",
+              "OBSERVABILITY"
+            ]
+          }
+        },
+        "existing_repo_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "planned_paths": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repair_row", "disposition", "plan_ids", "rationale"],
+      "properties": {
+        "repair_row": {"type": "integer", "minimum": 1},
+        "disposition": {
+          "enum": ["IMPLEMENT", "VERIFY_EXISTING", "NO_CHANGE_REQUIRED"]
+        },
+        "plan_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "rationale": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

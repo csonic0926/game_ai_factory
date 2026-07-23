@@ -1,17 +1,21 @@
 # AI caller landing — gameplay_factory
 
-Use this factory to continue a factory-readable game's primary progression,
-author the complete gameplay for one objective, later make production
-observable, and compare actual runtime experience with locked design authority.
+The canonical entry and routing guide is [`../AGENTS.md`](../AGENTS.md). Read
+it first.
 
-The current Case 3 creative entry is
-[`CASE3_OBJECTIVE_GAMEPLAY_WORKFLOW.md`](CASE3_OBJECTIVE_GAMEPLAY_WORKFLOW.md):
-script-first material preparation followed by one complete
-`OBJECTIVE_GAMEPLAY.md`, then persistent production plans compiled by the
-user's selected planning model. The older quant/Beat Sheet/walkthrough loop
-below is retained for existing pilot lineages and is **not** automatically run
-for new Case 3 work. `../reader.py` is a runtime evidence tool, not a creative
-step machine or acceptance oracle.
+Gameplay Factory currently has two compact Case 3 production entries:
+
+- [`CASE3_OBJECTIVE_GAMEPLAY_WORKFLOW.md`](CASE3_OBJECTIVE_GAMEPLAY_WORKFLOW.md)
+  produces/completes the primary progression's next objective;
+- [`CASE3_GAMEPLAY_REPAIR_WORKFLOW.md`](CASE3_GAMEPLAY_REPAIR_WORKFLOW.md)
+  closes one concrete gameplay gap inside an existing objective without
+  rewriting that objective.
+
+If a concrete known gap and a request to advance progression coexist, repair
+the gap first unless the user explicitly defers it. The older quant/Beat
+Sheet/walkthrough loop below is retained for existing pilot lineages and is
+**not** automatically run for either compact Case 3 workflow. `../reader.py`
+is a runtime evidence tool, not a creative step machine or acceptance oracle.
 
 ## Invocation
 
@@ -20,12 +24,31 @@ Identify the operation and target game repo:
 ```text
 factory: <FACTORY_REPO>/gameplay
 operation: produce_objective | prepare_objective | author_objective | plan_production |
+           repair_gameplay_gap | prepare_repair | plan_repair |
            legacy_quantify_span | realize_walkthrough | compile_packets | landing_review |
            observe_runtime | runtime_acceptance
 game_repo: <explicit path, or CURRENT_GIT_ROOT>
 project_id: <only for optional registry.local.md lookup>
 span/sheet/run: <operation-specific id>
 ```
+
+## Route before authoring
+
+Use `produce_objective` when there is no concrete unresolved gap and the work
+is to continue/complete the main progression.
+
+Use `repair_gameplay_gap` when a user, runtime observation, implementation
+research, test failure, or fresh reviewer has identified one evidenced
+player-visible causal break inside an existing `OBJECTIVE_GAMEPLAY.md`.
+
+Do not use repair for an unanchored desired feature, a vague improvement, a
+locked-design contradiction, or an ordinary code defect without gameplay
+impact. Do not use objective production to outrun a known gap.
+
+For continuing work, `OPEN` game-owned
+`design/gameplay/repairs/*/GAMEPLAY_GAP_INPUT.json` files route to repair.
+`IMPLEMENTED_PENDING_ACCEPTANCE` routes to external/user closure;
+`CLOSED`/user-authorized `DEFERRED` do not block forward progression.
 
 ## Resolve ownership before reading/writing
 
@@ -56,7 +79,7 @@ Create only missing paths/files; never overwrite:
 Seed from `../adapters/_template/` and `../templates/`. Create other artifact
 directories only when their first real game-owned artifact is produced.
 
-## Current Case 3 creative preconditions
+## Case 3 progression-production preconditions
 
 - the repo is already factory-produced/onboarded rather than blank or foreign;
 - its primary progression driver and production frontier can be evidenced;
@@ -105,14 +128,64 @@ specific contradiction or missing design decision back to Step 2; it does not
 authorize the production planner to invent replacement gameplay.
 
 `produce_objective` is the default interpretation of a natural-language request
-to make, add, continue, or improve gameplay. `READY_FOR_EXECUTION` is therefore
-an intermediate phase result: the original caller must immediately execute the
-dependency-ready plans using ordinary repo production and other factories as
-needed. Do not return a plan-only answer or wait for a second "write the code"
-prompt unless the user explicitly selected `plan_production`, said plan-only,
-or prohibited implementation. A planner-only model returns control and the
-persisted paths to its outer orchestrator, which must continue with an
-execution-capable model when available.
+to make, add, or continue gameplay **when no concrete unresolved gap is
+active**. `READY_FOR_EXECUTION` is therefore an intermediate phase result: the
+original caller must immediately execute the dependency-ready plans using
+ordinary repo production and other factories as needed. Do not return a
+plan-only answer or wait for a second "write the code" prompt unless the user
+explicitly selected `plan_production`, said plan-only, or prohibited
+implementation. A planner-only model returns control and the persisted paths
+to its outer orchestrator, which must continue with an execution-capable model
+when available.
+
+## Case 3 gameplay-gap repair
+
+A repair anchors one exact known gap to an existing
+`OBJECTIVE_GAMEPLAY.md` id/path/SHA and affected rows. It preserves the base
+objective instead of regenerating it.
+
+Prepare:
+
+```bash
+python3 gameplay/repair.py context \
+  --game-repo <GAME_REPO> \
+  --input design/gameplay/repairs/<gap_id>/GAMEPLAY_GAP_INPUT.json \
+  --out design/gameplay/repairs/<gap_id>/GAMEPLAY_REPAIR_CONTEXT.md
+```
+
+Route the result:
+
+- `READY_FOR_DIRECT_REPAIR_PLAN`: existing design authority or a persisted user
+  ruling already specifies the exact result; use the context itself as the
+  planning source and skip creative authoring;
+- `READY_FOR_REPAIR_DESIGN`: one bounded author writes
+  `GAMEPLAY_REPAIR.md`;
+- `BLOCKED_BY_REPAIR_MATERIAL`: stop before authoring/planning.
+
+The user-selected planner then writes:
+
+```text
+design/gameplay/repairs/<gap_id>/
+  REPAIR_PLAN_MANIFEST.json
+  production_plans/<plan_id>_<change_unit>.md
+```
+
+Validate:
+
+```bash
+python3 gameplay/repair_plan.py validate \
+  --game-repo <GAME_REPO> \
+  --manifest design/gameplay/repairs/<gap_id>/REPAIR_PLAN_MANIFEST.json
+```
+
+The manifest binds the exact base objective and exact repair source SHA-256,
+covers every repair row, and gives each planned path one owner. For an ordinary
+fix request, `READY_FOR_EXECUTION` immediately returns control to production;
+only explicit plan-only requests stop there. Tests prove implementation
+behavior, while the user/fresh reviewer retains final gameplay-gap closure.
+After implementation, the caller changes the game-owned gap status from
+`OPEN` to `IMPLEMENTED_PENDING_ACCEPTANCE`; passing tests may not set
+`CLOSED`.
 
 ## Previous pilot preconditions (existing lineages only)
 

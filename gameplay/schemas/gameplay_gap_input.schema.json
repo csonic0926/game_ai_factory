@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://game-ai-factory.local/gameplay/gameplay_gap_input.schema.json",
+  "title": "Gameplay Gap Input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project_id",
+    "gap_status",
+    "project_model_path",
+    "anchor",
+    "gap",
+    "authority",
+    "affected_action_ids",
+    "preserve",
+    "user_rulings"
+  ],
+  "properties": {
+    "schema_version": {"const": "gameplay_gap_input.v1"},
+    "project_id": {"type": "string", "minLength": 1},
+    "gap_status": {
+      "enum": [
+        "OPEN",
+        "IMPLEMENTED_PENDING_ACCEPTANCE",
+        "CLOSED",
+        "DEFERRED"
+      ]
+    },
+    "project_model_path": {"type": "string", "minLength": 1},
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "objective_id",
+        "objective_gameplay_path",
+        "objective_gameplay_sha256",
+        "affected_rows"
+      ],
+      "properties": {
+        "objective_id": {"type": "string", "minLength": 1},
+        "objective_gameplay_path": {"type": "string", "minLength": 1},
+        "objective_gameplay_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "affected_rows": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "integer", "minimum": 1}
+        }
+      }
+    },
+    "gap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gap_id",
+        "summary",
+        "progression_window",
+        "observed_break",
+        "player_visible_contradiction",
+        "evidence_refs"
+      ],
+      "properties": {
+        "gap_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "summary": {"type": "string", "minLength": 1},
+        "progression_window": {"type": "string", "minLength": 1},
+        "observed_break": {"type": "string", "minLength": 1},
+        "player_visible_contradiction": {"type": "string", "minLength": 1},
+        "evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/evidence_ref"}
+        }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "required_player_visible_result",
+        "evidence_refs"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "EXPLICIT_REQUIREMENT",
+            "USER_RULING",
+            "OMITTED_OR_AMBIGUOUS",
+            "CONFLICTS_WITH_LOCKED_DESIGN"
+          ]
+        },
+        "required_player_visible_result": {"type": "string"},
+        "evidence_refs": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/evidence_ref"}
+        }
+      }
+    },
+    "affected_action_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "preserve": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "user_rulings": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    }
+  },
+  "$defs": {
+    "evidence_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "path", "contains"],
+      "properties": {
+        "role": {"type": "string", "minLength": 1},
+        "path": {"type": "string", "minLength": 1},
+        "contains": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

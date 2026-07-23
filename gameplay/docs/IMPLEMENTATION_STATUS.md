@@ -30,6 +30,28 @@ criteria. Contracts and synthetic tool tests are not a production pilot.
   request treats `READY_FOR_EXECUTION` as intermediate, requires the original
   caller/orchestrator to execute the persisted plans without a second user
   prompt, and reserves plan-only stopping for explicit requests;
+- canonical `gameplay/AGENTS.md` entry/router for the two Case 3 operations:
+  progression production when no concrete unresolved gap is active, and
+  anchored gameplay-gap repair when an existing objective contains an
+  evidenced player-visible causal break;
+- compact Case 3 repair front end: exact base-objective id/path/SHA/row binding,
+  exact gap evidence, affected stable action/reward selection, separated
+  existing-design/user-ruling/omitted/conflicting authority states, and the
+  distinct `READY_FOR_DIRECT_REPAIR_PLAN`, `READY_FOR_REPAIR_DESIGN`, and
+  `BLOCKED_BY_REPAIR_MATERIAL` routes;
+- dependency-free `repair.py context` ownership/material gate plus
+  `GAMEPLAY_GAP_INPUT.json`, `GAMEPLAY_REPAIR.md`, and schemas/templates;
+  explicit existing authority or a persisted user ruling skips creative
+  repair authoring, while an omission gets one bounded amendment without
+  rewriting `OBJECTIVE_GAMEPLAY.md`;
+- model-independent repair planning through SHA-bound
+  `REPAIR_PLAN_MANIFEST.json` and bounded Markdown repair plans;
+  `repair_plan.py validate` checks exact base and repair-source freshness,
+  every repair-row disposition, dependencies, portable repo paths,
+  ready/blocked consistency, and exclusive planned-path ownership;
+- repair Step 4 caller handoff: `READY_FOR_EXECUTION` triggers ordinary
+  implementation automatically, while standard tests remain separate from
+  user/fresh-reviewer experiential gap closure;
 
 - quant-first demand ordering: Span Quant Sheet template/module (span
   boundaries -> cadence contract -> implementation-blind playable-content
@@ -67,6 +89,10 @@ criteria. Contracts and synthetic tool tests are not a production pilot.
 - the compact Case 3 Step 1/Step 2/Step 3 format now has one real-project
   design and planning sample, but its planning token cost and implementation
   usefulness are not proven until production executes the persisted plans;
+- the Case 3 repair workflow has synthetic adversarial contract tests but has
+  not yet closed a real game-owned gap end to end; in particular, the IMT
+  reusable-campfire break motivated the workflow but no IMT repair artifact or
+  runtime fix is created by this factory-side implementation;
 - Case 1 idea discovery and Case 2 foreign-repo onboarding/refactoring are not
   implemented by this workflow;
 
