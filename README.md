@@ -19,6 +19,37 @@ through a landing doc and an explicit production contract:
 
 Start at [`AI_CALLER_LANDING.md`](AI_CALLER_LANDING.md) to route to the right one.
 
+## Setup
+
+One-time per machine, after cloning this repo:
+
+```bash
+python3 setup.py sync
+```
+
+`sync` symlinks every factory-provided skill (`*/skills/*/SKILL.md`) into the
+harness skill directories (default `~/.claude/skills` and `~/.codex/skills`,
+deduplicated when they share one real directory). Because they are symlinks,
+`git pull` on this repo **is** the skill update — no re-run needed. Use
+`sync --copy` for harnesses/filesystems without symlink support; copied skills
+carry a `.factory_version` stamp and are refreshed by re-running `sync` after a
+pull. Both modes only ever touch factory-owned entries.
+
+Once per game repo, when connecting it to the factory:
+
+```bash
+python3 setup.py link --game-repo <GAME_REPO>
+```
+
+`link` writes a harness-agnostic **Game AI Factory routing block** into the
+game repo's `AGENTS.md` (between managed markers — idempotent, re-run safe),
+creates a `CLAUDE.md` pointer if the repo has none, and records this machine's
+factory path in the git-ignored `design/AI_FACTORY.local.md` so committed files
+never contain absolute developer paths. After `link`, any agent session opened
+in the game repo knows the four departments exist and when to consult each,
+without the user having to name a factory in the prompt. Both commands support
+`--dry-run`.
+
 ## Gameplay Factory — current Case 3 entry
 
 [`gameplay/AGENTS.md`](gameplay/AGENTS.md) is both the Gameplay Factory guide

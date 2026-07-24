@@ -7,7 +7,7 @@ repo, **start here**, pick the factory, then read that factory's own landing doc
 game_ai_factory/
   asset/   game asset factory  — isometric tiles, walls, props, tile re-skin, bg cleanup
   story/   game story factory  — world / character / cast / chapter narrative production
-  gameplay/ gameplay factory   — player-time trace, beat packets, reception contracts
+  gameplay/ gameplay factory   — next-objective production + gameplay gap repair
   sound/   game sound factory  — text->SFX (ElevenLabs) + de-silence/normalize
 ```
 
@@ -55,6 +55,18 @@ The factories compose. A playable story sequence can draw on all four:
 Keep each factory's outputs landing in the **game repo**, never under this
 umbrella. Factory-side changes (new workflow, provider, stage) belong in the
 relevant sub-factory via normal commits.
+
+## Setup and game-repo linking
+
+- `python3 setup.py sync` — symlink factory skills into harness skill dirs
+  (`git pull` then IS the update; `--copy` fallback re-syncs stamped copies).
+- `python3 setup.py link --game-repo <GAME_REPO>` — write the harness-agnostic
+  factory routing block into the game repo's `AGENTS.md` (managed markers,
+  idempotent), seed a `CLAUDE.md` pointer if absent, and record the local
+  factory path in git-ignored `design/AI_FACTORY.local.md`.
+
+A linked game repo's agent sessions resolve `$FACTORY_ROOT` from that local
+pointer file; committed game-repo files never contain absolute factory paths.
 
 ## Repo notes
 
